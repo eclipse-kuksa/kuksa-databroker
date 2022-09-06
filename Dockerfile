@@ -20,12 +20,13 @@ RUN rustup component add rustfmt
 RUN mkdir /build
 WORKDIR /build
 
-ADD  kuksa_databroker ./
+ADD kuksa_databroker kuksa_databroker
+ADD proto proto
 
 WORKDIR /build/databroker
 
 ENV RUSTFLAGS='-C link-arg=-s'
-RUN cargo build --bin databroker --release 
+RUN cargo build --bin databroker --release
 
 
 FROM  debian:buster-slim
