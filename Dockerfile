@@ -23,15 +23,23 @@ WORKDIR /build
 ADD kuksa_databroker kuksa_databroker
 ADD proto proto
 
+# Creating BOM
+RUN cargo install cargo-license
+WORKDIR /build/createbom
+RUN rm -rf ../thirdparty
+RUN python3 createbom.py ../databroker
+
 WORKDIR /build/databroker
 
 ENV RUSTFLAGS='-C link-arg=-s'
 RUN cargo build --bin databroker --release
 
 
+
 FROM  debian:buster-slim
 
 COPY --from=builder /build/databroker/target/release/databroker /app/databroker
+COPY --from=builder /build/databroker/thirdparty /app/thirdparty
 
 ADD ./data/vss-core/vss_release_3.0.json vss_release_3.0.json
 
