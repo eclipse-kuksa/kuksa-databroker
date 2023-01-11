@@ -58,6 +58,7 @@ RUN cargo install cargo-license
 
 ADD kuksa_databroker kuksa_databroker
 ADD proto proto
+ADD Cargo.toml Cargo.toml
 
 # Creating BOM
 WORKDIR /build/createbom
@@ -73,7 +74,7 @@ RUN cargo build --bin databroker --release
 
 FROM  scratch
 
-COPY --from=builder /build/databroker/target/release/databroker /app/databroker
+COPY --from=builder /build/target/release/databroker /app/databroker
 COPY --from=builder /build/databroker/thirdparty /app/thirdparty
 
 ADD ./data/vss-core/vss_release_3.0.json vss_release_3.0.json
