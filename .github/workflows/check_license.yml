@@ -1,0 +1,33 @@
+name: spdx
+
+on:
+  pull_request
+
+concurrency:
+      group: ${{ github.ref }}-${{ github.workflow }}
+      cancel-in-progress: true
+
+jobs:
+  check-spdx-headers:
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        # required to grab the history of the PR
+        fetch-depth: 0
+
+    - name: Get changed files
+      run: |
+        echo "files=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | tr '\n' ',')" >> $GITHUB_ENV
+
+    - name: Set license
+      run: |
+        echo "licenses=Apache-2.0" >> $GITHUB_ENV
+
+    - uses: eclipse-kuksa/kuksa-actions/spdx@2
+      with:
+        files: "${{ env.files }}"
+        licenses: "${{ env.licenses }}"
