@@ -18,6 +18,9 @@ members = [
     "databroker-proto",
     "databroker-cli",
     "databroker-examples",
+    "lib",
+    "lib/kuksa",
+    "lib/sdv",
 ]
 
 [workspace.dependencies]
