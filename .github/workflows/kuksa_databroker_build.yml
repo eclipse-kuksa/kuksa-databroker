@@ -66,7 +66,9 @@ jobs:
 
       - name: Run tests and report code coverage
         run: |
-          cargo tarpaulin -o xml
+          cargo tarpaulin -o xml \
+            --exclude-files databroker/tests/* \
+            --exclude-files databroker/tests/world/*
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v3
