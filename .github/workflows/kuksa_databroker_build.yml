@@ -28,7 +28,8 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-
+    env:
+      CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -58,7 +59,8 @@ jobs:
   test:
     name: Unit tests
     runs-on: ubuntu-latest
-
+    env:
+      CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -69,46 +71,30 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: databroker-test-${{ hashFiles('**/Cargo.lock') }}
-      - name: Show toolchain information
-        working-directory: ${{github.workspace}}
-        run: |
-          rustup toolchain list
-          cargo --version
-      - name: Install cargo tarpaulin (unless already installed)
-        run: |
-          which cargo-tarpaulin || cargo install cargo-tarpaulin
-      - name: Run tests and report code coverage
-        run: |
-          cargo tarpaulin -o xml \
-            --exclude-files databroker/tests/* \
-            --exclude-files databroker/tests/world/*
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+          key: databroker-coverage-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate code coverage
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
         with:
-          name: Code coverage report
-          path: cobertura.xml
+          files: lcov.info
 
-      # - name: Publish coverage report as comment
-      #   uses: 5monkeys/cobertura-action@v12
-      #   if: github.event_name == 'pull_request'
-      #   with:
-      #     path: cobertura.xml
-      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
-      #     minimum_coverage: 40
-
-  check_ghcr_push:
-    name: Check access rights
-    uses: eclipse-kuksa/kuksa-actions/.github/workflows/check_ghcr_push.yml@2
-    secrets: inherit
-
-  build-container:
-    name: Build multiarch container
+  build:
+    name: Build
     runs-on: ubuntu-latest
-
-    needs: check_ghcr_push
-
+    env:
+      CARGO_TERM_COLOR: always
+    strategy:
+      matrix:
+        platform:
+          - name: amd64
+            target: x86_64-unknown-linux-musl
+          - name: arm64
+            target: aarch64-unknown-linux-musl
+          - name: riscv64
+            target: riscv64gc-unknown-linux-gnu
     steps:
     - uses: actions/checkout@v4
     - uses: actions/cache@v4
@@ -119,23 +105,72 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: databroker-release-${{ hashFiles('**/Cargo.lock') }}
+        key: databroker-release-${{ matrix.platform.name }}-${{ hashFiles('**/Cargo.lock') }}
     - name: Install build prerequisites
       working-directory: ${{github.workspace}}/
       run: |
-        which cargo-license || cargo install cargo-license
         which cross || cargo install cross
     - name: Build
       working-directory: ${{github.workspace}}/
       run: |
-        ./build-all-targets.sh
+        cross build --target ${{ matrix.platform.target }} --bin databroker --release
+        mkdir -p "dist/${{ matrix.platform.name }}"
+        cp "target/${{ matrix.platform.target }}/release/databroker" "dist/${{ matrix.platform.name }}"
+    - name: Package dist files
+      shell: bash
+      working-directory: ${{github.workspace}}
+      run: |
+        tar -cf databroker-${{ matrix.platform.name }}.tar.gz dist
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: databroker-${{ matrix.platform.name }}.tar.gz
+        path: databroker-${{ matrix.platform.name }}.tar.gz
+        if-no-files-found: error
+
+  check_ghcr_push:
+    name: Check access rights
+    uses: eclipse-kuksa/kuksa-actions/.github/workflows/check_ghcr_push.yml@2
+    secrets: inherit
+
+  create-container:
+    name: Create multiarch container
+    runs-on: ubuntu-latest
+
+    needs: [build, bom, check_ghcr_push]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Retrieve artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        merge-multiple: true
+
+    - name: Unpack binaries
+      env:
+        AMD64_DIR: ${{ github.workspace }}/target/x86_64-unknown-linux-musl/release
+        ARM64_DIR: ${{ github.workspace }}/target/aarch64-unknown-linux-musl/release
+        RISCV64_DIR: ${{ github.workspace }}/target/riscv64gc-unknown-linux-gnu/release
+      run: |
+        tar xf artifacts/databroker-amd64.tar.gz
+        mkdir -p "$AMD64_DIR"
+        mv dist/amd64/databroker "$AMD64_DIR"
+        tar xf artifacts/databroker-arm64.tar.gz
+        mkdir -p "$ARM64_DIR"
+        mv dist/arm64/databroker "$ARM64_DIR"
+        tar xf artifacts/databroker-riscv64.tar.gz
+        mkdir -p "$RISCV64_DIR"
+        mv dist/riscv64/databroker "$RISCV64_DIR"
+        tar xf artifacts/thirdparty.tar.gz
     - name: Set container metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
         # list of Docker images to use as base name for tags
         images: |
-          ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker
+          ghcr.io/eclipse-kuksa/kuksa-databroker
         # generate Docker tags based on the following events/attributes
         tags: |
           type=ref,event=branch
@@ -199,29 +234,29 @@ jobs:
       with:
         image: ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}
 
-    - name: "Archiving AMD64 artifacts"
-      uses: actions/upload-artifact@v4
-      with:
-          name: databroker-amd64
-          path: ${{github.workspace}}/dist/amd64
+    # - name: "Archiving AMD64 artifacts"
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #       name: databroker-amd64
+    #       path: ${{github.workspace}}/dist/amd64
 
-    - name: "Archiving ARM64 artifacts"
-      uses: actions/upload-artifact@v4
-      with:
-          name: databroker-arm64
-          path: ${{github.workspace}}/dist/arm64
+    # - name: "Archiving ARM64 artifacts"
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #       name: databroker-arm64
+    #       path: ${{github.workspace}}/dist/arm64
 
-    - name: "Archiving RISCV64 artifacts"
-      uses: actions/upload-artifact@v4
-      with:
-        name: databroker-riscv64
-        path: ${{github.workspace}}/dist/riscv64
+    # - name: "Archiving RISCV64 artifacts"
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: databroker-riscv64
+    #     path: ${{github.workspace}}/dist/riscv64
 
 
   integration-test:
     name: Run integration test
     runs-on: ubuntu-latest
-    needs: [build-container]
+    needs: [create-container]
 
     steps:
       - name: Set up QEMU
@@ -265,13 +300,28 @@ jobs:
             target/
           key: databroker-bom-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: "License check and Dash output generation"
+      - name: Install prerequisites
         working-directory: ${{github.workspace}}/createbom
         run: |
          which cargo-license || cargo install cargo-license
+      - name: License check and Dash output generation
+        working-directory: ${{github.workspace}}/createbom
+        run: |
          python3 createbom.py --dash ${{github.workspace}}/dash-databroker-deps ../databroker
-
       - name: Dash license check
         uses: eclipse-kuksa/kuksa-actions/check-dash@2
         with:
           dashinput: ${{github.workspace}}/dash-databroker-deps
+      - name: Generate Bill of Materials
+        working-directory: ${{github.workspace}}/createbom
+        run: |
+          rm -r ../databroker/thirdparty
+          python3 createbom.py ../databroker
+          cd ..
+          tar cf thirdparty.tar.gz databroker/thirdparty
+      - name: Upload Bill of Materials
+        uses: actions/upload-artifact@v4
+        with:
+          name: Third party licenses
+          path: thirdparty.tar.gz
+          if-no-files-found: error

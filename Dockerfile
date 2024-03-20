@@ -44,7 +44,7 @@ COPY ./target/riscv64gc-unknown-linux-gnu/release/databroker /app/databroker
 FROM target-$TARGETARCH as target
 ARG TARGETARCH
 
-COPY ./dist/$TARGETARCH/thirdparty/ /app/thirdparty
+COPY ./databroker/thirdparty/ /app/thirdparty
 
 COPY ./data/vss-core/vss_release_3.1.1.json vss_release_3.1.1.json
 COPY ./data/vss-core/vss_release_4.0.json vss_release_4.0.json
