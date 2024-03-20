@@ -1,6 +1,6 @@
 <!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
 <a name="top"></a>
-# Eclipse Kuksa.val&trade; Databroker User Guide
+# Eclipse Kuksa&trade; Databroker User Guide
 
 The following sections provide information for running and configuring Databroker as well as information necessary for developing client applications invoking Databroker's external API.
 
@@ -26,7 +26,7 @@ The following sections provide information for running and configuring Databroke
 Get help, options and version number with:
 
 ```sh
-docker run --rm -it ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker:master -h
+docker run --rm -it ghcr.io/eclipse-kuksa/kuksa-databroker:master -h
 ```
 ```console
 Usage: databroker [OPTIONS]
@@ -51,7 +51,7 @@ Options:
 Before starting Databroker you must decide if you want to use TLS for incoming connections or not. It is recommended to use TLS which is enabled by providing a private key with `--tls-private-key` and a server certificate with `--tls-cert`. If you do not provide those options, Databroker will only accept insecure connections. The default behavior may change in the future, so if you want insecure connections it is recommended to use the `--insecure` argument.
 
 ```sh
-docker run --rm -it -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker:master --insecure
+docker run --rm -it -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databroker:master --insecure
 ```
 
 > :warning: **Warning**: Default port not working on Mac OS
@@ -59,7 +59,7 @@ docker run --rm -it -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databrokerdatabro
 > On several versions of Mac OS applications cannot bind to port `55555`. Databroker needs to be configured to bind to a different (local) port in such cases:
 >
 > ```sh
-> docker run --rm -it -p 55556:55555 ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker:master --insecure
+> docker run --rm -it -p 55556:55555 ghcr.io/eclipse-kuksa/kuksa-databroker:master --insecure
 > ```
 >
 > Please refer to [this support forum post](https://developer.apple.com/forums/thread/671197) for additional information.
@@ -68,26 +68,26 @@ docker run --rm -it -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databrokerdatabro
 
 ## Enabling Authorization
 
-Kuksa.val Databroker supports authorizing client requests based on JSON Web Tokens (JWT) provided by clients in request messages. This requires configuration of a PEM file containing the public key that should be used for verifying the tokens' signature.
+Kuksa Databroker supports authorizing client requests based on JSON Web Tokens (JWT) provided by clients in request messages. This requires configuration of a PEM file containing the public key that should be used for verifying the tokens' signature.
 
-The Kuksa.val repository contains example keys and JWTs in the *certificates* and *jwt* folders respectively which can be used for testing purposes. In order to run the commands below, the repository first needs to be cloned to the local file system:
+The repository contains example keys and JWTs in the *certificates* and *jwt* folders respectively which can be used for testing purposes. In order to run the commands below, the repository first needs to be cloned to the local file system:
 
 ```shell
-git clone https://github.com/eclipse/kuksa.val.git
+git clone https://github.com/eclipse-kuksa/kuksa-databroker.git
 ```
 
 The Databroker can then be started with support for authorization from the repository root folder:
 
 ```shell
 # in repository root
-docker run --rm -it --name Server --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker:master --insecure --jwt-public-key /opt/kuksa/jwt/jwt.key.pub
+docker run --rm -it --name Server --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databroker:master --insecure --jwt-public-key /opt/kuksa/jwt/jwt.key.pub
 ```
 
 The CLI can then be configured to use a corresponding token when connecting to the Databroker:
 
 ```shell
 # in repository root
-docker run --rm -it --network kuksa -v ./jwt:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker-cli:master --server Server:55555 --token-file /opt/kuksa/read-vehicle-speed.token
+docker run --rm -it --network kuksa -v ./jwt:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databroker-cli:master --server Server:55555 --token-file /opt/kuksa/read-vehicle-speed.token
 ```
 
 The token contains a claim that authorizes the client to read the *Vehicle.Speed* signal only.
@@ -114,20 +114,20 @@ Vehicle.Speed: ( NotAvailable )
 
 ## Enabling TLS
 
-Kuksa.val Databroker also supports using TLS for encrypting the traffic with clients. This requires configuration of both a PEM file containing the server's private key as well as a PEM file containing the server's X.509 certificate.
+Kuksa Databroker also supports using TLS for encrypting the traffic with clients. This requires configuration of both a PEM file containing the server's private key as well as a PEM file containing the server's X.509 certificate.
 
-The command below starts the Databroker using the example key and certificate from the Kuksa.val repository:
+The command below starts the Databroker using the example key and certificate from the repository:
 
 ```sh
 # in repository root
-docker run --rm -it --name Server --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker:master --tls-cert /opt/kuksa/Server.pem --tls-private-key /opt/kuksa/Server.key
+docker run --rm -it --name Server --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databroker:master --tls-cert /opt/kuksa/Server.pem --tls-private-key /opt/kuksa/Server.key
 ```
 
 The CLI can then be configured to use a corresponding trusted CA certificate store when connecting to the Databroker:
 
 ```shell
 # in repository root
-docker run --rm -it --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker-cli:master --server Server:55555 --ca-cert /opt/kuksa/CA.pem
+docker run --rm -it --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databroker-cli:master --server Server:55555 --ca-cert /opt/kuksa/CA.pem
 ```
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -153,7 +153,7 @@ Subscription is now running in the background. Received data is identified by [1
 
 ## Using Custom VSS Data Entries
 
-Kuksa.val Databroker supports management of data entries and branches as defined by the [Vehicle Signal Specification](https://covesa.github.io/vehicle_signal_specification/).
+Kuksa Databroker supports management of data entries and branches as defined by the [Vehicle Signal Specification](https://covesa.github.io/vehicle_signal_specification/).
 
 In order to generate metadata from a VSS specification that can be loaded by the data broker, it's possible to use the `vspec2json.py` tool
 that's available in the [vss-tools](https://github.com/COVESA/vss-tools) repository:
@@ -165,7 +165,7 @@ that's available in the [vss-tools](https://github.com/COVESA/vss-tools) reposit
 The Databroker can be configured to load the resulting `vss.json` file at startup:
 
 ```shell
-docker run --rm -it -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker:master --insecure --vss vss.json
+docker run --rm -it -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databroker:master --insecure --vss vss.json
 ```
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -232,7 +232,7 @@ The default configuration can be overridden by means of setting the correspondin
 
 ## API
 
-Kuksa.val Databroker provides [gRPC](https://grpc.io/) based API endpoints which can be used by
+Kuksa Databroker provides [gRPC](https://grpc.io/) based API endpoints which can be used by
 clients to interact with the server.
 
 gRPC services are specified by means of `.proto` files which define the services and the data
@@ -247,7 +247,7 @@ The same `.proto` file can be used to generate server skeleton and client stubs 
 HTTP/2 is a binary replacement for HTTP/1.1 used for handling connections, multiplexing (channels) and providing a standardized way to add headers for authorization and TLS for encryption/authentication.
 It also supports bi-directional streaming between client and server.
 
-Kuksa.val Databroker implements the following service interfaces:
+Kuksa Databroker implements the following service interfaces:
 
 * [kuksa.val.v1.VAL](../databroker-proto/proto/kuksa/val/v1/val.proto)
 * [sdv.databroker.v1.Broker](../databroker-proto/proto/sdv/databroker/v1/broker.proto)

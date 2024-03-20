@@ -1,7 +1,9 @@
-name: spdx
+name: Check SPDX headers
 
 on:
-  pull_request
+  pull_request:
+  workflow_call:
+    
 
 concurrency:
       group: ${{ github.ref }}-${{ github.workflow }}
@@ -9,10 +11,11 @@ concurrency:
 
 jobs:
   check-spdx-headers:
+    name: Check SPDX headers
+
     runs-on: ubuntu-latest
 
     steps:
-
     - name: Checkout code
       uses: actions/checkout@v4
       with:

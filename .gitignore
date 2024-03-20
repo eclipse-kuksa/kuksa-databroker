@@ -1,1 +1,6 @@
 target/
+dist/
+__pycache__
+databroker/thirdparty
+databroker-cli/thirdparty
+.venv/
