@@ -44,15 +44,15 @@ COPY ./target/riscv64gc-unknown-linux-gnu/release/databroker /app/databroker
 FROM target-$TARGETARCH as target
 ARG TARGETARCH
 
-COPY ./dist/$TARGETARCH/thirdparty/ /app/thirdparty
+COPY ./databroker/thirdparty/ /app/thirdparty
 
 COPY ./data/vss-core/vss_release_3.1.1.json vss_release_3.1.1.json
 COPY ./data/vss-core/vss_release_4.0.json vss_release_4.0.json
 
-ENV KUKSA_DATA_BROKER_ADDR=0.0.0.0
-ENV KUKSA_DATA_BROKER_PORT=55555
-ENV KUKSA_DATA_BROKER_METADATA_FILE=vss_release_4.0.json
+ENV KUKSA_DATABROKER_ADDR=0.0.0.0
+ENV KUKSA_DATABROKER_PORT=55555
+ENV KUKSA_DATABROKER_METADATA_FILE=vss_release_4.0.json
 
-EXPOSE $KUKSA_DATA_BROKER_PORT
+EXPOSE $KUKSA_DATABROKER_PORT
 
 ENTRYPOINT [ "/app/databroker" ]

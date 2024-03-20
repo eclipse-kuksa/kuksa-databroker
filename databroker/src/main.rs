@@ -203,7 +203,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .action(ArgAction::Set)
                 .value_name("IP")
                 .required(false)
-                .env("KUKSA_DATA_BROKER_ADDR")
+                .env("KUKSA_DATABROKER_ADDR")
                 .default_value("127.0.0.1"),
         )
         .arg(
@@ -214,7 +214,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .action(ArgAction::Set)
                 .value_name("PORT")
                 .required(false)
-                .env("KUKSA_DATA_BROKER_PORT")
+                .env("KUKSA_DATABROKER_PORT")
                 .value_parser(clap::value_parser!(u16))
                 .default_value("55555"),
         )
@@ -227,7 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .action(ArgAction::Set)
                 .value_delimiter(',')
                 .value_name("FILE")
-                .env("KUKSA_DATA_BROKER_METADATA_FILE")
+                .env("KUKSA_DATABROKER_METADATA_FILE")
                 .value_parser(clap::builder::NonEmptyStringValueParser::new())
                 .required(false),
         )

@@ -6,13 +6,13 @@
 <br />
 <div align="center">
   <a href="https://github.com/github_username/repo_name">
-    <img src="../doc/pictures/logo.png" alt="Logo" width="500px">
+    <img src="./doc/pictures/logo.png" alt="Logo" width="500px">
   </a>
 
-<h3 align="center">Eclipse Kuksa.val&trade; Databroker</h3>
+<h3 align="center">Eclipse Kuksa&trade; Databroker</h3>
 
   <p align="center">
-    Kuksa.val Databroker is a gRPC service acting as a broker of vehicle data / data points / signals.
+    Kuksa Databroker is a gRPC service acting as a broker of vehicle data / data points / signals.
     <br />
     <a href="./doc/user_guide.md"><strong>Explore the docs »</strong></a>
     <br />
@@ -59,21 +59,21 @@ The [COVESA Vehicle Signal Specification](https://covesa.github.io/vehicle_signa
 
 However, VSS does not define how these signals are to be collected and managed within a vehicle, nor does it prescribe how other components in the vehicle can read or write signal values from and to the tree.
 
-**Kuksa.val Databroker** is a resource efficient implementation of the VSS signal tree and is intended to be run within a vehicle on a microprocessor based platform. It allows applications in the vehicle to interact with the vehicle's sensors and actuators using a uniform, high level gRPC API for querying signals, updating current and target values of sensors and actuators and getting notified about changes to signals of interest.
+**Kuksa Databroker** is a resource efficient implementation of the VSS signal tree and is intended to be run within a vehicle on a microprocessor based platform. It allows applications in the vehicle to interact with the vehicle's sensors and actuators using a uniform, high level gRPC API for querying signals, updating current and target values of sensors and actuators and getting notified about changes to signals of interest.
 
 <!-- black box diagram -- inputs/outputs -->
 
 ```mermaid
 flowchart LR
     A[Application] --VSS--- DB
-    DB[Kuksa.val Databroker] --VSS--- P
-    P[Kuksa.val Provider] --CAN frames etc---E
+    DB[Kuksa Databroker] --VSS--- P
+    P[Kuksa provider] --CAN frames etc---E
     E[ECU] --- Sensor
     E --- Actuator
     style DB fill:#999999,stroke:#444444,color:#ffffff
 ```
 
-At the right end, [Kuksa.val Providers](https://github.com/eclipse/kuksa.val.feeders) implement the link between the Databroker and a vehicle's Electronic Control Units (ECU) to which the hardware sensors and actuators are physically attached.
+At the right end, Kuksa providers implement the link between the Databroker and a vehicle's Electronic Control Units (ECU) to which the hardware sensors and actuators are physically attached.
 
 Data is usually exchanged with ECUs by means of a CAN bus or Ethernet based protocols like SOME/IP. Providers translate between the low level messages used by these protocols and the Databroker's high level gRPC API calls to update a sensor's current reading or to forward a set-point value to an actuator via its controlling ECU.
 
@@ -90,7 +90,7 @@ Data is usually exchanged with ECUs by means of a CAN bus or Ethernet based prot
 <!-- GETTING STARTED -->
 ## Getting started
 
-The quickest possible way to get Kuksa.val Databroker up and running.
+The quickest possible way to get Kuksa Databroker up and running.
 
 > :memo: **Note:** The examples in this section do not use TLS nor access control. Please refer to the [User Guide](./doc/user_guide.md) for more sophisticated usage examples.
 
@@ -107,7 +107,7 @@ The quickest possible way to get Kuksa.val Databroker up and running.
 1. Start Databroker in a container attached to the *kuksa* bridge network using hostname *Server*:
 
    ```sh
-   docker run -it --rm --name Server --network kuksa ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker:master --insecure
+   docker run -it --rm --name Server --network kuksa ghcr.io/eclipse-kuksa/kuksa-databroker:master --insecure
    ```
    > :bulb: **Tip:** You can stop the container using `ctrl-c`.
 
@@ -119,7 +119,7 @@ The quickest possible way to get Kuksa.val Databroker up and running.
 
    ```sh
    # in a new terminal
-   docker run -it --rm --network kuksa ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker-cli:master --server Server:55555
+   docker run -it --rm --network kuksa ghcr.io/eclipse-kuksa/kuksa-databroker-cli:master --server Server:55555
    ```
 
    The CLI provides an interactive prompt which can be used to send commands to the Databroker.
@@ -199,18 +199,18 @@ Run the cli with:
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-Please refer to the [User Guide](./doc/user_guide.md) for details regarding how to run and interact with Kuksa.val Databroker.
+Please refer to the [User Guide](./doc/user_guide.md) for details regarding how to run and interact with Kuksa Databroker.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Building
 
-Building Kuksa.val Databroker from source code requires
+Building Kuksa Databroker from source code requires
 
 * a [Rust tool chain](https://www.rust-lang.org/tools/install)
 * a local workspace containing the source code
   ```shell
-  git clone https://github.com/eclipse/kuksa.val.git
+  git clone https://github.com/eclipse-kuksa/kuksa-databroker.git
   ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -244,18 +244,18 @@ cargo test --all-targets
 
 ## Contributing
 
-Please refer to the [Kuksa.val Contributing Guide](../CONTRIBUTING.md).
+Please refer to the [Kuksa Contributing Guide](CONTRIBUTING.md).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## License
 
-Kuksa.val Databroker is provided under the terms of the [Apache Software License 2.0](../LICENSE).
+Kuksa Databroker is provided under the terms of the [Apache Software License 2.0](LICENSE).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Contact
 
-Please feel free to create [GitHub Issues](https://github.com/eclipse-kuksa/kuksa-databrokerissues) for reporting bugs and/or ask questions in our [Gitter chat room](https://matrix.to/#/#kuksa-val_community:gitter.im).
+Please feel free to create [GitHub Issues](https://github.com/eclipse-kuksa/kuksa-databroker/issues) for reporting bugs and/or ask questions in our [Gitter chat room](https://matrix.to/#/#kuksa-val_community:gitter.im).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

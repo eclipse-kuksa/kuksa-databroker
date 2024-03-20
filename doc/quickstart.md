@@ -132,7 +132,7 @@ docker run -it --rm --net=host ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker:
 Using the databroker-cli
 
 ```
-docker run -it --rm --net=host -e KUKSA_DATA_BROKER_PORT=55556 ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker-cli:master
+docker run -it --rm --net=host -e KUKSA_DATABROKER_PORT=55556 ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker-cli:master
 ```
 
 Using kuksa-client CLI
@@ -157,7 +157,7 @@ docker run -it --rm  --publish 55556:55556 ghcr.io/eclipse-kuksa/kuksa-databroke
 From your host computer you can now reach databroker at `127.0.0.1:55556`. To connect from another container, you need to use your computers IP address (**not** 127.0.0.1), i.e. to use the client
 
 ```
-docker run -it --rm  -e KUKSA_DATA_BROKER_PORT=55556 -e KUKSA_DATA_BROKER_ADDR=<YOUR_IP> ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker-cli:master
+docker run -it --rm  -e KUKSA_DATABROKER_PORT=55556 -e KUKSA_DATABROKER_ADDR=<YOUR_IP> ghcr.io/eclipse-kuksa/kuksa-databrokerdatabroker-cli:master
 ```
 
 Recent versions of the databroker-cli also support command line arguments, so you can also write
