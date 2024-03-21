@@ -5,7 +5,9 @@
 KUKSA.val is adapted to use Vehicle Signals Specification as defined by COVESA.
 The ambition is to always support the latest released version available at the
 [COVESA VSS release page](https://github.com/COVESA/vehicle_signal_specification/releases).
-In addition older versions may be supported. This folder contains copies of all versions supported.
+In addition older versions may be supported. This folder contains copies of all versions supported by Databroker.
+
+*The files in this folder also exists in [kuksa-common](https://github.com/eclipse-kuksa/kuksa-common/blob/main/vss/README.md)!*
 
 ## Supported VSS versions
 
@@ -51,90 +53,6 @@ use the full name. When official release is created replace the copied *.json-fi
 (if any, currently only in kuksa.val.feeders), and update github links in this file.
 
 ## Tests after update
-
-### Kuksa-val-server unit tests
-* Run kuksa-val-server unit tests according to [documentation](../../kuksa-val-server/test/unit-test/readme.md)
-
-### Kuksa-val-server smoke test
-* Build and start kuksa-val-server with new VSS release as described in the [README](https://github.com/eclipse-kuksa/kuksa-databrokerblob/master/kuksa-val-server/README.md)
-* If needed [generate new certificates](https://github.com/eclipse-kuksa/kuksa-databrokertree/master/certificates)
-* [Start Kuksa Client](https://github.com/eclipse-kuksa/kuksa-python-sdk) and perform some basic tests that VSS changes are present
-
-Examples:
-
-Start and authorize with generated token:
-
-```
-$ python -m kuksa_client
-Welcome to Kuksa Client version 0.2.1
-
-                  `-:+o/shhhs+:`
-                ./oo/+o/``.-:ohhs-
-              `/o+-  /o/  `..  :yho`
-              +o/    /o/  oho    ohy`
-             :o+     /o/`+hh.     sh+
-             +o:     /oo+o+`      /hy
-             +o:     /o+/oo-      +hs
-             .oo`    oho `oo-    .hh:
-              :oo.   oho  -+:   -hh/
-               .+o+-`oho     `:shy-
-                 ./o/ohy//+oyhho-
-                    `-/+oo+/:.
-
-Default tokens directory: /home/erik/.local/lib/python3.9/site-packages/certificates/jwt
-
-connect to wss://127.0.0.1:8090
-Websocket connected!!
-
-Test Client> authorize /home/user/.local/lib/python3.9/site-packages/certificates/jwt/super-admin.json.token
-
-```
-
-Check that changes to the new version has taken effect, e.g. that new signals exist or that changed or added attributes are present.
-
-```
-Test Client> getMetaData Vehicle.Powertrain.Transmission.DriveType
-
-```
-
-Do some set/get on new signals to verify that it works as expected.
-
-```
-Test Client> setValue Vehicle.CurrentLocation.Longitude 16.346734
-
-Test Client> getValue Vehicle.CurrentLocation.Longitude
-
-```
-
-### Kuksa-val-server and dbc2val smoke test
-
-Run dbc2val as described in [documentation](https://github.com/eclipse/kuksa.val.feeders/blob/main/dbc2val/README.md) using example [dump file](https://github.com/eclipse/kuksa.val.feeders/blob/main/dbc2val/candump.log). Verify that no errors appear in kuksa-val-server log. Not all signals in the [mapping files](https://github.com/eclipse/kuksa.val.feeders/blob/main/dbc2val/mapping/) are used by the example dump file, but it can be verified using Kuksa Client that e.g. `Vehicle.Speed` has been given a value.
-
-
-### Kuksa-val-server and gps2val smoke test
-
-Run gps2val as described in [documentation](https://github.com/eclipse/kuksa.val.feeders/blob/main/gps2val/README.md) using example log. If gpsd already is running at port 2947 a different port like 2949 may be used. Then [gps2val config file](https://github.com/eclipse/kuksa.val.feeders/blob/main/gps2val/config/gpsd_feeder.ini) must also be updated to use that port. If device handling does not work on test platform `-t` can be used to uss TCP instead.
-
-```
-gpsfake -t -P 2949 simplelog_example.nmea
-```
-
-If everything works as expected successful set requests with values similar to below shall be seen:
-
-```
-VERBOSE: SubscriptionHandler::publishForVSSPath: set value 48.811483333 for path Vehicle.CurrentLocation.Latitude
-...
-VERBOSE: SubscriptionHandler::publishForVSSPath: set value 8.927633333 for path Vehicle.CurrentLocation.Longitude
-...
-VERBOSE: SubscriptionHandler::publishForVSSPath: set value 12.244000434875488 for path Vehicle.Speed
-```
-
-The [Kuksa Python SDK](https://github.com/eclipse-kuksa/kuksa-python-sdk) can be used to verify that data actually is correctly interpreted.
-
-```
-Test Client> getValue Vehicle.CurrentLocation.Latitude
-{"action":"get","data":{"dp":{"ts":"2022-08-19T14:04:43.339202324Z","value":"48.780133333"},"path":"Vehicle.CurrentLocation.Latitude"},"requestId":"025e5b10-d389-4a96-ba43-46f6a8c06b9e","ts":"2022-08-19T14:04:43.1660914283Z"}
-```
 
 
 ### Kuksa_databroker smoke test

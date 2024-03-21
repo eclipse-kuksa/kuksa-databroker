@@ -4,7 +4,7 @@
 
 
 This directory contains example tokens for demo and test purposes for KUKSA.val Databroker.
-For more information on token format see [documentation](../doc/KUKSA.val_data_broker/authorization.md).
+For more information on token format see [documentation](../doc/authorization.md).
 
 ## Available tokens
 

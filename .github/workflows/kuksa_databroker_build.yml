@@ -15,7 +15,7 @@ name: Build kuksa-databroker
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main]
   pull_request:
   workflow_call:
   workflow_dispatch:
@@ -23,6 +23,10 @@ on:
 concurrency:
       group: ${{ github.ref }}-${{ github.workflow }}
       cancel-in-progress: true
+
+# Needed as default_workflow_permissions is "read"
+permissions:
+  packages: write
 
 jobs:
   lint:
@@ -77,6 +81,8 @@ jobs:
       - name: Generate code coverage
         run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
       - name: Upload coverage to Codecov
+        # To use v4 a token must be specifed by "token: ${{ secrets.CODECOV_TOKEN }}""
+        # Uploaded result available at https://app.codecov.io/gh/eclipse-kuksa/kuksa-databroker
         uses: codecov/codecov-action@v3
         with:
           files: lcov.info
@@ -230,28 +236,9 @@ jobs:
         provenance: false
 
     - name: Posting message
-      uses: ./.github/actions/post-container-location
+      uses: eclipse-kuksa/kuksa-actions/post-container-location@2
       with:
         image: ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}
-
-    # - name: "Archiving AMD64 artifacts"
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #       name: databroker-amd64
-    #       path: ${{github.workspace}}/dist/amd64
-
-    # - name: "Archiving ARM64 artifacts"
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #       name: databroker-arm64
-    #       path: ${{github.workspace}}/dist/arm64
-
-    # - name: "Archiving RISCV64 artifacts"
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #     name: databroker-riscv64
-    #     path: ${{github.workspace}}/dist/riscv64
-
 
   integration-test:
     name: Run integration test
