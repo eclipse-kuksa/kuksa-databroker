@@ -15,7 +15,7 @@ name: Build kuksa-databroker-cli
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
     paths:
       - ".github/workflows/kuksa_databroker-cli_build.yml"
@@ -29,6 +29,10 @@ on:
 concurrency:
       group: ${{ github.ref }}-${{ github.workflow }}
       cancel-in-progress: true
+
+# Needed as default_workflow_permissions is "read"
+permissions:
+  packages: write
 
 jobs:
   lint:
@@ -52,7 +56,7 @@ jobs:
       - name: cargo clippy
         working-directory: ${{github.workspace}}
         run: cargo clippy --all-targets -- -W warnings -D warnings
-  
+
   check_ghcr_push:
     name: Check access rights
     uses: eclipse-kuksa/kuksa-actions/.github/workflows/check_ghcr_push.yml@2
@@ -152,9 +156,8 @@ jobs:
         # Same problem as described in https://github.com/orgs/community/discussions/45969
         provenance: false
 
-
     - name: Posting message
-      uses: ./.github/actions/post-container-location
+      uses: eclipse-kuksa/kuksa-actions/post-container-location@2
       with:
         image: ttl.sh/eclipse-kuksa/kuksa-databroker-cli-${{github.sha}}
 
