@@ -107,7 +107,7 @@ The quickest possible way to get Kuksa Databroker up and running.
 1. Start Databroker in a container attached to the *kuksa* bridge network using hostname *Server*:
 
    ```sh
-   docker run -it --rm --name Server --network kuksa ghcr.io/eclipse-kuksa/kuksa-databroker:master --insecure
+   docker run -it --rm --name Server --network kuksa ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure
    ```
    > :bulb: **Tip:** You can stop the container using `ctrl-c`.
 
@@ -119,7 +119,7 @@ The quickest possible way to get Kuksa Databroker up and running.
 
    ```sh
    # in a new terminal
-   docker run -it --rm --network kuksa ghcr.io/eclipse-kuksa/kuksa-databroker-cli:master --server Server:55555
+   docker run -it --rm --network kuksa ghcr.io/eclipse-kuksa/kuksa-databroker-cli:main --server Server:55555
    ```
 
    The CLI provides an interactive prompt which can be used to send commands to the Databroker.
