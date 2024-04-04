@@ -32,9 +32,16 @@ DATA_BROKER_ROOT="$SCRIPT_DIR"
 # Update Cargo.toml versions.
 sed -i -E "s/^version = \"${VERSION_REGEX}\"$/version = \"${VERSION}\"/" \
 	"$DATA_BROKER_ROOT/databroker/Cargo.toml" \
-	"$DATA_BROKER_ROOT/databroker-api/Cargo.toml" \
 	"$DATA_BROKER_ROOT/databroker-cli/Cargo.toml" \
-	"$DATA_BROKER_ROOT/databroker-examples/Cargo.toml"
+	"$DATA_BROKER_ROOT/databroker-proto/Cargo.toml" \
+	"$DATA_BROKER_ROOT/lib/sdv/Cargo.toml" \
+	"$DATA_BROKER_ROOT/lib/kuksa/Cargo.toml" \
+	"$DATA_BROKER_ROOT/lib/common/Cargo.toml"
+
+# Now make sure Cargo.lock is updated to reflect this
+cargo update
+cd lib
+cargo update
 
 # Create release commit and tag it
 #git commit -a -m "Release ${VERSION}"

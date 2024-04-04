@@ -44,6 +44,9 @@ COPY ./target/riscv64gc-unknown-linux-gnu/release/databroker /app/databroker
 FROM target-$TARGETARCH as target
 ARG TARGETARCH
 
+
+# Before running this file thirdparty files must have been created
+# by build-all-targets.sh or corresponding command in buildaction
 COPY ./databroker/thirdparty/ /app/thirdparty
 
 COPY ./data/vss-core/vss_release_3.1.1.json vss_release_3.1.1.json

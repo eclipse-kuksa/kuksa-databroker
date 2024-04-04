@@ -20,8 +20,9 @@ on:
   workflow_call:
   workflow_dispatch:
 
+# suffix to avoid cancellation when running from release workflow
 concurrency:
-      group: ${{ github.ref }}-${{ github.workflow }}
+      group: ${{ github.ref }}-${{ github.workflow }}-databroker
       cancel-in-progress: true
 
 # Needed as default_workflow_permissions is "read"
@@ -90,6 +91,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    needs: [bom]
     env:
       CARGO_TERM_COLOR: always
     strategy:
@@ -103,6 +105,14 @@ jobs:
             target: riscv64gc-unknown-linux-gnu
     steps:
     - uses: actions/checkout@v4
+    - name: Retrieve artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        pattern: Third*
+        merge-multiple: true
+    - name: Display structure of downloaded files
+      run: ls -R
     - uses: actions/cache@v4
       with:
         path: |
@@ -120,19 +130,21 @@ jobs:
       working-directory: ${{github.workspace}}/
       run: |
         cross build --target ${{ matrix.platform.target }} --bin databroker --release
-        mkdir -p "dist/${{ matrix.platform.name }}"
-        cp "target/${{ matrix.platform.target }}/release/databroker" "dist/${{ matrix.platform.name }}"
+        mkdir -p "dist"
+        cp "target/${{ matrix.platform.target }}/release/databroker" "dist"
     - name: Package dist files
       shell: bash
       working-directory: ${{github.workspace}}
       run: |
-        tar -cf databroker-${{ matrix.platform.name }}.tar.gz dist
+        cd dist
+        tar xf ../artifacts/thirdparty.tar.gz
+        tar -czf databroker-${{ matrix.platform.name }}.tar.gz *
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: databroker-${{ matrix.platform.name }}.tar.gz
-        path: databroker-${{ matrix.platform.name }}.tar.gz
+        path: dist/databroker-${{ matrix.platform.name }}.tar.gz
         if-no-files-found: error
 
   check_ghcr_push:
@@ -160,16 +172,18 @@ jobs:
         ARM64_DIR: ${{ github.workspace }}/target/aarch64-unknown-linux-musl/release
         RISCV64_DIR: ${{ github.workspace }}/target/riscv64gc-unknown-linux-gnu/release
       run: |
-        tar xf artifacts/databroker-amd64.tar.gz
+        cd artifacts
+        tar xf databroker-amd64.tar.gz
         mkdir -p "$AMD64_DIR"
-        mv dist/amd64/databroker "$AMD64_DIR"
-        tar xf artifacts/databroker-arm64.tar.gz
+        mv databroker "$AMD64_DIR"
+        tar xf databroker-arm64.tar.gz
         mkdir -p "$ARM64_DIR"
-        mv dist/arm64/databroker "$ARM64_DIR"
-        tar xf artifacts/databroker-riscv64.tar.gz
+        mv databroker "$ARM64_DIR"
+        tar xf databroker-riscv64.tar.gz
         mkdir -p "$RISCV64_DIR"
-        mv dist/riscv64/databroker "$RISCV64_DIR"
-        tar xf artifacts/thirdparty.tar.gz
+        mv databroker "$RISCV64_DIR"
+        tar xf thirdparty.tar.gz
+        mv thirdparty ../databroker/
     - name: Set container metadata
       id: meta
       uses: docker/metadata-action@v5
@@ -294,21 +308,21 @@ jobs:
       - name: License check and Dash output generation
         working-directory: ${{github.workspace}}/createbom
         run: |
-         python3 createbom.py --dash ${{github.workspace}}/dash-databroker-deps ../databroker
+         python3 createbom.py --dash ${{github.workspace}}/dash-databroker ../databroker
       - name: Dash license check
-        uses: eclipse-kuksa/kuksa-actions/check-dash@2
+        uses: eclipse-kuksa/kuksa-actions/check-dash@3
         with:
-          dashinput: ${{github.workspace}}/dash-databroker-deps
+          dashinput: ${{github.workspace}}/dash-databroker
       - name: Generate Bill of Materials
         working-directory: ${{github.workspace}}/createbom
         run: |
           rm -r ../databroker/thirdparty
           python3 createbom.py ../databroker
-          cd ..
-          tar cf thirdparty.tar.gz databroker/thirdparty
+          cd ../databroker
+          tar czf thirdparty.tar.gz thirdparty
       - name: Upload Bill of Materials
         uses: actions/upload-artifact@v4
         with:
           name: Third party licenses
-          path: thirdparty.tar.gz
+          path: databroker/thirdparty.tar.gz
           if-no-files-found: error

@@ -26,8 +26,9 @@ on:
   workflow_call:
   workflow_dispatch:
 
+# suffix to avoid cancellation when running from release workflow
 concurrency:
-      group: ${{ github.ref }}-${{ github.workflow }}
+      group: ${{ github.ref }}-${{ github.workflow }}-databroker-cli
       cancel-in-progress: true
 
 # Needed as default_workflow_permissions is "read"
@@ -160,24 +161,36 @@ jobs:
       uses: eclipse-kuksa/kuksa-actions/post-container-location@2
       with:
         image: ttl.sh/eclipse-kuksa/kuksa-databroker-cli-${{github.sha}}
+    - name: Pack binaries with thirdparty
+      env:
+        AMD64_DIR: ${{ github.workspace }}/dist/amd64
+        ARM64_DIR: ${{ github.workspace }}/dist/arm64
+        RISCV64_DIR: ${{ github.workspace }}/dist/riscv64
+      run: |
+          cd "$AMD64_DIR"
+          tar czf databroker-cli-amd64.tar.gz *
+          cd "$ARM64_DIR"
+          tar czf databroker-cli-arm64.tar.gz *
+          cd "$RISCV64_DIR"
+          tar czf databroker-cli-riscv64.tar.gz *
 
     - name: "Archiving AMD64 artifacts"
       uses: actions/upload-artifact@v4
       with:
-        name: databroker-cli-amd64
-        path: ${{github.workspace}}/dist/amd64
+        name: databroker-cli-amd64.tar.gz
+        path: ${{github.workspace}}/dist/amd64/databroker-cli-amd64.tar.gz
 
     - name: "Archiving ARM64 artifacts"
       uses: actions/upload-artifact@v4
       with:
-        name: databroker-cli-arm64
-        path: ${{github.workspace}}/dist/arm64
+        name: databroker-cli-arm64.tar.gz
+        path: ${{github.workspace}}/dist/arm64/databroker-cli-arm64.tar.gz
 
     - name: "Archiving RISCV64 artifacts"
       uses: actions/upload-artifact@v4
       with:
-        name: databroker-cli-riscv64
-        path: ${{github.workspace}}/dist/riscv64
+        name: databroker-cli-riscv64.tar.gz
+        path: ${{github.workspace}}/dist/riscv64/databroker-cli-riscv64.tar.gz
 
 
   bom:
@@ -200,9 +213,9 @@ jobs:
         working-directory: ${{github.workspace}}/createbom
         run: |
          which cargo-license || cargo install cargo-license
-         python3 createbom.py --dash ${{github.workspace}}/dash-databroker-deps ../databroker
+         python3 createbom.py --dash ${{github.workspace}}/dash-databroker-cli ../databroker
 
       - name: Dash license check
-        uses: eclipse-kuksa/kuksa-actions/check-dash@2
+        uses: eclipse-kuksa/kuksa-actions/check-dash@3
         with:
-          dashinput: ${{github.workspace}}/dash-databroker-deps
+          dashinput: ${{github.workspace}}/dash-databroker-cli
