@@ -171,8 +171,7 @@ async fn read_metadata_file<'a, 'b>(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let version = option_env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
-        .unwrap_or(option_env!("VERGEN_GIT_SHA").unwrap_or("unknown"));
+    let version = option_env!("CARGO_PKG_VERSION").unwrap_or_default();
 
     let about = format!(
         concat!(
@@ -190,7 +189,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         option_env!("VERGEN_CARGO_DEBUG").unwrap_or(""),
     );
 
-    let mut parser = Command::new("Kuksa Data Broker");
+    let mut parser = Command::new("Kuksa Databroker");
     parser = parser
         .version(version)
         .about(about)

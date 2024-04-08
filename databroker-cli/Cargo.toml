@@ -39,6 +39,9 @@ clap = { workspace = true, features = [
     "std",
     "env",
     "derive",
+    "help",
+    "error-context",
+    "usage",
 ] }
 regex = "1.6.0"
 http = "0.2.8"
