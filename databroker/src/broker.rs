@@ -669,7 +669,7 @@ impl Subscriptions {
                     match &sub.permissions.expired() {
                         Ok(()) => true,
                         Err(PermissionError::Expired) => {
-                            sub.sender = None;
+                            info!("Token expired: removing subscription");
                             false
                         }
                         Err(err) => panic!("Error: {:?}", err),
@@ -705,7 +705,6 @@ impl ChangeSubscription {
                     // notify
                     let notifications = {
                         let mut notifications = EntryUpdates::default();
-                        let mut error = None;
                         for (id, changed_fields) in changed {
                             if let Some(fields) = self.entries.get(id) {
                                 if !fields.is_disjoint(changed_fields) {
@@ -737,8 +736,7 @@ impl ChangeSubscription {
                                         }
                                         Err(ReadError::PermissionExpired) => {
                                             debug!("notify: token expired, closing subscription channel");
-                                            error = Some(NotificationError {});
-                                            break;
+                                            return Err(NotificationError {});
                                         }
                                         Err(_) => {
                                             debug!("notify: could not find entry with id {}", id);
@@ -746,9 +744,6 @@ impl ChangeSubscription {
                                     }
                                 }
                             }
-                        }
-                        if let Some(err) = error {
-                            return Err(err);
                         }
                         notifications
                     };
