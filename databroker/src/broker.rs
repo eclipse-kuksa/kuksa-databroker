@@ -25,8 +25,8 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
-use tokio::task::JoinHandle;
 use std::time::{Duration, SystemTime};
+use tokio::task::JoinHandle;
 
 use crate::query::{CompiledQuery, ExecutionInput};
 use crate::types::ExecutionInputImplData;
@@ -608,7 +608,11 @@ pub enum SuccessfulUpdate {
 }
 
 trait SubscriptionType {
-    async fn notify_sub(&self, db_read: &DatabaseReadAccess<'_, '_>, changed: Option<&HashMap<i32, HashSet<Field>>>,) -> Result<(), NotificationError> {
+    async fn notify_sub(
+        &self,
+        db_read: &DatabaseReadAccess<'_, '_>,
+        changed: Option<&HashMap<i32, HashSet<Field>>>,
+    ) -> Result<(), NotificationError> {
         match changed {
             Some(changed) => {
                 let mut matches = false;
@@ -624,7 +628,7 @@ trait SubscriptionType {
                     // notify
                     let notifications = {
                         let mut notifications = EntryUpdates::default();
-    
+
                         for (id, changed_fields) in changed {
                             if let Some(fields) = self.get_entry(id) {
                                 if !fields.is_disjoint(changed_fields) {
@@ -679,7 +683,7 @@ trait SubscriptionType {
             None => {
                 let notifications = {
                     let mut notifications = EntryUpdates::default();
-    
+
                     for (id, fields) in &self.get_entries() {
                         match db_read.get_entry_by_id(*id) {
                             Ok(entry) => {
@@ -737,12 +741,12 @@ impl Subscriptions {
         let handle = tokio::spawn(async move {
             // no need to check token expiration in cleanup method because we constantly call notify. Notify is handling it.
             while !subscription.sender.is_closed() {
-                match subscription.notify(None).await{
-                    Ok(()) => {}, //do nothing,
-                    Err(_) => break
+                match subscription.notify(None).await {
+                    Ok(()) => {} //do nothing,
+                    Err(_) => break,
                 }
-                // wait for some time to meet frequency parameter
-                tokio::time::sleep(Duration::from_millis((1000/ frequency) as u64)).await;
+                // wait for some time to meet frequency parameter (it is a u64)
+                tokio::time::sleep(Duration::from_millis(1000 / frequency)).await;
             }
         });
         self.continuous_subscriptions.push(handle);
@@ -833,7 +837,7 @@ impl Subscriptions {
     }
 }
 
-impl SubscriptionType for ChangeSubscription{
+impl SubscriptionType for ChangeSubscription {
     fn get_entry(&self, id: &i32) -> Option<&HashSet<Field>> {
         self.entries.get(id)
     }
@@ -997,7 +1001,7 @@ impl QuerySubscription {
     }
 }
 
-impl SubscriptionType for ContinuousSubscription{
+impl SubscriptionType for ContinuousSubscription {
     fn get_entry(&self, id: &i32) -> Option<&HashSet<Field>> {
         self.entries.get(id)
     }
@@ -1607,13 +1611,13 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                         warn!("Failed to create initial notification");
                     }
                 }
-    
+
                 self.broker
                     .subscriptions
                     .write()
                     .await
                     .add_continuous_subscription(subscription_continuous, freq);
-            },
+            }
             None => {
                 let subscription = ChangeSubscription {
                     entries: valid_entries,
@@ -1626,7 +1630,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                         warn!("Failed to create initial notification");
                     }
                 }
-    
+
                 self.broker
                     .subscriptions
                     .write()
@@ -3137,9 +3141,7 @@ mod tests {
             .expect("Register datapoint should succeed");
 
         let mut stream = broker
-            .subscribe(
-                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
-            )
+            .subscribe(HashMap::from([(id1, HashSet::from([Field::Datapoint]))]))
             .await
             .expect("subscription should succeed");
 
