@@ -290,7 +290,7 @@ impl KuksaClient {
 
         let req = proto::v1::SubscribeRequest {
             entries,
-            frequency_hertz: None,
+            interval_ms: None,
         };
 
         match client.subscribe(req).await {
@@ -326,7 +326,7 @@ impl KuksaClient {
 
         let req = proto::v1::SubscribeRequest {
             entries,
-            frequency_hertz: None,
+            interval_ms: None,
         };
 
         match client.subscribe(req).await {
@@ -354,7 +354,7 @@ impl KuksaClient {
 
         let req = proto::v1::SubscribeRequest {
             entries,
-            frequency_hertz: None,
+            interval_ms: None,
         };
 
         match client.subscribe(req).await {

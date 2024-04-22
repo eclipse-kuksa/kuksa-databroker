@@ -446,7 +446,7 @@ impl proto::val_server::Val for broker::DataBroker {
         }
 
         match broker
-            .subscribe_freq(entries, request.frequency_hertz)
+            .subscribe_interval(entries, request.interval_ms)
             .await
         {
             Ok(stream) => {

@@ -736,7 +736,7 @@ impl Subscriptions {
     pub fn add_continuous_subscription(
         &mut self,
         subscription: ContinuousSubscription,
-        frequency: u64,
+        interval: u64,
     ) {
         let handle = tokio::spawn(async move {
             // no need to check token expiration in cleanup method because we constantly call notify. Notify is handling it.
@@ -746,7 +746,7 @@ impl Subscriptions {
                     Err(_) => break,
                 }
                 // wait for some time to meet frequency parameter (it is a u64)
-                tokio::time::sleep(Duration::from_millis(1000 / frequency)).await;
+                tokio::time::sleep(Duration::from_millis(interval)).await;
             }
         });
         self.continuous_subscriptions.push(handle);
@@ -1585,10 +1585,10 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
     }
 
     // only supportede by the new API
-    pub async fn subscribe_freq(
+    pub async fn subscribe_interval(
         &self,
         valid_entries: HashMap<i32, HashSet<Field>>,
-        frequency: Option<u64>,
+        interval_ms: Option<u64>,
     ) -> Result<impl Stream<Item = EntryUpdates>, SubscriptionError> {
         if valid_entries.is_empty() {
             return Err(SubscriptionError::InvalidInput);
@@ -1597,8 +1597,8 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         let db_read = self.broker.database.read().await;
 
         let (sender, receiver) = mpsc::channel(10);
-        match frequency {
-            Some(freq) => {
+        match interval_ms {
+            Some(interval) => {
                 let subscription_continuous = ContinuousSubscription {
                     entries: valid_entries,
                     sender,
@@ -1616,7 +1616,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                     .subscriptions
                     .write()
                     .await
-                    .add_continuous_subscription(subscription_continuous, freq);
+                    .add_continuous_subscription(subscription_continuous, interval);
             }
             None => {
                 let subscription = ChangeSubscription {
