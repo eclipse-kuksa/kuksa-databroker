@@ -18,6 +18,15 @@ SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
 
 CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
+# Check if a certai feature set was requested
+if [ -z "$KUKSA_DATABROKER_FEATURES" ]; then
+    # If not set, assign a default value
+    KUKSA_DATABROKER_FEATURES="databroker/default"
+fi
+
+echo  "Building with features: $KUKSA_DATABROKER_FEATURES"
+
+
 # We need to clean this folder in target, otherwise we get weird side
 # effects building for different archs, complaining libc crate can not find
 # GLIBC, i.e
@@ -46,18 +55,18 @@ popd
 # Building AMD46
 echo "Building AMD64"
 cleanup_target_release_dir
-cross build --target x86_64-unknown-linux-musl --bin databroker --release
+cross build --target x86_64-unknown-linux-musl --features $KUKSA_DATABROKER_FEATURES --bin databroker --release
 
 # Building ARM64
 echo "Building ARM64"
 cleanup_target_release_dir
-cross build --target aarch64-unknown-linux-musl --bin databroker --release
+cross build --target aarch64-unknown-linux-musl --features $KUKSA_DATABROKER_FEATURES --bin databroker --release
 
 # Build RISCV64, this is a glibc based build, as musl is not
 # yet supported
 echo "Building RISCV64"
 cleanup_target_release_dir
-cross build --target riscv64gc-unknown-linux-gnu --bin databroker --release
+cross build --target riscv64gc-unknown-linux-gnu --features $KUKSA_DATABROKER_FEATURES --bin databroker --release
 
 # Prepare dist folders
 echo "Prepare amd64 dist folder"
