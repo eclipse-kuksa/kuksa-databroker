@@ -129,7 +129,7 @@ jobs:
     - name: Build
       working-directory: ${{github.workspace}}/
       run: |
-        cross build --target ${{ matrix.platform.target }} --bin databroker --release
+        cross build --target ${{ matrix.platform.target }} --features viss --bin databroker --release
         mkdir -p "dist"
         cp "target/${{ matrix.platform.target }}/release/databroker" "dist"
     - name: Package dist files
