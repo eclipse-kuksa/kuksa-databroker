@@ -607,7 +607,7 @@ impl Subscriptions {
     }
 
     pub async fn notify(
-        &mut self,
+        &self,
         changed: Option<&HashMap<i32, HashSet<Field>>>,
         db: &Database,
     ) -> Result<Option<HashMap<String, ()>>, NotificationError> {
@@ -627,7 +627,7 @@ impl Subscriptions {
             }
         }
 
-        for sub in &mut self.change_subscriptions {
+        for sub in &self.change_subscriptions {
             match sub.notify(changed, db).await {
                 Ok(_) => {}
                 Err(err) => error = Some(err),
@@ -660,7 +660,7 @@ impl Subscriptions {
                 true
             }
         });
-        self.change_subscriptions.retain_mut(|sub| {
+        self.change_subscriptions.retain(|sub| {
             if sub.sender.is_closed() {
                 info!("Subscriber gone: removing subscription");
                 false
@@ -671,7 +671,10 @@ impl Subscriptions {
                         info!("Token expired: removing subscription");
                         false
                     }
-                    Err(err) => panic!("Error: {:?}", err),
+                    Err(err) => {
+                        info!("Error: {:?} -> removing subscription", err);
+                        false
+                    }
                 }
             }
         });
@@ -745,7 +748,7 @@ impl ChangeSubscription {
                     if notifications.updates.is_empty() {
                         Ok(())
                     } else {
-                        match &self.sender.send(notifications).await {
+                        match self.sender.send(notifications).await {
                             Ok(()) => Ok(()),
                             Err(_) => Err(NotificationError {}),
                         }
@@ -785,7 +788,7 @@ impl ChangeSubscription {
                     }
                     notifications
                 };
-                match &self.sender.send(notifications).await {
+                match self.sender.send(notifications).await {
                     Ok(()) => Ok(()),
                     Err(_) => Err(NotificationError {}),
                 }
@@ -1421,7 +1424,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             match self
                 .broker
                 .subscriptions
-                .write()
+                .read()
                 .await
                 .notify(Some(&changed), &db)
                 .await
