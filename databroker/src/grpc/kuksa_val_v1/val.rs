@@ -446,7 +446,7 @@ impl proto::val_server::Val for broker::DataBroker {
         }
 
         match broker
-            .subscribe_interval(entries, request.interval_ms)
+            .subscribe(entries, request.interval_ms)
             .await
         {
             Ok(stream) => {
