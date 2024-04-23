@@ -25,7 +25,8 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
+use tokio::task::JoinHandle;
 
 use crate::query::{CompiledQuery, ExecutionInput};
 use crate::types::ExecutionInputImplData;
@@ -91,7 +92,7 @@ pub enum Field {
     MetadataUnit,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Database {
     next_id: AtomicI32,
     path_to_id: HashMap<String, i32>,
@@ -102,6 +103,7 @@ pub struct Database {
 pub struct Subscriptions {
     query_subscriptions: Vec<QuerySubscription>,
     change_subscriptions: Vec<ChangeSubscription>,
+    continuous_subscriptions: Vec<JoinHandle<()>>,
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +159,14 @@ pub struct ChangeSubscription {
     entries: HashMap<i32, HashSet<Field>>,
     sender: mpsc::Sender<EntryUpdates>,
     permissions: Permissions,
+}
+
+#[derive(Debug, Clone)]
+pub struct ContinuousSubscription {
+    entries: HashMap<i32, HashSet<Field>>,
+    sender: mpsc::Sender<EntryUpdates>,
+    permissions: Permissions,
+    database: Arc<RwLock<Database>>,
 }
 
 #[derive(Debug)]
@@ -597,6 +607,123 @@ pub enum SuccessfulUpdate {
     ValueChanged,
 }
 
+trait SubscriptionType {
+    async fn notify_sub(
+        &self,
+        db_read: &DatabaseReadAccess<'_, '_>,
+        changed: Option<&HashMap<i32, HashSet<Field>>>,
+    ) -> Result<(), NotificationError> {
+        match changed {
+            Some(changed) => {
+                let mut matches = false;
+                for (id, changed_fields) in changed {
+                    if let Some(fields) = self.get_entry(id) {
+                        if !fields.is_disjoint(changed_fields) {
+                            matches = true;
+                            break;
+                        }
+                    }
+                }
+                if matches {
+                    // notify
+                    let notifications = {
+                        let mut notifications = EntryUpdates::default();
+
+                        for (id, changed_fields) in changed {
+                            if let Some(fields) = self.get_entry(id) {
+                                if !fields.is_disjoint(changed_fields) {
+                                    match db_read.get_entry_by_id(*id) {
+                                        Ok(entry) => {
+                                            let mut update = EntryUpdate::default();
+                                            let mut notify_fields = HashSet::new();
+                                            // TODO: Perhaps make path optional
+                                            update.path = Some(entry.metadata.path.clone());
+                                            if changed_fields.contains(&Field::Datapoint)
+                                                && fields.contains(&Field::Datapoint)
+                                            {
+                                                update.datapoint = Some(entry.datapoint.clone());
+                                                notify_fields.insert(Field::Datapoint);
+                                            }
+                                            if changed_fields.contains(&Field::ActuatorTarget)
+                                                && fields.contains(&Field::ActuatorTarget)
+                                            {
+                                                update.actuator_target =
+                                                    Some(entry.actuator_target.clone());
+                                                notify_fields.insert(Field::ActuatorTarget);
+                                            }
+                                            // fill unit field always
+                                            update.unit = entry.metadata.unit.clone();
+                                            notifications.updates.push(ChangeNotification {
+                                                update,
+                                                fields: notify_fields,
+                                            });
+                                        }
+                                        Err(ReadError::PermissionExpired) => {
+                                            debug!("notify: token expired, closing subscription channel");
+                                            return Err(NotificationError {});
+                                        }
+                                        Err(_) => {
+                                            debug!("notify: could not find entry with id {}", id)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        notifications
+                    };
+                    if notifications.updates.is_empty() {
+                        Ok(())
+                    } else {
+                        self.send(notifications).await
+                    }
+                } else {
+                    Ok(())
+                }
+            }
+            None => {
+                let notifications = {
+                    let mut notifications = EntryUpdates::default();
+
+                    for (id, fields) in &self.get_entries() {
+                        match db_read.get_entry_by_id(*id) {
+                            Ok(entry) => {
+                                let mut update = EntryUpdate::default();
+                                let mut notify_fields = HashSet::new();
+                                // TODO: Perhaps make path optional
+                                update.path = Some(entry.metadata.path.clone());
+                                if fields.contains(&Field::Datapoint) {
+                                    update.datapoint = Some(entry.datapoint.clone());
+                                    notify_fields.insert(Field::Datapoint);
+                                }
+                                if fields.contains(&Field::ActuatorTarget) {
+                                    update.actuator_target = Some(entry.actuator_target.clone());
+                                    notify_fields.insert(Field::ActuatorTarget);
+                                }
+                                notifications.updates.push(ChangeNotification {
+                                    update,
+                                    fields: notify_fields,
+                                });
+                            }
+                            Err(ReadError::PermissionExpired) => {
+                                debug!("notify: token expired, closing subscription channel");
+                                return Err(NotificationError {});
+                            }
+                            Err(_) => {
+                                debug!("notify: could not find entry with id {}", id)
+                            }
+                        }
+                    }
+                    notifications
+                };
+                self.send(notifications).await
+            }
+        }
+    }
+    fn get_entry(&self, id: &i32) -> Option<&HashSet<Field>>;
+    fn get_entries(&self) -> HashMap<i32, HashSet<Field>>;
+    async fn send(&self, notifications: EntryUpdates) -> Result<(), NotificationError>;
+}
+
 impl Subscriptions {
     pub fn add_query_subscription(&mut self, subscription: QuerySubscription) {
         self.query_subscriptions.push(subscription)
@@ -604,6 +731,25 @@ impl Subscriptions {
 
     pub fn add_change_subscription(&mut self, subscription: ChangeSubscription) {
         self.change_subscriptions.push(subscription)
+    }
+
+    pub fn add_continuous_subscription(
+        &mut self,
+        subscription: ContinuousSubscription,
+        interval: u64,
+    ) {
+        let handle = tokio::spawn(async move {
+            // no need to check token expiration in cleanup method because we constantly call notify. Notify is handling it.
+            while !subscription.sender.is_closed() {
+                match subscription.notify(None).await {
+                    Ok(()) => {} //do nothing,
+                    Err(_) => break,
+                }
+                // wait for some time to meet frequency parameter (it is a u64)
+                tokio::time::sleep(Duration::from_millis(interval)).await;
+            }
+        });
+        self.continuous_subscriptions.push(handle);
     }
 
     pub async fn notify(
@@ -649,6 +795,11 @@ impl Subscriptions {
     pub fn clear(&mut self) {
         self.query_subscriptions.clear();
         self.change_subscriptions.clear();
+        self.continuous_subscriptions.retain(|handle| {
+            handle.abort();
+            false
+        });
+        self.continuous_subscriptions.clear();
     }
 
     pub fn cleanup(&mut self) {
@@ -665,9 +816,39 @@ impl Subscriptions {
                 info!("Subscriber gone: removing subscription");
                 false
             } else {
+                match &sub.permissions.expired() {
+                    Ok(()) => true,
+                    Err(PermissionError::Expired) => {
+                        info!("Token expired: removing subscription");
+                        false
+                    }
+                    Err(err) => panic!("Error: {:?}", err),
+                }
+            }
+        });
+        self.continuous_subscriptions.retain(|handle| {
+            if handle.is_finished() {
+                info!("Subscriber gone: removing subscription");
+                false
+            } else {
                 true
             }
         });
+    }
+}
+
+impl SubscriptionType for ChangeSubscription {
+    fn get_entry(&self, id: &i32) -> Option<&HashSet<Field>> {
+        self.entries.get(id)
+    }
+    fn get_entries(&self) -> HashMap<i32, HashSet<Field>> {
+        self.entries.clone()
+    }
+    async fn send(&self, notifications: EntryUpdates) -> Result<(), NotificationError> {
+        match self.sender.send(notifications).await {
+            Ok(()) => Ok(()),
+            Err(_) => Err(NotificationError {}),
+        }
     }
 }
 
@@ -678,109 +859,7 @@ impl ChangeSubscription {
         db: &Database,
     ) -> Result<(), NotificationError> {
         let db_read = db.authorized_read_access(&self.permissions);
-        match changed {
-            Some(changed) => {
-                let mut matches = false;
-                for (id, changed_fields) in changed {
-                    if let Some(fields) = self.entries.get(id) {
-                        if !fields.is_disjoint(changed_fields) {
-                            matches = true;
-                            break;
-                        }
-                    }
-                }
-                if matches {
-                    // notify
-                    let notifications = {
-                        let mut notifications = EntryUpdates::default();
-
-                        for (id, changed_fields) in changed {
-                            if let Some(fields) = self.entries.get(id) {
-                                if !fields.is_disjoint(changed_fields) {
-                                    match db_read.get_entry_by_id(*id) {
-                                        Ok(entry) => {
-                                            let mut update = EntryUpdate::default();
-                                            let mut notify_fields = HashSet::new();
-                                            // TODO: Perhaps make path optional
-                                            update.path = Some(entry.metadata.path.clone());
-                                            if changed_fields.contains(&Field::Datapoint)
-                                                && fields.contains(&Field::Datapoint)
-                                            {
-                                                update.datapoint = Some(entry.datapoint.clone());
-                                                notify_fields.insert(Field::Datapoint);
-                                            }
-                                            if changed_fields.contains(&Field::ActuatorTarget)
-                                                && fields.contains(&Field::ActuatorTarget)
-                                            {
-                                                update.actuator_target =
-                                                    Some(entry.actuator_target.clone());
-                                                notify_fields.insert(Field::ActuatorTarget);
-                                            }
-                                            // fill unit field always
-                                            update.unit = entry.metadata.unit.clone();
-                                            notifications.updates.push(ChangeNotification {
-                                                update,
-                                                fields: notify_fields,
-                                            });
-                                        }
-                                        Err(_) => {
-                                            debug!("notify: could not find entry with id {}", id)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        notifications
-                    };
-                    if notifications.updates.is_empty() {
-                        Ok(())
-                    } else {
-                        match self.sender.send(notifications).await {
-                            Ok(()) => Ok(()),
-                            Err(_) => Err(NotificationError {}),
-                        }
-                    }
-                } else {
-                    Ok(())
-                }
-            }
-            None => {
-                let notifications = {
-                    let mut notifications = EntryUpdates::default();
-
-                    for (id, fields) in &self.entries {
-                        match db_read.get_entry_by_id(*id) {
-                            Ok(entry) => {
-                                let mut update = EntryUpdate::default();
-                                let mut notify_fields = HashSet::new();
-                                // TODO: Perhaps make path optional
-                                update.path = Some(entry.metadata.path.clone());
-                                if fields.contains(&Field::Datapoint) {
-                                    update.datapoint = Some(entry.datapoint.clone());
-                                    notify_fields.insert(Field::Datapoint);
-                                }
-                                if fields.contains(&Field::ActuatorTarget) {
-                                    update.actuator_target = Some(entry.actuator_target.clone());
-                                    notify_fields.insert(Field::ActuatorTarget);
-                                }
-                                notifications.updates.push(ChangeNotification {
-                                    update,
-                                    fields: notify_fields,
-                                });
-                            }
-                            Err(_) => {
-                                debug!("notify: could not find entry with id {}", id)
-                            }
-                        }
-                    }
-                    notifications
-                };
-                match self.sender.send(notifications).await {
-                    Ok(()) => Ok(()),
-                    Err(_) => Err(NotificationError {}),
-                }
-            }
-        }
+        self.notify_sub(&db_read, changed).await
     }
 }
 
@@ -919,6 +998,32 @@ impl QuerySubscription {
             }
             None => Ok(None),
         }
+    }
+}
+
+impl SubscriptionType for ContinuousSubscription {
+    fn get_entry(&self, id: &i32) -> Option<&HashSet<Field>> {
+        self.entries.get(id)
+    }
+    fn get_entries(&self) -> HashMap<i32, HashSet<Field>> {
+        self.entries.clone()
+    }
+    async fn send(&self, notifications: EntryUpdates) -> Result<(), NotificationError> {
+        match self.sender.send(notifications).await {
+            Ok(()) => Ok(()),
+            Err(_) => Err(NotificationError {}),
+        }
+    }
+}
+
+impl ContinuousSubscription {
+    async fn notify(
+        &self,
+        changed: Option<&HashMap<i32, HashSet<Field>>>,
+    ) -> Result<(), NotificationError> {
+        let db = self.database.read().await;
+        let db_read = db.authorized_read_access(&self.permissions);
+        self.notify_sub(&db_read, changed).await
     }
 }
 
@@ -1446,34 +1551,60 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         }
     }
 
+    // only supportede by the new API
     pub async fn subscribe(
         &self,
         valid_entries: HashMap<i32, HashSet<Field>>,
+        interval_ms: Option<u64>,
     ) -> Result<impl Stream<Item = EntryUpdates>, SubscriptionError> {
         if valid_entries.is_empty() {
             return Err(SubscriptionError::InvalidInput);
         }
 
-        let (sender, receiver) = mpsc::channel(10);
-        let subscription = ChangeSubscription {
-            entries: valid_entries,
-            sender,
-            permissions: self.permissions.clone(),
-        };
+        let db_read = self.broker.database.read().await;
 
-        {
-            // Send everything subscribed to in an initial notification
-            let db = self.broker.database.read().await;
-            if subscription.notify(None, &db).await.is_err() {
-                warn!("Failed to create initial notification");
+        let (sender, receiver) = mpsc::channel(10);
+        match interval_ms {
+            Some(interval) => {
+                let subscription_continuous = ContinuousSubscription {
+                    entries: valid_entries,
+                    sender,
+                    permissions: self.permissions.clone(),
+                    database: Arc::clone(&self.broker.database),
+                };
+                {
+                    // Send everything subscribed to in an initial notification
+                    if subscription_continuous.notify(None).await.is_err() {
+                        warn!("Failed to create initial notification");
+                    }
+                }
+
+                self.broker
+                    .subscriptions
+                    .write()
+                    .await
+                    .add_continuous_subscription(subscription_continuous, interval);
+            }
+            None => {
+                let subscription = ChangeSubscription {
+                    entries: valid_entries,
+                    sender,
+                    permissions: self.permissions.clone(),
+                };
+                {
+                    // Send everything subscribed to in an initial notification
+                    if subscription.notify(None, &db_read).await.is_err() {
+                        warn!("Failed to create initial notification");
+                    }
+                }
+
+                self.broker
+                    .subscriptions
+                    .write()
+                    .await
+                    .add_change_subscription(subscription);
             }
         }
-
-        self.broker
-            .subscriptions
-            .write()
-            .await
-            .add_change_subscription(subscription);
 
         let stream = ReceiverStream::new(receiver);
         Ok(stream)
@@ -2959,7 +3090,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_subscribe_and_get() {
+    async fn test_subscribe_and_interval_and_get() {
         let broker = DataBroker::default();
         let broker = broker.authorized_access(&permissions::ALLOW_ALL);
 
@@ -2976,8 +3107,24 @@ mod tests {
             .await
             .expect("Register datapoint should succeed");
 
+        let id2 = broker
+            .add_entry(
+                "test.datapoint2".to_owned(),
+                DataType::Int32,
+                ChangeType::Continuous,
+                EntryType::Sensor,
+                "Test datapoint 2".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
         let mut stream = broker
-            .subscribe(HashMap::from([(id1, HashSet::from([Field::Datapoint]))]))
+            .subscribe(
+                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
+                None,
+            )
             .await
             .expect("subscription should succeed");
 
@@ -3027,6 +3174,94 @@ mod tests {
                 assert_eq!(
                     next.updates[0].update.path,
                     Some("test.datapoint1".to_string())
+                );
+                assert_eq!(
+                    next.updates[0].update.datapoint.as_ref().unwrap().value,
+                    DataValue::Int32(101)
+                );
+            }
+            None => {
+                panic!("did not expect stream end")
+            }
+        }
+
+        let mut continous_stream = broker
+            .subscribe(
+                HashMap::from([(id2, HashSet::from([Field::Datapoint]))]),
+                Some(1000),
+            )
+            .await
+            .expect("subscription should succeed");
+
+        // Stream should yield initial notification with current values i.e. NotAvailable
+        match continous_stream.next().await {
+            Some(next) => {
+                assert_eq!(next.updates.len(), 1);
+                assert_eq!(
+                    next.updates[0].update.path,
+                    Some("test.datapoint2".to_string())
+                );
+                assert_eq!(
+                    next.updates[0].update.datapoint.as_ref().unwrap().value,
+                    DataValue::NotAvailable
+                );
+            }
+            None => {
+                panic!("did not expect stream end")
+            }
+        }
+
+        broker
+            .update_entries([(
+                id2,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: SystemTime::now(),
+                        source_ts: None,
+                        value: DataValue::Int32(101),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    unit: None,
+                },
+            )])
+            .await
+            .expect("setting datapoint #1");
+
+        // await next event to start the timer right
+        match continous_stream.next().await {
+            Some(next) => {
+                assert_eq!(next.updates.len(), 1);
+                assert_eq!(
+                    next.updates[0].update.path,
+                    Some("test.datapoint2".to_string())
+                );
+                assert_eq!(
+                    next.updates[0].update.datapoint.as_ref().unwrap().value,
+                    DataValue::Int32(101)
+                );
+            }
+            None => {
+                panic!("did not expect stream end")
+            }
+        }
+
+        let time = SystemTime::now();
+        match continous_stream.next().await {
+            Some(next) => {
+                // some delay is expected so check if its small enough
+                assert!(
+                    time.elapsed().unwrap() - Duration::from_millis(1000)
+                        < Duration::from_millis(20)
+                );
+                assert_eq!(next.updates.len(), 1);
+                assert_eq!(
+                    next.updates[0].update.path,
+                    Some("test.datapoint2".to_string())
                 );
                 assert_eq!(
                     next.updates[0].update.datapoint.as_ref().unwrap().value,
