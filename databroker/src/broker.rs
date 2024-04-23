@@ -3106,7 +3106,7 @@ mod tests {
             )
             .await
             .expect("Register datapoint should succeed");
-        
+
         let id2 = broker
             .add_entry(
                 "test.datapoint2".to_owned(),
@@ -3120,9 +3120,11 @@ mod tests {
             .await
             .expect("Register datapoint should succeed");
 
-
         let mut stream = broker
-            .subscribe(HashMap::from([(id1, HashSet::from([Field::Datapoint]))]), None)
+            .subscribe(
+                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
+                None,
+            )
             .await
             .expect("subscription should succeed");
 
@@ -3184,7 +3186,10 @@ mod tests {
         }
 
         let mut continous_stream = broker
-            .subscribe(HashMap::from([(id2, HashSet::from([Field::Datapoint]))]), Some(1000))
+            .subscribe(
+                HashMap::from([(id2, HashSet::from([Field::Datapoint]))]),
+                Some(1000),
+            )
             .await
             .expect("subscription should succeed");
 
@@ -3226,10 +3231,10 @@ mod tests {
             )])
             .await
             .expect("setting datapoint #1");
-        
+
         // await next event to start the timer right
         match continous_stream.next().await {
-                Some(next) => {
+            Some(next) => {
                 assert_eq!(next.updates.len(), 1);
                 assert_eq!(
                     next.updates[0].update.path,
@@ -3249,7 +3254,10 @@ mod tests {
         match continous_stream.next().await {
             Some(next) => {
                 // some delay is expected so check if its small enough
-                assert!(time.elapsed().unwrap() - Duration::from_millis(1000) < Duration::from_millis(20));
+                assert!(
+                    time.elapsed().unwrap() - Duration::from_millis(1000)
+                        < Duration::from_millis(20)
+                );
                 assert_eq!(next.updates.len(), 1);
                 assert_eq!(
                     next.updates[0].update.path,
