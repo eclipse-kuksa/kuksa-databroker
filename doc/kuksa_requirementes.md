@@ -136,16 +136,22 @@ message GetServerInfoResponse {
 
 ```protobuf
 service VAL {
+   // get the (current) value of attributes, sensors and actuators
   rpc Get(GetRequest) returns (GetResponse);
 
+  // set the (current) value of attributes(?), sensors and actuators - for low update frequency
   rpc Set(SetRequest) returns (SetResponse);
 
+  // set the (current) value of attributes(?), sensors and actuators - for high update frequency
   rpc Update(stream SetRequest) returns (SetResponse);
 
+  // subscribe for notifications on updates of (current) values of attributes(?), sensors and actuators
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
 
+  // request target values of actuators to be set
   rpc Actuate(ActuateRequest) returns (ActuateResponse);
 
+  // get static metadata
   rpc GetMetadata(MetadataRequest) returns (MetadataResponse);
 
   rpc GetServerInfo(GetServerInfoRequest) returns (GetServerInfoResponse);
