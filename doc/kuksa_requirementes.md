@@ -54,7 +54,7 @@
 
 # Functional requirements
 
-### As Client
+### As Signal Consumer
 1. As a client I want to have a single service point accessible from my execution environment.
    
 2. As a client I want to `Get` sensor values or actuator current values of the vehicle and its environment in a uniform manner.
