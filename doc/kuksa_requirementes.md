@@ -82,8 +82,6 @@
 
 8.  As a client I want to connect and interact with Databroker either if it contains data or not.
 
-9.  As a client I want to connect and interact with Databroker either if it contains data or not.
-
 10.  As a client I want to know if there is a provider up and running by getting some sensor or actuator value.
 
 11.  As a client I don’t want to `Subscribe` to target values.
