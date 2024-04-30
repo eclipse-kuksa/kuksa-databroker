@@ -60,7 +60,7 @@
 2. As a client I want to `Get` sensor values or actuator current values of the vehicle and its environment in a uniform manner.
   - Details:
     * All sensor and actuator values for which a client have permission to.
-    * Client must provide the path, paths or wildcard.
+    * Client must provide the paths of the requested signals, which optionally may contain wildcards.
     * I want to receive exactly all the signals’ values I requested without errors.
   
 3. As a client I want to `Subscribe` to sensor values or actuator current values when some signal value changed -> what about continuous subscription?
