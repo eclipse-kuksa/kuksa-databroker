@@ -26,6 +26,8 @@
   - [VSS signals - Users vs providers](#vss-signals---users-vs-providers)
   - [Enable "easy to use" user facing API](#enable-easy-to-use-user-facing-api)
   - [Performance / runtime footprint](#performance--runtime-footprint)
+  - [Throttling-mode when system is overloaded.](#throttling-mode-when-system-is-overloaded)
+  - [Considerations regarding shared and zero-copy memory approaches](#considerations-regarding-shared-and-zero-copy-memory-approaches)
   - [Provider control and provider capabilities](#provider-control-and-provider-capabilities)
   - [Control the rate of updates](#control-the-rate-of-updates)
   - [Differentiate between different providers of the same VSS data](#differentiate-between-different-providers-of-the-same-vss-data)
@@ -355,6 +357,17 @@ Improvements:
 
 What's needed:
 * Introduce a streaming (GRPC) interface for providing sensor data.
+
+## Throttling-mode when system is overloaded.
+Is it worth to consider some throttling mode to be activated by the user in case system or any component is overloaded?
+Throttling modes to think about:
+  * Rate Limiting
+  * Bandwidth Throttling
+  * CPU Throttling
+
+## Considerations regarding shared and zero-copy memory approaches
+Pros:
+Cons:
 
 ## Provider control and provider capabilities
 
