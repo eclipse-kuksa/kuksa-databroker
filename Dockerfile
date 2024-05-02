@@ -11,9 +11,10 @@
 # * SPDX-License-Identifier: Apache-2.0
 # ********************************************************************************/
 
-# This is expected to be executed in the kuksa.val top-level directory
-# You need to run build-all-targets.sh first, as this docker file jsut
-# collects the artifacts
+# You need to run build-databroker.sh first, for all platforms you want to build
+# the container for as this docker file just collects the artifacts, i.e.
+# ./build-databroker.sh arm64 amd64 riscv64
+
 
 
 # Different targets need different base images, so prepare aliases here
@@ -21,13 +22,10 @@
 # AMD is a statically linked MUSL build
 FROM scratch AS target-amd64
 ENV BUILDTARGET="x86_64-unknown-linux-musl"
-COPY ./target/x86_64-unknown-linux-musl/release/databroker /app/databroker
-
 
 # ARM64 is a statically linked GRPC build
 FROM scratch AS target-arm64
 ENV BUILDTARGET="aarch64-unknown-linux-musl"
-COPY ./target/aarch64-unknown-linux-musl/release/databroker /app/databroker
 
 
 # RISCV is a glibc build. Rust toolchain not supported for MUSL
@@ -36,9 +34,7 @@ COPY ./target/aarch64-unknown-linux-musl/release/databroker /app/databroker
 # However, distorless has no RISCV support yet,
 # (Nov 2023). Using debian unstable for now
 FROM riscv64/debian:sid-slim as target-riscv64
-
 ENV BUILDTARGET="riscv64gc-unknown-linux-gnu"
-COPY ./target/riscv64gc-unknown-linux-gnu/release/databroker /app/databroker
 
 # Now adding generic parts
 FROM target-$TARGETARCH as target
@@ -46,8 +42,11 @@ ARG TARGETARCH
 
 
 # Before running this file thirdparty files must have been created
-# by build-all-targets.sh or corresponding command in buildaction
-COPY ./databroker/thirdparty/ /app/thirdparty
+# by build-databroker.sh or corresponding command in buildaction
+COPY ./dist/$TARGETARCH/databroker /app/databroker
+COPY ./dist/$TARGETARCH/sbom.json /app/sbom.json
+COPY ./dist/$TARGETARCH/thirdparty-licenses/ /app/thirdparty-licenses
+
 
 COPY ./data/vss-core/vss_release_3.1.1.json vss_release_3.1.1.json
 COPY ./data/vss-core/vss_release_4.0.json vss_release_4.0.json
