@@ -63,15 +63,20 @@ jobs:
     uses: eclipse-kuksa/kuksa-actions/.github/workflows/check_ghcr_push.yml@2
     secrets: inherit
 
-  build-container:
-    name: Build multiarch container
+  build:
+    name: Build databroker-cli
     runs-on: ubuntu-latest
-    needs: check_ghcr_push
-
+    env:
+      CARGO_TERM_COLOR: always
+    strategy:
+      matrix:
+        platform:
+          - name: amd64
+          - name: arm64
+          - name: riscv64
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
+
     - uses: actions/cache@v4
       with:
         path: |
@@ -80,19 +85,56 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: databroker-cli-release-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-
+        key: databroker-cli-release-${{ matrix.platform.name }}-${{ hashFiles('**/Cargo.lock') }}
     - name: Install build prerequisites
       working-directory: ${{github.workspace}}/
       run: |
-        which cargo-license || cargo install cargo-license
         which cross || cargo install cross
-    - name: Building
+        cargo install cargo-license cargo-cyclonedx
+        pip install "git+https://github.com/eclipse-kuksa/kuksa-common.git@6f3d7627760582d8ba83cc8a0f7449d00fffee84#subdirectory=sbom-tools"
+    - name: Build
       working-directory: ${{github.workspace}}/
+      env:
+        KUKSA_DATABROKERCLI_SBOM: y
       run: |
-          ./build-all-targets-cli.sh
+        ./build-databroker-cli.sh ${{ matrix.platform.name }}
 
-    - name: Docker meta
+    - name: "Archiving artifacts"
+      shell: bash
+      working-directory: ${{github.workspace}}/dist/${{ matrix.platform.name }}
+      run: |
+        tar -czf ../databroker-cli-${{ matrix.platform.name }}.tar.gz *
+
+    - name: "Uploading  artifacts"
+      uses: actions/upload-artifact@v4
+      with:
+          name: databroker-cli-${{ matrix.platform.name }}
+          path: ${{github.workspace}}/dist/databroker-cli-${{ matrix.platform.name}}.tar.gz
+          if-no-files-found: error
+
+  create-container:
+    name: Create multiarch container
+    runs-on: ubuntu-latest
+
+    needs: [build, check_ghcr_push]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Retrieve artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        pattern: databroker-cli*
+        merge-multiple: true
+
+    - name: Unpack binaries
+      run: |
+        mkdir -p dist/amd64 dist/arm64 dist/riscv64
+        tar xf artifacts/databroker-cli-arm64.tar.gz -C dist/arm64
+        tar xf artifacts/databroker-cli-amd64.tar.gz -C dist/amd64
+        tar xf artifacts/databroker-cli-riscv64.tar.gz -C dist/riscv64
+
+    - name: Set container metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
@@ -107,7 +149,7 @@ jobs:
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
 
-    - name: Set up Docker Buildx
+    - name: Setup Docker Buildx
       id: buildx
       uses: docker/setup-buildx-action@v3
 
@@ -161,40 +203,9 @@ jobs:
       uses: eclipse-kuksa/kuksa-actions/post-container-location@2
       with:
         image: ttl.sh/eclipse-kuksa/kuksa-databroker-cli-${{github.sha}}
-    - name: Pack binaries with thirdparty
-      env:
-        AMD64_DIR: ${{ github.workspace }}/dist/amd64
-        ARM64_DIR: ${{ github.workspace }}/dist/arm64
-        RISCV64_DIR: ${{ github.workspace }}/dist/riscv64
-      run: |
-          cd "$AMD64_DIR"
-          tar czf databroker-cli-amd64.tar.gz *
-          cd "$ARM64_DIR"
-          tar czf databroker-cli-arm64.tar.gz *
-          cd "$RISCV64_DIR"
-          tar czf databroker-cli-riscv64.tar.gz *
-
-    - name: "Archiving AMD64 artifacts"
-      uses: actions/upload-artifact@v4
-      with:
-        name: databroker-cli-amd64.tar.gz
-        path: ${{github.workspace}}/dist/amd64/databroker-cli-amd64.tar.gz
-
-    - name: "Archiving ARM64 artifacts"
-      uses: actions/upload-artifact@v4
-      with:
-        name: databroker-cli-arm64.tar.gz
-        path: ${{github.workspace}}/dist/arm64/databroker-cli-arm64.tar.gz
-
-    - name: "Archiving RISCV64 artifacts"
-      uses: actions/upload-artifact@v4
-      with:
-        name: databroker-cli-riscv64.tar.gz
-        path: ${{github.workspace}}/dist/riscv64/databroker-cli-riscv64.tar.gz
-
 
   bom:
-    name: Check Bill of Material
+    name: License Compliance Check
     runs-on: ubuntu-latest
 
     steps:
@@ -209,13 +220,22 @@ jobs:
             target/
           key: databroker-cli-bom-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: "Createbom: License check and Dash output generation"
-        working-directory: ${{github.workspace}}/createbom
+      # Follows the pattern from
+      # https://github.com/eclipse/dash-licenses?tab=readme-ov-file#example-rustcargo
+      - name: "Using cargo to create Dash input"
+        working-directory: ${{github.workspace}}/
+        # target all is not really needed, and will also return i.e. wasm deps, however
+        # better safe than sorry, the alternative would be running this for each currently
+        # built target  and combining the lists, but that would need adapting, when
+        # adding targets, or also when i.e. switching between MUSL/glibc. So this is safer
         run: |
-         which cargo-license || cargo install cargo-license
-         python3 createbom.py --dash ${{github.workspace}}/dash-databroker-cli ../databroker
+          cargo tree -e normal --prefix none --no-dedupe -p databroker-cli --target all --all-features  > ${{github.workspace}}/cargodeps
+          cat ${{github.workspace}}/cargodeps | sort -u  \
+          | grep -v '^[[:space:]]*$' | grep -v kuksa | grep -v databroker  \
+          | sed -E 's|([^ ]+) v([^ ]+).*|crate/cratesio/-/\1/\2|' \
+          > ${{github.workspace}}/dash-databrokercli-deps
 
       - name: Dash license check
         uses: eclipse-kuksa/kuksa-actions/check-dash@3
         with:
-          dashinput: ${{github.workspace}}/dash-databroker-cli
+          dashinput: ${{github.workspace}}/dash-databrokercli-deps
