@@ -6,7 +6,8 @@
 # Uses cross for cross-compiling. Needs to be executed
 # before docker build, as docker collects the artifacts
 # created by this script
-# this needs the have cross, cargo-license and createbom dependencies installed
+# this needs the have cross, cargo-license and the kuksa-sbom helper
+# installed
 #
 # SPDX-License-Identifier: Apache-2.0
 
