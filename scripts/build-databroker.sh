@@ -52,6 +52,8 @@ set -e
 SCRIPT_PATH=$(realpath "$0")
 SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
 
+cd ${SCRIPT_DIR}/..
+
 # need a key value matching but no bash 4 an macOS
 # so this nice hack works on bash 3 as well
 tmprefix=$(basename -- "$0")
@@ -97,22 +99,6 @@ function build_target() {
     target_rust=$1
     target_docker=$2
 
-    echo "Building databroker for target $target_rust"
-    cross build --target $target_rust --features $KUKSA_DATABROKER_FEATURES --bin databroker --release
-
-    echo "Prepare $target_docker dist folder"
-    rm -rf ./dist/$target_docker || true
-    mkdir ./dist/$target_docker
-    cp ./target/$target_rust/release/databroker ./dist/$target_docker
-
-    if [[ $SBOM -eq 1 ]]; then
-        echo "Create $target_rust SBOM"
-        cargo cyclonedx -v -f json --describe binaries --spec-version 1.4 --target $target_rust --manifest-path ./Cargo.toml
-        cp ./databroker/databroker_bin.cdx.json ./dist/$target_docker/sbom.json
-        rm -rf ./dist/$target_docker/thirdparty-licenses || true
-        collectlicensefiles ./databroker/databroker_bin.cdx.json ./dist/$target_docker/thirdparty-licenses --curation ./licensecuration.yaml
-    fi
-
     # We need to clean this folder in target, otherwise we get weird side
     # effects building the aarch image, complaining libc crate can not find
     # GLIBC, i.e
@@ -129,6 +115,22 @@ function build_target() {
     # so deleting the temporary files in target/release is no problem
     echo "Cleaning up...."
     rm -rf ./target/release
+
+    echo "Building databroker for target $target_rust"
+    cross build --target $target_rust --features $KUKSA_DATABROKER_FEATURES --bin databroker --release
+
+    echo "Prepare $target_docker dist folder"
+    rm -rf ./dist/$target_docker || true
+    mkdir ./dist/$target_docker
+    cp ./target/$target_rust/release/databroker ./dist/$target_docker
+
+    if [[ $SBOM -eq 1 ]]; then
+        echo "Create $target_rust SBOM"
+        cargo cyclonedx -v -f json --describe binaries --spec-version 1.4 --target $target_rust --manifest-path ./Cargo.toml
+        cp ./databroker/databroker_bin.cdx.json ./dist/$target_docker/sbom.json
+        rm -rf ./dist/$target_docker/thirdparty-licenses || true
+        collectlicensefiles ./databroker/databroker_bin.cdx.json ./dist/$target_docker/thirdparty-licenses --curation ./scripts/licensecuration.yaml
+    fi
 }
 
 

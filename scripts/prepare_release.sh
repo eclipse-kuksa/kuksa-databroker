@@ -26,8 +26,10 @@ if [ "$(echo "$1" | sed -E "s/$VERSION_REGEX//")" ]; then
 	exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-DATA_BROKER_ROOT="$SCRIPT_DIR"
+SCRIPT_PATH=$(realpath "$0")
+SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
+
+DATA_BROKER_ROOT=$SCRIPT_DIR/..
 
 # Update Cargo.toml versions.
 sed -i -E "s/^version = \"${VERSION_REGEX}\"$/version = \"${VERSION}\"/" \

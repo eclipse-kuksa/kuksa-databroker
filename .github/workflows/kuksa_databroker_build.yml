@@ -44,6 +44,8 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
             target/
           key: databroker-lint-${{ hashFiles('**/Cargo.lock') }}
       - name: Show toolchain information
@@ -75,6 +77,8 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
             target/
           key: databroker-coverage-${{ hashFiles('**/Cargo.lock') }}
       - name: Install cargo-llvm-cov
@@ -109,16 +113,17 @@ jobs:
           ~/.cargo/registry/index/
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
+          ~/.cargo/.crates.toml
+          ~/.cargo/.crates2.json
           target/
         key: databroker-release-${{ matrix.platform.name }}-${{ hashFiles('**/Cargo.lock') }}
     - name: Install build prerequisites
       working-directory: ${{github.workspace}}/
       run: |
-        which cross || cargo install cross
-        cargo install cargo-license cargo-cyclonedx
+        cargo install cross cargo-license cargo-cyclonedx
         pip install "git+https://github.com/eclipse-kuksa/kuksa-common.git@6f3d7627760582d8ba83cc8a0f7449d00fffee84#subdirectory=sbom-tools"
     - name: Build
-      working-directory: ${{github.workspace}}/
+      working-directory: ${{github.workspace}}
       env:
         KUKSA_DATABROKER_FEATURES: databroker/viss,databroker/tls
         KUKSA_DATABROKER_SBOM: y
@@ -201,7 +206,7 @@ jobs:
           linux/amd64
           linux/arm64
           linux/riscv64
-        file: ./Dockerfile
+        file: ./scripts/Dockerfile
         context: .
         push: true
         tags: |
@@ -221,7 +226,7 @@ jobs:
           linux/amd64
           linux/arm64
           linux/riscv64
-        file: ./Dockerfile
+        file: ./scripts/Dockerfile
         context: .
         push: true
         tags: "ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}"
