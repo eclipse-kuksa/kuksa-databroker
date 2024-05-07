@@ -102,7 +102,7 @@
 ### As Provider
 1. As a provider I want to `Set` the value and current value of one or many sensors and/or actuators with its timestamp to Databroker.
 2. 
-3. As a provider I want to `Update` using stream atomically the value and current value of one or many sensors and/or actuators with its timestamp to Databroker.
+3. A provider shall be able to continuously and efficiently (e.g. via grpc stream) _**update**_ the current value of one or multiple sensors and/or actuators with its timestamp.
 
 4. As a provider I want to `Subscribe` to actuator target values requests.
 
