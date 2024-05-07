@@ -73,7 +73,7 @@
    
 5.  As a client I want to `GetMetadata` static Metadata from signals.
   - Details:
-    * All sensors, actuators, and attributes values for which a client have permission to.
+    * All sensors, actuators, and attributes values for which a client has permission to.
     * Client must provide the path, paths or wildcard.
 
 6.  As a client I want to `Get` attributes values once.
