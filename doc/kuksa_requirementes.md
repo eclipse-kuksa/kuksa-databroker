@@ -78,7 +78,7 @@
 
 6.  As a client I want to `Get` attributes values once.
 
-7.  As a client I want to `Actuate` a target value of an actuator and guarantee that the operation succeeded.
+7.  As a client I want to `Actuate` a target value of an actuator. This value has to be forwarded to the provider of this actuator if the provider is available, otherwise the target value is lost. 
 
 8.  As a client I want to connect and interact with Databroker either if it contains data or not.
 
