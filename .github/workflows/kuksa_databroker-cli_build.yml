@@ -88,7 +88,8 @@ jobs:
           ~/.cargo/git/db/
           ~/.cargo/.crates.toml
           ~/.cargo/.crates2.json
-          target/
+          ~/.cache/pip/
+          target-*/
         key: databroker-cli-release-${{ matrix.platform.name }}-${{ hashFiles('**/Cargo.lock') }}
     - name: Install build prerequisites
       working-directory: ${{github.workspace}}/
@@ -100,7 +101,7 @@ jobs:
       env:
         KUKSA_DATABROKERCLI_SBOM: y
       run: |
-        ./build-databroker-cli.sh ${{ matrix.platform.name }}
+        ./scripts/build-databroker-cli.sh ${{ matrix.platform.name }}
 
     - name: "Archiving artifacts"
       shell: bash

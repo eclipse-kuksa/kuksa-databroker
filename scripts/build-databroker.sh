@@ -99,10 +99,10 @@ function build_target() {
     target_rust=$1
     target_docker=$2
 
-    # We need to clean this folder in target, otherwise we get weird side
-    # effects building the aarch image, complaining libc crate can not find
-    # GLIBC, i.e
-    #   Compiling libc v0.2.149
+    # Need to set different target dir for different platforms, becasue cargo mixes things up
+    # when recycling the default target dir. When you do not do this, and e.g. first build amd64
+    # followed by riscv64 you will get effects like
+    # Compiling libc v0.2.149
     #error: failed to run custom build command for `libc v0.2.149`
     #
     #Caused by:
@@ -110,19 +110,14 @@ function build_target() {
     #  --- stderr
     #  /target/release/build/libc-2dd22ab6b5fb9fd2/build-script-build: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.29' not found (required by /target/release/build/libc-2dd22ab6b5fb9fd2/build-script-build)
     #
-    # It seems cross/cargo is reusing something from previous builds it shouldn't.
-    # the finished artifact resides in ../target/x86_64-unknown-linux-musl/release
-    # so deleting the temporary files in target/release is no problem
-    echo "Cleaning up...."
-    rm -rf ./target/release
-
+    # this is solved by using different target-dirs for each platform
     echo "Building databroker for target $target_rust"
-    cross build --target $target_rust --features $KUKSA_DATABROKER_FEATURES --bin databroker --release
+    cross build --target $target_rust --target-dir ./target-$target_docker --features $KUKSA_DATABROKER_FEATURES --bin databroker --release
 
     echo "Prepare $target_docker dist folder"
     rm -rf ./dist/$target_docker || true
     mkdir ./dist/$target_docker
-    cp ./target/$target_rust/release/databroker ./dist/$target_docker
+    cp ./target-$target_docker/$target_rust/release/databroker ./dist/$target_docker
 
     if [[ $SBOM -eq 1 ]]; then
         echo "Create $target_rust SBOM"

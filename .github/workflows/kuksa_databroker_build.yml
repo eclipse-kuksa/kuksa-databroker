@@ -79,7 +79,8 @@ jobs:
             ~/.cargo/git/db/
             ~/.cargo/.crates.toml
             ~/.cargo/.crates2.json
-            target/
+            ~/.cache/pip/
+            target-*/
           key: databroker-coverage-${{ hashFiles('**/Cargo.lock') }}
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -128,7 +129,7 @@ jobs:
         KUKSA_DATABROKER_FEATURES: databroker/viss,databroker/tls
         KUKSA_DATABROKER_SBOM: y
       run: |
-        ./build-databroker.sh ${{ matrix.platform.name }}
+        ./scripts/build-databroker.sh ${{ matrix.platform.name }}
 
     - name: "Archiving artifacts"
       shell: bash
