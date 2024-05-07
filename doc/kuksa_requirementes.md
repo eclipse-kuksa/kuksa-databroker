@@ -59,7 +59,7 @@
    
 2. As a client I want to `Get` sensor values or actuator current values of the vehicle and its environment in a uniform manner.
   - Details:
-    * All sensor and actuator values for which a client have permission to.
+    * All sensor and actuator values for which a client has permission to.
     * Client must provide the paths of the requested signals, which optionally may contain wildcards.
     * I want to receive exactly all the signals’ values I requested without errors.
   
