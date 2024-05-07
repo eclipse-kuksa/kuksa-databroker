@@ -1,5 +1,7 @@
 ![Rust](https://img.shields.io/badge/rust-000000.svg?style=for-the-badge&logo=rust&logoColor=white)![Docker](https://img.shields.io/badge/docker-1D63ED.svg?style=for-the-badge&logo=docker&logoColor=white)
+
 <!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
+
 <a name="readme-top"></a>
 
 <!-- PROJECT LOGO -->
@@ -53,9 +55,10 @@
 </details>
 
 <!-- ABOUT THE PROJECT -->
+
 ## Intro
 
-The [COVESA Vehicle Signal Specification](https://covesa.github.io/vehicle_signal_specification/) (VSS) defines the names and semantics of a large set of *data entries* that represent the current and/or intended state of a vehicle's sensors and actuators organized in a tree-like structure. For example, the vehicle's current speed is represented by the `Vehicle.Speed` entry.
+The [COVESA Vehicle Signal Specification](https://covesa.github.io/vehicle_signal_specification/) (VSS) defines the names and semantics of a large set of _data entries_ that represent the current and/or intended state of a vehicle's sensors and actuators organized in a tree-like structure. For example, the vehicle's current speed is represented by the `Vehicle.Speed` entry.
 
 However, VSS does not define how these signals are to be collected and managed within a vehicle, nor does it prescribe how other components in the vehicle can read or write signal values from and to the tree.
 
@@ -88,6 +91,7 @@ Data is usually exchanged with ECUs by means of a CAN bus or Ethernet based prot
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- GETTING STARTED -->
+
 ## Getting started
 
 The quickest possible way to get Kuksa Databroker up and running.
@@ -96,26 +100,26 @@ The quickest possible way to get Kuksa Databroker up and running.
 
 ### Prerequisites
 
-* [Docker Engine](https://docs.docker.com/engine/install/) or [Podman](https://podman.io/docs/installation)
-* A custom Docker *bridge* network
+- [Docker Engine](https://docs.docker.com/engine/install/) or [Podman](https://podman.io/docs/installation)
+- A custom Docker _bridge_ network
   ```sh
   docker network create kuksa
   ```
 
 ### Starting Databroker
 
-1. Start Databroker in a container attached to the *kuksa* bridge network using hostname *Server*:
+1. Start Databroker in a container attached to the _kuksa_ bridge network using hostname _Server_:
 
    ```sh
    docker run -it --rm --name Server --network kuksa ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure
    ```
+
    > :bulb: **Tip:** You can stop the container using `ctrl-c`.
 
 ### Reading and writing VSS data using the CLI
 
-1. Start the CLI in a container attached to the *kuksa* bridge network and connect to the Databroker container:
-  The databroker supports both of ```sdv.databroker.v1``` and ```kuksa.val.v1``` as an API. Per default the databroker-cli uses the ```sdv.databroker.v1``` interface. To change it use ```--protocol``` option when starting. Chosse eihter one of ```kuksa-val-v1``` and ```sdv-databroker-v1```.
-
+1. Start the CLI in a container attached to the _kuksa_ bridge network and connect to the Databroker container:
+   The databroker supports both of `sdv.databroker.v1` and `kuksa.val.v1` as an API. Per default the databroker-cli uses the `sdv.databroker.v1` interface. To change it use `--protocol` option when starting. Chosse eihter one of `kuksa-val-v1` and `sdv-databroker-v1`.
 
    ```sh
    # in a new terminal
@@ -138,6 +142,7 @@ The quickest possible way to get Kuksa Databroker up and running.
    Successfully connected to http://Server:55555/
    sdv.databroker.v1 >
    ```
+
    > :bulb: **Tip:** The client retrieves metadata about the data entries that the Databroker knows about during startup. This allows for using `TAB`-completion of data entry names at the prompt.
 
 1. Display help for supported commands
@@ -161,26 +166,30 @@ The quickest possible way to get Kuksa Databroker up and running.
    ```sh
    get Vehicle.Speed
    ```
+
    ```console
    [get]  OK
    Vehicle.Speed: ( NotAvailable )
    ```
+
    > :memo: **Note** When Databroker starts up, all data entries are initialized to empty values. Thus, the vehicle speed is being reported as `NotAvailable`.
 
-2. Set the vehicle's current speed
+1. Set the vehicle's current speed
 
    ```sh
-   feed Vehicle.Speed 100.34
+   publish Vehicle.Speed 100.34
    ```
+
    ```console
    [set]  OK
    ```
 
-3. Get the vehicle's current speed
+1. Get the vehicle's current speed
 
    ```sh
    get Vehicle.Speed
    ```
+
    ```console
    [get]  OK
    Vehicle.Speed: 100.34
@@ -195,8 +204,8 @@ Run the cli with:
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
 <!-- USAGE EXAMPLES -->
+
 ## Usage
 
 Please refer to the [User Guide](./doc/user_guide.md) for details regarding how to run and interact with Kuksa Databroker.
@@ -207,8 +216,8 @@ Please refer to the [User Guide](./doc/user_guide.md) for details regarding how 
 
 Building Kuksa Databroker from source code requires
 
-* a [Rust tool chain](https://www.rust-lang.org/tools/install)
-* a local workspace containing the source code
+- a [Rust tool chain](https://www.rust-lang.org/tools/install)
+- a local workspace containing the source code
   ```shell
   git clone https://github.com/eclipse-kuksa/kuksa-databroker.git
   ```

@@ -23,9 +23,9 @@ import "kuksa/val/v1/types.proto";
 // Tokens (auth-token or auth-uuid) are sent as (GRPC / http2) metadata.
 //
 // The auth-token is a JWT compliant token as the examples found here:
-// https://github.com/eclipse-kuksa/kuksa-databrokertree/master/certificates/jwt
+// https://github.com/eclipse-kuksa/kuksa-databroker/tree/main/certificates/jwt
 //
-// See also https://github.com/eclipse-kuksa/kuksa-databrokerblob/master/doc/jwt.md
+// See also https://github.com/eclipse-kuksa/kuksa-databroker/blob/main/doc/authorization.md#jwt-access-token
 //
 // Upon reception of auth-token, server shall generate an auth-uuid in metadata
 // that the client can use instead of auth-token in subsequent calls.
