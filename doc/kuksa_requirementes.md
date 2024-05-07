@@ -65,7 +65,7 @@
   
 3. As a client I want to `Subscribe` to sensor values or actuator current values when some signal value changed -> what about continuous subscription?
   - Details:
-    * All sensor and actuator values for which a client have permission to.
+    * All sensor and actuator values for which a client has permission to.
     * Client must provide the path, paths or wildcard paths.
     * I want to receive exactly all the signals’ values I requested without errors.
 
