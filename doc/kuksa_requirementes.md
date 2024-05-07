@@ -104,7 +104,7 @@
 2. 
 3. A provider shall be able to continuously and efficiently (e.g. via grpc stream) _**update**_ the current value of one or multiple sensors and/or actuators with its timestamp.
 
-4. As a provider I want to `Subscribe` to actuator target values requests.
+4. A provider shall be able to `Subscribe` to the databroker to receive actuation requests.
 
 5. As a provider I want to `Set` once attributes values.
 
