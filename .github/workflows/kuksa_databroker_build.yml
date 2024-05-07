@@ -44,6 +44,8 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
             target/
           key: databroker-lint-${{ hashFiles('**/Cargo.lock') }}
       - name: Show toolchain information
@@ -75,7 +77,10 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cache/pip/
+            target-*/
           key: databroker-coverage-${{ hashFiles('**/Cargo.lock') }}
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -91,28 +96,17 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [bom]
     env:
       CARGO_TERM_COLOR: always
     strategy:
       matrix:
         platform:
           - name: amd64
-            target: x86_64-unknown-linux-musl
           - name: arm64
-            target: aarch64-unknown-linux-musl
           - name: riscv64
-            target: riscv64gc-unknown-linux-gnu
     steps:
     - uses: actions/checkout@v4
-    - name: Retrieve artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-        pattern: Third*
-        merge-multiple: true
-    - name: Display structure of downloaded files
-      run: ls -R
+
     - uses: actions/cache@v4
       with:
         path: |
@@ -120,32 +114,35 @@ jobs:
           ~/.cargo/registry/index/
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
+          ~/.cargo/.crates.toml
+          ~/.cargo/.crates2.json
           target/
         key: databroker-release-${{ matrix.platform.name }}-${{ hashFiles('**/Cargo.lock') }}
     - name: Install build prerequisites
       working-directory: ${{github.workspace}}/
       run: |
-        which cross || cargo install cross
+        cargo install cross cargo-license cargo-cyclonedx
+        pip install "git+https://github.com/eclipse-kuksa/kuksa-common.git@6f3d7627760582d8ba83cc8a0f7449d00fffee84#subdirectory=sbom-tools"
     - name: Build
-      working-directory: ${{github.workspace}}/
-      run: |
-        cross build --target ${{ matrix.platform.target }} --features viss --bin databroker --release
-        mkdir -p "dist"
-        cp "target/${{ matrix.platform.target }}/release/databroker" "dist"
-    - name: Package dist files
-      shell: bash
       working-directory: ${{github.workspace}}
+      env:
+        KUKSA_DATABROKER_FEATURES: databroker/viss,databroker/tls
+        KUKSA_DATABROKER_SBOM: y
       run: |
-        cd dist
-        tar xf ../artifacts/thirdparty.tar.gz
-        tar -czf databroker-${{ matrix.platform.name }}.tar.gz *
+        ./scripts/build-databroker.sh ${{ matrix.platform.name }}
 
-    - name: Upload artifacts
+    - name: "Archiving artifacts"
+      shell: bash
+      working-directory: ${{github.workspace}}/dist/${{ matrix.platform.name }}
+      run: |
+        tar -czf ../databroker-${{ matrix.platform.name }}.tar.gz *
+
+    - name: "Uploading  artifacts"
       uses: actions/upload-artifact@v4
       with:
-        name: databroker-${{ matrix.platform.name }}.tar.gz
-        path: dist/databroker-${{ matrix.platform.name }}.tar.gz
-        if-no-files-found: error
+          name: databroker-${{ matrix.platform.name }}
+          path: ${{github.workspace}}/dist/databroker-${{ matrix.platform.name}}.tar.gz
+          if-no-files-found: error
 
   check_ghcr_push:
     name: Check access rights
@@ -156,7 +153,7 @@ jobs:
     name: Create multiarch container
     runs-on: ubuntu-latest
 
-    needs: [build, bom, check_ghcr_push]
+    needs: [build, check_ghcr_push]
 
     steps:
     - uses: actions/checkout@v4
@@ -164,26 +161,16 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: artifacts
+        pattern: databroker-*
         merge-multiple: true
 
     - name: Unpack binaries
-      env:
-        AMD64_DIR: ${{ github.workspace }}/target/x86_64-unknown-linux-musl/release
-        ARM64_DIR: ${{ github.workspace }}/target/aarch64-unknown-linux-musl/release
-        RISCV64_DIR: ${{ github.workspace }}/target/riscv64gc-unknown-linux-gnu/release
       run: |
-        cd artifacts
-        tar xf databroker-amd64.tar.gz
-        mkdir -p "$AMD64_DIR"
-        mv databroker "$AMD64_DIR"
-        tar xf databroker-arm64.tar.gz
-        mkdir -p "$ARM64_DIR"
-        mv databroker "$ARM64_DIR"
-        tar xf databroker-riscv64.tar.gz
-        mkdir -p "$RISCV64_DIR"
-        mv databroker "$RISCV64_DIR"
-        tar xf thirdparty.tar.gz
-        mv thirdparty ../databroker/
+        mkdir -p dist/amd64 dist/arm64 dist/riscv64
+        tar xf artifacts/databroker-arm64.tar.gz -C dist/arm64
+        tar xf artifacts/databroker-amd64.tar.gz -C dist/amd64
+        tar xf artifacts/databroker-riscv64.tar.gz -C dist/riscv64
+
     - name: Set container metadata
       id: meta
       uses: docker/metadata-action@v5
@@ -220,7 +207,7 @@ jobs:
           linux/amd64
           linux/arm64
           linux/riscv64
-        file: ./Dockerfile
+        file: ./scripts/Dockerfile
         context: .
         push: true
         tags: |
@@ -240,7 +227,7 @@ jobs:
           linux/amd64
           linux/arm64
           linux/riscv64
-        file: ./Dockerfile
+        file: ./scripts/Dockerfile
         context: .
         push: true
         tags: "ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}"
@@ -258,6 +245,9 @@ jobs:
     name: Run integration test
     runs-on: ubuntu-latest
     needs: [create-container]
+    strategy:
+      matrix:
+        platform: ["arm64", "amd64", "riscv64"]
 
     steps:
       - name: Set up QEMU
@@ -265,30 +255,17 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Run integration test on AMD64 container
+      - name: Run integration test on ${{ matrix.platform }} container
         env:
           DATABROKER_IMAGE: ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}
-          CONTAINER_PLATFORM: linux/amd64
-        run: |
-          ${{github.workspace}}/integration_test/run.sh
-
-      - name: Run integration test on ARM64 container
-        env:
-          DATABROKER_IMAGE: ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}
-          CONTAINER_PLATFORM: linux/arm64
-        run: |
-          ${{github.workspace}}/integration_test/run.sh
-
-      - name: Run integration test on RISCV64 container
-        env:
-          DATABROKER_IMAGE: ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}
-          CONTAINER_PLATFORM: linux/riscv64
+          CONTAINER_PLATFORM: linux/${{ matrix.platform }}
         run: |
           ${{github.workspace}}/integration_test/run.sh
 
   bom:
-    name: Check Bill of Material
+    name: License Compliance Check
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -301,28 +278,22 @@ jobs:
             target/
           key: databroker-bom-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install prerequisites
-        working-directory: ${{github.workspace}}/createbom
+      # Follows the pattern from
+      # https://github.com/eclipse/dash-licenses?tab=readme-ov-file#example-rustcargo
+      - name: "Using cargo to create Dash input"
+        working-directory: ${{github.workspace}}/
+        # target all is not really needed, and will also return i.e. wasm deps, however
+        # better safe than sorry, the alternative would be running this for each currently
+        # built target  and combining the lists, but that would need adapting, when
+        # adding targets, or also when i.e. switching between MUSL/glibc. So this is safer
         run: |
-         which cargo-license || cargo install cargo-license
-      - name: License check and Dash output generation
-        working-directory: ${{github.workspace}}/createbom
-        run: |
-         python3 createbom.py --dash ${{github.workspace}}/dash-databroker ../databroker
+          cargo tree -e normal --prefix none --no-dedupe -p databroker --target all --all-features  > ${{github.workspace}}/cargodeps
+          cat ${{github.workspace}}/cargodeps | sort -u  \
+          | grep -v '^[[:space:]]*$' | grep -v kuksa | grep -v databroker  \
+          | sed -E 's|([^ ]+) v([^ ]+).*|crate/cratesio/-/\1/\2|' \
+          > ${{github.workspace}}/dash-databroker-deps
+
       - name: Dash license check
         uses: eclipse-kuksa/kuksa-actions/check-dash@3
         with:
-          dashinput: ${{github.workspace}}/dash-databroker
-      - name: Generate Bill of Materials
-        working-directory: ${{github.workspace}}/createbom
-        run: |
-          rm -r ../databroker/thirdparty
-          python3 createbom.py ../databroker
-          cd ../databroker
-          tar czf thirdparty.tar.gz thirdparty
-      - name: Upload Bill of Materials
-        uses: actions/upload-artifact@v4
-        with:
-          name: Third party licenses
-          path: databroker/thirdparty.tar.gz
-          if-no-files-found: error
+          dashinput: ${{github.workspace}}/dash-databroker-deps

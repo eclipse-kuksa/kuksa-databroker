@@ -11,21 +11,20 @@
 # * SPDX-License-Identifier: Apache-2.0
 # ********************************************************************************/
 
-# This is expected to be executed in the kuksa.val top-level directory
-# You need to run build-all-targets-cli.sh first, as this docker file jsut
-# collects the artifacts
+# You need to run build-databroker-cli.sh first, for all platforms you want to build
+# the container for as this docker file just collects the artifacts, i.e.
+# $ KUKSA_DATABROKERCLI_SBOM=y ./scripts/build-databroker-cli.sh arm64 amd64 riscv64
+#
+# This Dockerfile is intended to run inside the root directory, i.e.
+# $ docker buildx build --platform linux/amd64 -f scripts/Dockerfile-cli .
 
 # AMD is a statically linked MUSL build
 FROM scratch AS target-amd64
 ENV BUILDTARGET="x86_64-unknown-linux-musl"
-COPY ./target/x86_64-unknown-linux-musl/release/databroker-cli /app/databroker-cli
-
 
 # ARM64 is a statically linked GRPC build
 FROM scratch AS target-arm64
 ENV BUILDTARGET="aarch64-unknown-linux-musl"
-COPY ./target/aarch64-unknown-linux-musl/release/databroker-cli /app/databroker-cli
-
 
 # RISCV is a glibc build. Rust toolchain not supported for MUSL
 # Normally we prefer "distroless" base images, i.e.:
@@ -34,7 +33,6 @@ COPY ./target/aarch64-unknown-linux-musl/release/databroker-cli /app/databroker-
 # (Nov 2023). Using debian unstable for now
 FROM riscv64/debian:sid-slim as target-riscv64
 ENV BUILDTARGET="riscv64gc-unknown-linux-gnu"
-COPY ./target/riscv64gc-unknown-linux-gnu/release/databroker-cli /app/databroker-cli
 
 # Databroker-cli is an interactive cli, thus it can only work correctly
 # if we have some terminfo configurations available. We will transplant
@@ -50,7 +48,9 @@ RUN apk update && apk add ncurses-terminfo-base
 FROM target-$TARGETARCH as target
 ARG TARGETARCH
 
-COPY ./dist/$TARGETARCH/thirdparty/ /app/thirdparty
+COPY ./dist/$TARGETARCH/databroker-cli /app/databroker-cli
+COPY ./dist/$TARGETARCH/sbom.json /app/sbom.json
+COPY ./dist/$TARGETARCH/thirdparty-licenses/ /app/thirdparty-licenses
 
 # Copy terminfo database
 COPY --from=terminfo-donor /etc/terminfo /etc/terminfo
