@@ -80,7 +80,7 @@ jobs:
             ~/.cargo/.crates.toml
             ~/.cargo/.crates2.json
             ~/.cache/pip/
-            target-*/
+            target/
           key: databroker-coverage-${{ hashFiles('**/Cargo.lock') }}
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -116,7 +116,7 @@ jobs:
           ~/.cargo/git/db/
           ~/.cargo/.crates.toml
           ~/.cargo/.crates2.json
-          target/
+          target-*/
         key: databroker-release-${{ matrix.platform.name }}-${{ hashFiles('**/Cargo.lock') }}
     - name: Install build prerequisites
       working-directory: ${{github.workspace}}/
