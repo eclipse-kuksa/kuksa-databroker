@@ -240,6 +240,7 @@ jobs:
           > ${{github.workspace}}/dash-databrokercli-deps
 
       - name: Dash license check
-        uses: eclipse-kuksa/kuksa-actions/check-dash@3
+        uses: eclipse-kuksa/kuksa-actions/check-dash@4
         with:
           dashinput: ${{github.workspace}}/dash-databrokercli-deps
+          dashtoken: ${{ secrets.ECLIPSE_GITLAB_API_TOKEN }}
