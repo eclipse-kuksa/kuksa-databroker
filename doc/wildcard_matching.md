@@ -24,3 +24,12 @@
 | `"**.Sunroof.**"` | `Vehicle.Cabin.Sunroof.Position`<br>`Vehicle.Cabin.Sunroof.Shade.Position`<br>`Vehicle.Cabin.Sunroof.Shade.Switch`<br>`Vehicle.Cabin.Sunroof.Switch`  |
 | `"*.Sunroof"`       | Nothing|
 | `"Sunroof"`         | Nothing|
+
+
+### Exceptions
+* The combination of double asterisk wildcard with multiple consecutive single asterisk wildcards is not supported.
+
+
+| Path                | Does not Match                       |
+|---------------------|--------------------------------------|
+| `**.*.*.*.Position` | `Vehicle/Cabin/Door/Row2/PassengerSide/Shade/Position` <br> `Vehicle/Cabin/Seat/Row2/PassengerSide/Position` <br>`Vehicle/Cabin/Seat/Row1/Middle/Position` |

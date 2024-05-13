@@ -31,8 +31,10 @@ use crate::broker;
 use crate::broker::ReadError;
 use crate::broker::SubscriptionError;
 use crate::broker::{AuthorizedAccess, EntryReadAccess};
-use crate::glob;
+use crate::glob::Matcher;
 use crate::permissions::Permissions;
+
+const MAX_REQUEST_PATH_LENGTH: usize = 1000;
 
 #[tonic::async_trait]
 impl proto::val_server::Val for broker::DataBroker {
@@ -61,14 +63,14 @@ impl proto::val_server::Val for broker::DataBroker {
             let mut errors = Vec::new();
             /*
              * valid_requests: A collection of valid requests, each represented as a tuple with five fields:
-             * - Regex: The regular expression created from the string path request.
+             * - Matcher: Matcher which wraps glob string handling.
              * - Fields: A HashSet of proto::Field objects extracted from the request.
              * - RequestPath: The original request path, used for error reporting when no entries match.
              * - IsMatch: A boolean flag indicating whether the current request matches any entry.
              * - Error: An optional ReadError representing a permission error that may occur when querying a valid path entry.
              */
             let mut valid_requests: Vec<(
-                regex::Regex,
+                Matcher,
                 HashSet<proto::Field>,
                 String,
                 bool,
@@ -77,51 +79,54 @@ impl proto::val_server::Val for broker::DataBroker {
 
             // Fill valid_requests structure.
             for request in requested {
-                if request.path.contains('*') && !glob::is_valid_pattern(&request.path) {
+                if request.path.len() > MAX_REQUEST_PATH_LENGTH {
                     errors.push(proto::DataEntryError {
                         path: request.path,
                         error: Some(proto::Error {
                             code: 400,
                             reason: "bad_request".to_owned(),
-                            message: "Bad Wildcard Pattern Request".to_owned(),
+                            message: "The provided path is too long".to_owned(),
                         }),
                     });
                     continue;
                 }
 
-                let view = proto::View::try_from(request.view).map_err(|_| {
-                    tonic::Status::invalid_argument(format!("Invalid View (id: {}", request.view))
-                })?;
-                let fields = HashSet::<proto::Field>::from_iter(request.fields.iter().filter_map(
-                    |id| proto::Field::try_from(*id).ok(), // Ignore unknown fields for now
-                ));
-                let view_fields = combine_view_and_fields(view, fields);
-                debug!("Getting fields: {:?}", view_fields);
+                match Matcher::new(&request.path) {
+                    Ok(matcher) => {
+                        let view = proto::View::try_from(request.view).map_err(|_| {
+                            tonic::Status::invalid_argument(format!(
+                                "Invalid View (id: {}",
+                                request.view
+                            ))
+                        })?;
+                        let fields =
+                            HashSet::<proto::Field>::from_iter(request.fields.iter().filter_map(
+                                |id| proto::Field::try_from(*id).ok(), // Ignore unknown fields for now
+                            ));
+                        let view_fields = combine_view_and_fields(view, fields);
+                        debug!("Getting fields: {:?}", view_fields);
 
-                let regex_exp = glob::to_regex(&request.path);
-                match regex_exp {
-                    Ok(value) => {
-                        valid_requests.push((value, view_fields, request.path, false, None));
+                        valid_requests.push((matcher, view_fields, request.path, false, None));
                     }
                     Err(_) => {
                         errors.push(proto::DataEntryError {
                             path: request.path,
                             error: Some(proto::Error {
                                 code: 400,
-                                reason: "bad regex".to_owned(),
-                                message: "Regex can't be created for provided path".to_owned(),
+                                reason: "bad_request".to_owned(),
+                                message: "Bad Wildcard Pattern Request".to_owned(),
                             }),
                         });
                     }
                 }
             }
             if !valid_requests.is_empty() {
-                broker
-                    .for_each_entry(|entry| {
-                        let mut result_fields: HashSet<proto::Field> = HashSet::new();
-                        for (regex, view_fields, _, is_match, op_error) in &mut valid_requests {
-                            let path = &entry.metadata().path;
-                            if regex.is_match(path) {
+                for (matcher, view_fields, _, is_match, op_error) in &mut valid_requests {
+                    broker
+                        .for_each_entry(|entry| {
+                            let mut result_fields: HashSet<proto::Field> = HashSet::new();
+                            let glob_path = &entry.metadata().glob_path;
+                            if matcher.is_match(glob_path) {
                                 // Update the `is_match` to indicate a valid and used request path.
                                 *is_match = true;
                                 if view_fields.contains(&proto::Field::Metadata) {
@@ -143,17 +148,61 @@ impl proto::val_server::Val for broker::DataBroker {
                                     }
                                 }
                             }
-                        }
+                            // If there are result fields, add them to the entries list.
+                            if !result_fields.is_empty() {
+                                let proto_entry =
+                                    proto_entry_from_entry_and_fields(entry, result_fields);
+                                debug!("Getting datapoint: {:?}", proto_entry);
+                                entries.push(proto_entry);
+                            }
+                        })
+                        .await;
 
-                        // If there are result fields, add them to the entries list.
-                        if !result_fields.is_empty() {
-                            let proto_entry =
-                                proto_entry_from_entry_and_fields(entry, result_fields);
-                            debug!("Getting datapoint: {:?}", proto_entry);
-                            entries.push(proto_entry);
+                    // Not found any matches meaning it could be a branch path request
+                    // Only support branches like Vehicle.Cabin.Sunroof but not like **.Sunroof
+                    if !matcher.as_string().starts_with("**")
+                        && !matcher.as_string().ends_with("/**")
+                        && !(*is_match)
+                    {
+                        if let Ok(branch_matcher) = Matcher::new(&(matcher.as_string() + "/**")) {
+                            broker
+                                .for_each_entry(|entry| {
+                                    let mut result_fields: HashSet<proto::Field> = HashSet::new();
+                                    let glob_path = &entry.metadata().glob_path;
+                                    if branch_matcher.is_match(glob_path) {
+                                        // Update the `is_match` to indicate a valid and used request path.
+                                        *is_match = true;
+                                        if view_fields.contains(&proto::Field::Metadata) {
+                                            result_fields.extend(view_fields.clone());
+                                        }
+                                        if view_fields.contains(&proto::Field::ActuatorTarget)
+                                            || view_fields.contains(&proto::Field::Value)
+                                        {
+                                            match entry.datapoint() {
+                                                Ok(_) => {
+                                                    // If the entry's path matches the regex and there is access permission,
+                                                    // add the result fields to the current entry.
+                                                    result_fields.extend(view_fields.clone());
+                                                }
+                                                Err(error) => {
+                                                    //Propagate the error
+                                                    *op_error = Some(error);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // If there are result fields, add them to the entries list.
+                                    if !result_fields.is_empty() {
+                                        let proto_entry =
+                                            proto_entry_from_entry_and_fields(entry, result_fields);
+                                        debug!("Getting datapoint: {:?}", proto_entry);
+                                        entries.push(proto_entry);
+                                    }
+                                })
+                                .await;
                         }
-                    })
-                    .await;
+                    }
+                }
             }
 
             /*
@@ -444,50 +493,57 @@ impl proto::val_server::Val for broker::DataBroker {
             ));
         }
 
-        let mut valid_requests: HashMap<String, (regex::Regex, HashSet<broker::Field>)> =
-            HashMap::new();
+        let mut valid_requests: HashMap<String, (Matcher, HashSet<broker::Field>)> = HashMap::new();
 
         for entry in &request.entries {
-            if entry.path.contains('*') && !glob::is_valid_pattern(&entry.path) {
-                tonic::Status::new(tonic::Code::InvalidArgument, "Invalid Pattern Argument");
+            if entry.path.len() > MAX_REQUEST_PATH_LENGTH {
+                tonic::Status::new(
+                    tonic::Code::InvalidArgument,
+                    "The provided path is too long",
+                );
                 continue;
             }
 
-            let regex_exp = glob::to_regex(&entry.path);
-            if let Ok(regex) = regex_exp {
-                let mut fields = HashSet::new();
-                for id in &entry.fields {
-                    if let Ok(field) = proto::Field::try_from(*id) {
-                        match field {
-                            proto::Field::Value => {
-                                fields.insert(broker::Field::Datapoint);
+            match Matcher::new(&entry.path) {
+                Ok(matcher) => {
+                    let mut fields = HashSet::new();
+                    for id in &entry.fields {
+                        if let Ok(field) = proto::Field::try_from(*id) {
+                            match field {
+                                proto::Field::Value => {
+                                    fields.insert(broker::Field::Datapoint);
+                                }
+                                proto::Field::ActuatorTarget => {
+                                    fields.insert(broker::Field::ActuatorTarget);
+                                }
+                                proto::Field::MetadataUnit => {
+                                    fields.insert(broker::Field::MetadataUnit);
+                                }
+                                _ => {
+                                    // Just ignore other fields for now
+                                }
                             }
-                            proto::Field::ActuatorTarget => {
-                                fields.insert(broker::Field::ActuatorTarget);
-                            }
-                            proto::Field::MetadataUnit => {
-                                fields.insert(broker::Field::MetadataUnit);
-                            }
-                            _ => {
-                                // Just ignore other fields for now
-                            }
-                        }
-                    };
+                        };
+                    }
+                    valid_requests.insert(entry.path.clone(), (matcher, fields));
                 }
-                valid_requests.insert(entry.path.clone(), (regex, fields));
+                Err(_) => {
+                    tonic::Status::new(tonic::Code::InvalidArgument, "Invalid Pattern Argument");
+                    continue;
+                }
             }
         }
 
         let mut entries: HashMap<i32, HashSet<broker::Field>> = HashMap::new();
 
         if !valid_requests.is_empty() {
-            for (path, (regex, fields)) in valid_requests {
+            for (path, (matcher, fields)) in valid_requests {
                 let mut requested_path_found = false;
                 let mut permission_error = false;
                 broker
                     .for_each_entry(|entry| {
-                        let entry_path = &entry.metadata().path;
-                        if regex.is_match(entry_path) {
+                        let glob_path = &entry.metadata().glob_path;
+                        if matcher.is_match(glob_path) {
                             requested_path_found = true;
                             entries
                                 .entry(entry.metadata().id)
@@ -504,8 +560,37 @@ impl proto::val_server::Val for broker::DataBroker {
                     })
                     .await;
                 if !requested_path_found {
-                    let message = format!("No entries found for the provided. Path: {}", path);
-                    return Err(tonic::Status::new(tonic::Code::NotFound, message));
+                    // Not found any matches meaning it could be a branch path request
+                    // Only support branches like Vehicle.Cabin.Sunroof but not like **.Sunroof
+                    if !matcher.as_string().starts_with("**")
+                        && !matcher.as_string().ends_with("/**")
+                    {
+                        if let Ok(branch_matcher) = Matcher::new(&(matcher.as_string() + "/**")) {
+                            broker
+                                .for_each_entry(|entry| {
+                                    let glob_path = &entry.metadata().glob_path;
+                                    if branch_matcher.is_match(glob_path) {
+                                        requested_path_found = true;
+                                        entries
+                                            .entry(entry.metadata().id)
+                                            .and_modify(|existing_fields| {
+                                                existing_fields.extend(fields.clone());
+                                            })
+                                            .or_insert(fields.clone());
+
+                                        match entry.datapoint() {
+                                            Ok(_) => {}
+                                            Err(_) => permission_error = true,
+                                        }
+                                    }
+                                })
+                                .await;
+                        }
+                    }
+                    if !requested_path_found {
+                        let message = format!("No entries found for the provided. Path: {}", path);
+                        return Err(tonic::Status::new(tonic::Code::NotFound, message));
+                    }
                 }
                 if permission_error {
                     let message = format!("Permission denied for some entries. Path: {}", path);
@@ -992,6 +1077,150 @@ mod tests {
             Err(_) => {
                 panic!("Should not happen")
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_datapoint_using_wildcard() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        authorized_access
+            .add_entry(
+                "test.branch.datapoint2".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test branch datapoint 2".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let mut wildcard_req = tonic::Request::new(proto::GetRequest {
+            entries: vec![proto::EntryRequest {
+                path: "test.**".to_owned(),
+                view: proto::View::Metadata as i32,
+                fields: vec![proto::Field::Value as i32],
+            }],
+        });
+
+        // Manually insert permissions
+        wildcard_req
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::get(&broker, wildcard_req)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(get_response) => {
+                assert!(
+                    get_response.errors.is_empty(),
+                    "databroker should not return any error"
+                );
+
+                let entries_size = get_response.entries.len();
+                assert_eq!(entries_size, 2);
+            }
+            Err(_status) => panic!("failed to execute get request"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_datapoint_bad_request_pattern_or_not_found() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let mut wildcard_req = tonic::Request::new(proto::GetRequest {
+            entries: vec![proto::EntryRequest {
+                path: "test. **".to_owned(),
+                view: proto::View::Metadata as i32,
+                fields: vec![proto::Field::Value as i32],
+            }],
+        });
+
+        // Manually insert permissions
+        wildcard_req
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::get(&broker, wildcard_req)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(get_response) => {
+                assert!(
+                    !get_response.errors.is_empty(),
+                    "databroker should not allow bad request wildcard pattern"
+                );
+                let error = get_response
+                    .error
+                    .to_owned()
+                    .expect("error details are missing");
+                assert_eq!(error.code, 400, "unexpected error code");
+                assert_eq!(error.reason, "bad_request", "unexpected error reason");
+            }
+            Err(_status) => panic!("failed to execute get request"),
+        }
+
+        let mut not_found_req = tonic::Request::new(proto::GetRequest {
+            entries: vec![proto::EntryRequest {
+                path: "test.notfound".to_owned(),
+                view: proto::View::Metadata as i32,
+                fields: vec![proto::Field::Value as i32],
+            }],
+        });
+
+        // Manually insert permissions
+        not_found_req
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::get(&broker, not_found_req)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(get_response) => {
+                assert!(
+                    !get_response.errors.is_empty(),
+                    "databroker should not allow bad request wildcard pattern"
+                );
+                let error = get_response
+                    .error
+                    .to_owned()
+                    .expect("error details are missing");
+                assert_eq!(error.code, 404, "unexpected error code");
+                assert_eq!(error.reason, "not_found", "unexpected error reason");
+            }
+            Err(_status) => panic!("failed to execute get request"),
         }
     }
 }

@@ -61,6 +61,7 @@ pub enum RegistrationError {
 pub struct Metadata {
     pub id: i32,
     pub path: String,
+    pub glob_path: String,
     pub data_type: DataType,
     pub entry_type: EntryType,
     pub change_type: ChangeType,
@@ -1155,6 +1156,7 @@ impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
             metadata: Metadata {
                 id: temp_id,
                 path: name.clone(),
+                glob_path: name.replace('.', "/"),
                 data_type,
                 change_type,
                 entry_type,
