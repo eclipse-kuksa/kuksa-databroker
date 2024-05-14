@@ -47,6 +47,7 @@ async fn shutdown_handler() {
     };
 }
 
+#[cfg(not(feature="stats"))]
 async fn add_kuksa_attribute(
     database: &broker::AuthorizedAccess<'_, '_>,
     attribute: String,
@@ -104,6 +105,66 @@ async fn add_kuksa_attribute(
     }
 }
 
+#[cfg(feature="stats")]
+async fn add_kuksa_attribute(
+    database: &broker::AuthorizedAccess<'_, '_>,
+    attribute: String,
+    value: String,
+    description: String,
+) {
+    debug!("Adding attribute {}", attribute);
+
+    match database
+        .add_entry(
+            attribute.clone(),
+            databroker::broker::DataType::String,
+            databroker::broker::ChangeType::OnChange,
+            databroker::broker::EntryType::Attribute,
+            description,
+            None,
+            None,
+        )
+        .await
+    {
+        Ok(id) => {
+            let ids = [(
+                id,
+                broker::EntryUpdate {
+                    datapoint: Some(broker::Datapoint {
+                        ts: std::time::SystemTime::now(),
+                        source_ts: None,
+                        value: broker::types::DataValue::String(value),
+                    }),
+                    subscription_id:None,
+                    path: None,
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    unit: None,
+                },
+            )];
+            if let Err(errors) = database.update_entries(ids).await {
+                // There's only one error (since we're only trying to set one)
+                if let Some(error) = errors.first() {
+                    info!("Failed to set value for {}: {:?}", attribute, error.1);
+                }
+            }
+        }
+        Err(RegistrationError::PermissionDenied) => {
+            error!("Failed to add entry {attribute}: Permission denied")
+        }
+        Err(RegistrationError::PermissionExpired) => {
+            error!("Failed to add entry {attribute}: Permission expired")
+        }
+        Err(RegistrationError::ValidationError) => {
+            error!("Failed to add entry {attribute}: Validation failed")
+        }
+    }
+}
+
+#[cfg(not(feature="stats"))]
 async fn read_metadata_file<'a, 'b>(
     database: &broker::AuthorizedAccess<'_, '_>,
     filename: &str,
@@ -138,6 +199,73 @@ async fn read_metadata_file<'a, 'b>(
                                 source_ts: None,
                                 value: default,
                             }),
+                            path: None,
+                            actuator_target: None,
+                            entry_type: None,
+                            data_type: None,
+                            description: None,
+                            allowed: None,
+                            unit: None,
+                        },
+                    )];
+                    if let Err(errors) = database.update_entries(ids).await {
+                        // There's only one error (since we're only trying to set one)
+                        if let Some(error) = errors.first() {
+                            info!("Failed to set default value for {}: {:?}", path, error.1);
+                        }
+                    }
+                }
+            }
+            Err(RegistrationError::PermissionDenied) => {
+                error!("Failed to add entry {path}: Permission denied")
+            }
+            Err(RegistrationError::PermissionExpired) => {
+                error!("Failed to add entry {path}: Permission expired")
+            }
+            Err(RegistrationError::ValidationError) => {
+                error!("Failed to add entry {path}: Validation failed")
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature="stats")]
+async fn read_metadata_file<'a, 'b>(
+    database: &broker::AuthorizedAccess<'_, '_>,
+    filename: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = filename.trim();
+    info!("Populating metadata from file '{}'", path);
+    let metadata_file = std::fs::OpenOptions::new().read(true).open(filename)?;
+    let entries = vss::parse_vss_from_reader(&metadata_file)?;
+
+    for (path, entry) in entries {
+        debug!("Adding VSS datapoint type {}", path);
+
+        match database
+            .add_entry(
+                path.clone(),
+                entry.data_type,
+                entry.change_type,
+                entry.entry_type,
+                entry.description,
+                entry.allowed,
+                entry.unit,
+            )
+            .await
+        {
+            Ok(id) => {
+                if let Some(default) = entry.default {
+                    let ids = [(
+                        id,
+                        broker::EntryUpdate {
+                            datapoint: Some(broker::Datapoint {
+                                ts: std::time::SystemTime::now(),
+                                source_ts: None,
+                                value: default,
+                            }),
+                            subscription_id:None,
                             path: None,
                             actuator_target: None,
                             entry_type: None,

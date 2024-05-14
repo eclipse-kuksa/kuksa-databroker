@@ -153,7 +153,15 @@ pub struct QuerySubscription {
     permissions: Permissions,
 }
 
+#[cfg(not(feature="stats"))]
 pub struct ChangeSubscription {
+    entries: HashMap<i32, HashSet<Field>>,
+    sender: mpsc::Sender<EntryUpdates>,
+    permissions: Permissions,
+}
+#[cfg(feature="stats")]
+pub struct ChangeSubscription {
+    subscription_id: String,
     entries: HashMap<i32, HashSet<Field>>,
     sender: mpsc::Sender<EntryUpdates>,
     permissions: Permissions,
@@ -161,9 +169,33 @@ pub struct ChangeSubscription {
 
 #[derive(Debug)]
 pub struct NotificationError {}
-
+#[cfg(not(feature="stats"))]
 #[derive(Debug, Clone, Default)]
 pub struct EntryUpdate {
+    pub path: Option<String>,
+
+    pub datapoint: Option<Datapoint>,
+
+    // Actuator target is wrapped in an additional Option<> in
+    // order to be able to convey "update it to None" which would
+    // mean setting it to `Some(None)`.
+    pub actuator_target: Option<Option<Datapoint>>, // only for actuators
+
+    // Metadata
+    pub entry_type: Option<EntryType>,
+    pub data_type: Option<DataType>,
+    pub description: Option<String>,
+    // allowed is wrapped in an additional Option<> in
+    // order to be able to convey "update it to None" which would
+    // mean setting it to `Some(None)`.
+    pub allowed: Option<Option<types::DataValue>>,
+    pub unit: Option<String>,
+}
+
+#[cfg(feature="stats")]
+#[derive(Debug, Clone, Default)]
+pub struct EntryUpdate {
+    pub subscription_id: Option<String>,
     pub path: Option<String>,
 
     pub datapoint: Option<Datapoint>,
@@ -681,6 +713,126 @@ impl Subscriptions {
     }
 }
 
+#[cfg(not(feature="stats"))]
+impl ChangeSubscription {
+    async fn notify(
+        &self,
+        changed: Option<&HashMap<i32, HashSet<Field>>>,
+        db: &Database,
+    ) -> Result<(), NotificationError> {
+        let db_read = db.authorized_read_access(&self.permissions);
+        match changed {
+            Some(changed) => {
+                let mut matches = false;
+                for (id, changed_fields) in changed {
+                    if let Some(fields) = self.entries.get(id) {
+                        if !fields.is_disjoint(changed_fields) {
+                            matches = true;
+                            break;
+                        }
+                    }
+                }
+                if matches {
+                    // notify
+                    let notifications = {
+                        let mut notifications = EntryUpdates::default();
+
+                        for (id, changed_fields) in changed {
+                            if let Some(fields) = self.entries.get(id) {
+                                if !fields.is_disjoint(changed_fields) {
+                                    match db_read.get_entry_by_id(*id) {
+                                        Ok(entry) => {
+                                            let mut update = EntryUpdate::default();
+                                            let mut notify_fields = HashSet::new();
+                                            // TODO: Perhaps make path optional
+                                            // #[cfg(feature="stats")]
+                                            // update.subscription_id = &self.subscription_id;
+                                            update.path = Some(entry.metadata.path.clone());
+                                            if changed_fields.contains(&Field::Datapoint)
+                                                && fields.contains(&Field::Datapoint)
+                                            {
+                                                update.datapoint = Some(entry.datapoint.clone());
+                                                notify_fields.insert(Field::Datapoint);
+                                            }
+                                            if changed_fields.contains(&Field::ActuatorTarget)
+                                                && fields.contains(&Field::ActuatorTarget)
+                                            {
+                                                update.actuator_target =
+                                                    Some(entry.actuator_target.clone());
+                                                notify_fields.insert(Field::ActuatorTarget);
+                                            }
+                                            // fill unit field always
+                                            update.unit = entry.metadata.unit.clone();
+                                            println!("---------->>>upd inside change sub{:?}",update );
+                                            notifications.updates.push(ChangeNotification {
+                                                update,
+                                                fields: notify_fields,
+                                            });
+                                        }
+                                        Err(_) => {
+                                            debug!("notify: could not find entry with id {}", id)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        println!("---------->>>upd notifications sub{:?}",notifications );
+                        notifications
+                    };
+                    if notifications.updates.is_empty() {
+                        Ok(())
+                    } else {
+                        match self.sender.send(notifications).await {
+                            Ok(()) => Ok(()),
+                            Err(_) => Err(NotificationError {}),
+                        }
+                    }
+                } else {
+                    Ok(())
+                }
+            }
+            None => {
+                let notifications = {
+                    let mut notifications = EntryUpdates::default();
+
+                    for (id, fields) in &self.entries {
+                        match db_read.get_entry_by_id(*id) {
+                            Ok(entry) => {
+                                let mut update = EntryUpdate::default();
+                                let mut notify_fields = HashSet::new();
+                                // TODO: Perhaps make path optional
+                                update.path = Some(entry.metadata.path.clone());
+                                if fields.contains(&Field::Datapoint) {
+                                    update.datapoint = Some(entry.datapoint.clone());
+                                    notify_fields.insert(Field::Datapoint);
+                                }
+                                if fields.contains(&Field::ActuatorTarget) {
+                                    update.actuator_target = Some(entry.actuator_target.clone());
+                                    notify_fields.insert(Field::ActuatorTarget);
+                                }
+                                notifications.updates.push(ChangeNotification {
+                                    update,
+                                    fields: notify_fields,
+                                });
+                            }
+                            Err(_) => {
+                                debug!("notify: could not find entry with id {}", id)
+                            }
+                        }
+                    }
+                    notifications
+                };
+                match self.sender.send(notifications).await {
+                    Ok(()) => Ok(()),
+                    Err(_) => Err(NotificationError {}),
+                }
+            }
+        }
+    }
+}
+
+
+#[cfg(feature="stats")]
 impl ChangeSubscription {
     async fn notify(
         &self,
@@ -711,6 +863,7 @@ impl ChangeSubscription {
                                             let mut update = EntryUpdate::default();
                                             let mut notify_fields = HashSet::new();
                                             // TODO: Perhaps make path optional
+                                            update.subscription_id = Some(self.subscription_id.clone());
                                             update.path = Some(entry.metadata.path.clone());
                                             if changed_fields.contains(&Field::Datapoint)
                                                 && fields.contains(&Field::Datapoint)
@@ -767,6 +920,7 @@ impl ChangeSubscription {
                                 let mut update = EntryUpdate::default();
                                 let mut notify_fields = HashSet::new();
                                 // TODO: Perhaps make path optional
+                                update.subscription_id = Some(self.subscription_id.clone());
                                 update.path = Some(entry.metadata.path.clone());
                                 if fields.contains(&Field::Datapoint) {
                                     update.datapoint = Some(entry.datapoint.clone());
@@ -1459,6 +1613,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         }
     }
 
+    #[cfg(not(feature="stats"))]
     pub async fn subscribe(
         &self,
         valid_entries: HashMap<i32, HashSet<Field>>,
@@ -1469,6 +1624,42 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
 
         let (sender, receiver) = mpsc::channel(10);
         let subscription = ChangeSubscription {
+            entries: valid_entries,
+            sender,
+            permissions: self.permissions.clone(),
+        };
+
+        {
+            // Send everything subscribed to in an initial notification
+            let db = self.broker.database.read().await;
+            if subscription.notify(None, &db).await.is_err() {
+                warn!("Failed to create initial notification");
+            }
+        }
+
+        self.broker
+            .subscriptions
+            .write()
+            .await
+            .add_change_subscription(subscription);
+
+        let stream = ReceiverStream::new(receiver);
+        Ok(stream)
+    }
+       
+    
+    #[cfg(feature="stats")]
+    pub async fn subscribe(
+        &self,
+        valid_entries: HashMap<i32, HashSet<Field>>,
+    ) -> Result<impl Stream<Item = EntryUpdates>, SubscriptionError> {
+        if valid_entries.is_empty() {
+            return Err(SubscriptionError::InvalidInput);
+        }
+
+        let (sender, receiver) = mpsc::channel(10);
+        let subscription = ChangeSubscription {
+            subscription_id: blob_uuid::random_blob(),
             entries: valid_entries,
             sender,
             permissions: self.permissions.clone(),

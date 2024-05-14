@@ -315,6 +315,7 @@ impl From<proto::Datapoint> for broker::Datapoint {
     }
 }
 
+#[cfg(not(feature="stats"))]
 impl From<broker::EntryUpdate> for proto::DataEntry {
     fn from(from: broker::EntryUpdate) -> Self {
         Self {
@@ -330,6 +331,33 @@ impl From<broker::EntryUpdate> for proto::DataEntry {
             },
             metadata: {
                 let metadata = proto::Metadata {
+                    unit: from.unit,
+                    ..Default::default()
+                };
+                Some(metadata)
+            },
+        }
+    }
+}
+
+
+#[cfg(feature="stats")]
+impl From<broker::EntryUpdate> for proto::DataEntry {
+    fn from(from: broker::EntryUpdate) -> Self {
+        Self {
+            path: from.path.unwrap_or_default(),
+            value: match from.datapoint {
+                Some(datapoint) => Option::<proto::Datapoint>::from(datapoint),
+                None => None,
+            },
+            actuator_target: match from.actuator_target {
+                Some(Some(actuator_target)) => Option::<proto::Datapoint>::from(actuator_target),
+                Some(None) => None,
+                None => None,
+            },
+            metadata: {
+                let metadata = proto::Metadata {
+                    subscription_id:Some(from.subscription_id.unwrap_or(String::from("x"))),
                     unit: from.unit,
                     ..Default::default()
                 };

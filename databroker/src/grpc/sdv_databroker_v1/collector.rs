@@ -28,6 +28,8 @@ use crate::{
 
 #[tonic::async_trait]
 impl proto::collector_server::Collector for broker::DataBroker {
+
+    #[cfg(not(feature="stats"))]
     async fn update_datapoints(
         &self,
         request: tonic::Request<proto::UpdateDatapointsRequest>,
@@ -79,9 +81,64 @@ impl proto::collector_server::Collector for broker::DataBroker {
 
         Ok(Response::new(proto::UpdateDatapointsReply { errors }))
     }
+    
+    #[cfg(feature="stats")]
+    async fn update_datapoints(
+        &self,
+        request: tonic::Request<proto::UpdateDatapointsRequest>,
+    ) -> Result<tonic::Response<proto::UpdateDatapointsReply>, tonic::Status> {
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+        let broker = self.authorized_access(&permissions);
+
+        // Collect errors encountered
+        let mut errors = HashMap::new();
+
+        let message = request.into_inner();
+        let ids: Vec<(i32, broker::EntryUpdate)> = message
+            .datapoints
+            .iter()
+            .map(|(id, datapoint)| {
+                (
+                    *id,
+                    broker::EntryUpdate {
+                        subscription_id:None,
+                        path: None,
+                        datapoint: Some(broker::Datapoint::from(datapoint)),
+                        actuator_target: None,
+                        entry_type: None,
+                        data_type: None,
+                        description: None,
+                        allowed: None,
+                        unit: None,
+                    },
+                )
+            })
+            .collect();
+
+        match broker.update_entries(ids).await {
+            Ok(()) => {}
+            Err(err) => {
+                debug!("Failed to set datapoint: {:?}", err);
+                errors = err
+                    .iter()
+                    .map(|(id, error)| (*id, proto::DatapointError::from(error) as i32))
+                    .collect();
+            }
+        }
+
+        Ok(Response::new(proto::UpdateDatapointsReply { errors }))
+    }
 
     type StreamDatapointsStream = ReceiverStream<Result<proto::StreamDatapointsReply, Status>>;
 
+    #[cfg(not(feature="stats"))]
     async fn stream_datapoints(
         &self,
         request: tonic::Request<tonic::Streaming<proto::StreamDatapointsRequest>>,
@@ -122,6 +179,103 @@ impl proto::collector_server::Collector for broker::DataBroker {
                                                 (
                                                     *id,
                                                     broker::EntryUpdate {
+                                                        path: None,
+                                                        datapoint: Some(broker::Datapoint::from(datapoint)),
+                                                        actuator_target: None,
+                                                        entry_type: None,
+                                                        data_type: None,
+                                                        description: None,
+                                                        allowed: None,
+                                                        unit: None,
+                                                    }
+                                                )
+                                            )
+                                            .collect();
+                                        // TODO: Check if sender is allowed to provide datapoint with this id
+                                        match broker
+                                            .update_entries(ids)
+                                            .await
+                                        {
+                                            Ok(_) => {}
+                                            Err(err) => {
+                                                if let Err(err) = error_sender.send(
+                                                    Ok(proto::StreamDatapointsReply {
+                                                        errors: err.iter().map(|(id, error)| {
+                                                            (*id, proto::DatapointError::from(error) as i32)
+                                                        }).collect(),
+                                                    })
+                                                ).await {
+                                                    debug!("Failed to send errors: {}", err);
+                                                }
+                                            }
+                                        }
+                                    },
+                                    None => {
+                                        debug!("provider: no more messages");
+                                        break;
+                                    }
+                                }
+                            },
+                            Err(err) => {
+                                debug!("provider: connection broken: {:?}", err);
+                                break;
+                            },
+                        }
+                    },
+                    _ = shutdown_trigger.recv() => {
+                        debug!("provider: shutdown received");
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Return the error stream
+        Ok(Response::new(ReceiverStream::new(error_receiver)))
+    }
+    
+    #[cfg(feature="stats")]
+    async fn stream_datapoints(
+        &self,
+        request: tonic::Request<tonic::Streaming<proto::StreamDatapointsRequest>>,
+    ) -> Result<tonic::Response<Self::StreamDatapointsStream>, tonic::Status> {
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+
+        let mut stream = request.into_inner();
+
+        let mut shutdown_trigger = self.get_shutdown_trigger();
+
+        // Copy (to move into task below)
+        let broker = self.clone();
+
+        // Create error stream (to be returned)
+        let (error_sender, error_receiver) = mpsc::channel(10);
+
+        // Listening on stream
+        tokio::spawn(async move {
+            let permissions = permissions;
+            let broker = broker.authorized_access(&permissions);
+            loop {
+                select! {
+                    message = stream.message() => {
+                        match message {
+                            Ok(request) => {
+                                match request {
+                                    Some(req) => {
+                                        let ids: Vec<(i32, broker::EntryUpdate)> = req.datapoints
+                                            .iter()
+                                            .map(|(id, datapoint)|
+                                                (
+                                                    *id,
+                                                    broker::EntryUpdate {
+                                                        subscription_id:None,
                                                         path: None,
                                                         datapoint: Some(broker::Datapoint::from(datapoint)),
                                                         actuator_target: None,

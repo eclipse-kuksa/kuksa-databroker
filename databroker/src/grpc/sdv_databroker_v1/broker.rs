@@ -85,6 +85,7 @@ impl proto::broker_server::Broker for broker::DataBroker {
         }
     }
 
+    #[cfg(not(feature="stats"))]
     async fn set_datapoints(
         &self,
         request: tonic::Request<proto::SetDatapointsRequest>,
@@ -122,6 +123,85 @@ impl proto::broker_server::Broker for broker::DataBroker {
                                 ids.push((
                                     metadata.id,
                                     broker::EntryUpdate {
+                                        path: None,
+                                        datapoint: None,
+                                        actuator_target: Some(Some(broker::Datapoint::from(
+                                            &datapoint,
+                                        ))),
+                                        entry_type: None,
+                                        data_type: None,
+                                        description: None,
+                                        allowed: None,
+                                        unit: None,
+                                    },
+                                ));
+                            }
+                        }
+                        id_to_path.insert(metadata.id, path);
+                    }
+                    None => {
+                        errors.insert(path.clone(), proto::DatapointError::UnknownDatapoint as i32);
+                    }
+                };
+            }
+            ids
+        };
+
+        match broker.update_entries(ids).await {
+            Ok(()) => {}
+            Err(err) => {
+                debug!("Failed to set datapoint: {:?}", err);
+                errors.extend(err.iter().map(|(id, error)| {
+                    (
+                        id_to_path[id].clone(),
+                        proto::DatapointError::from(error) as i32,
+                    )
+                }))
+            }
+        }
+
+        Ok(Response::new(proto::SetDatapointsReply { errors }))
+    }
+    
+    #[cfg(feature="stats")]
+    async fn set_datapoints(
+        &self,
+        request: tonic::Request<proto::SetDatapointsRequest>,
+    ) -> Result<tonic::Response<proto::SetDatapointsReply>, Status> {
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+        let broker = self.authorized_access(&permissions);
+
+        // Collect errors encountered
+        let mut errors = HashMap::<String, i32>::new();
+        let mut id_to_path = HashMap::<i32, String>::new(); // Map id to path for errors
+        let message = request.into_inner();
+
+        let ids = {
+            let mut ids = Vec::new();
+            for (path, datapoint) in message.datapoints {
+                match broker.get_metadata_by_path(&path).await {
+                    Some(metadata) => {
+                        match metadata.entry_type {
+                            broker::EntryType::Sensor | broker::EntryType::Attribute => {
+                                // Cannot set sensor / attribute through the `Broker` API.
+                                debug!("Cannot set sensor / attribute through the `Broker` API.");
+                                errors.insert(
+                                    path.clone(),
+                                    proto::DatapointError::AccessDenied as i32,
+                                );
+                            }
+                            broker::EntryType::Actuator => {
+                                ids.push((
+                                    metadata.id,
+                                    broker::EntryUpdate {
+                                        subscription_id:None,
                                         path: None,
                                         datapoint: None,
                                         actuator_target: Some(Some(broker::Datapoint::from(

@@ -16,6 +16,9 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::pin::Pin;
 
+#[cfg(feature = "stats")]
+use chrono::Utc;
+
 use databroker_proto::kuksa::val::v1 as proto;
 use databroker_proto::kuksa::val::v1::DataEntryError;
 use tokio_stream::Stream;
@@ -201,6 +204,7 @@ impl proto::val_server::Val for broker::DataBroker {
         }
     }
 
+    #[cfg(not(feature="stats"))]
     async fn set(
         &self,
         request: tonic::Request<proto::SetRequest>,
@@ -342,6 +346,180 @@ impl proto::val_server::Val for broker::DataBroker {
             error: None,
             errors,
         }))
+    }
+
+    #[cfg(feature="stats")]
+    async fn set(
+        &self,
+        request: tonic::Request<proto::SetRequest>,
+    ) -> Result<tonic::Response<proto::SetResponse>, tonic::Status> {
+            
+            let set_enter = match  Utc::now().timestamp_nanos_opt(){
+            Some(value) => value.to_string(),
+            None => "None".to_string(),
+            };
+
+            let set_enter_ts: i64 = set_enter.parse().unwrap_or_else(|_| {
+                println!("Error parsing string to i64");
+                0 // Default value if parsing fails
+            });
+
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+
+        let broker = self.authorized_access(&permissions);
+
+        // Collect errors encountered
+        let mut errors = Vec::<DataEntryError>::new();
+
+        let mut updates = Vec::<(i32, broker::EntryUpdate)>::new();
+        for request in request.into_inner().updates {
+            match &request.entry {
+                Some(entry) => match broker.get_id_by_path(&entry.path).await {
+                    Some(id) => {
+                        let fields =
+                            HashSet::<proto::Field>::from_iter(request.fields.iter().filter_map(
+                                |id| proto::Field::from_i32(*id), // Ignore unknown fields for now
+                            ));
+
+                        if entry.actuator_target.is_some() {
+                            if let Some(metadata) = broker.get_metadata(id).await {
+                                if metadata.entry_type != broker::EntryType::Actuator {
+                                    return Err(tonic::Status::invalid_argument(
+                                        "Tried to set a target value for a non-actuator. Non-actuators have no target value.".to_string(),
+                                    ));
+                                }
+                            }
+                        }
+
+                        let entry = match &request.entry {
+                            Some(entry) => entry,
+                            None => {
+                                return Err(tonic::Status::invalid_argument(
+                                    "Empty entry".to_string(),
+                                ))
+                            }
+                        };
+                        debug!("Settings fields: {:?}", fields);
+                        let update =
+                            broker::EntryUpdate::from_proto_entry_and_fields(entry, fields);
+                        updates.push((id, update));
+                    }
+                    None => {
+                        let message = format!("{} not found", entry.path);
+                        errors.push(proto::DataEntryError {
+                            path: entry.path.clone(),
+                            error: Some(proto::Error {
+                                code: 404,
+                                reason: "not_found".to_string(),
+                                message,
+                            }),
+                        })
+                    }
+                },
+                None => {
+                    return Err(tonic::Status::invalid_argument(
+                        "Path is required".to_string(),
+                    ))
+                }
+            }
+        }
+
+        match broker.update_entries(updates).await {
+            Ok(()) => {}
+            Err(err) => {
+                debug!("Failed to set datapoint: {:?}", err);
+                for (id, error) in err.into_iter() {
+                    if let Some(metadata) = broker.get_metadata(id).await {
+                        let path = metadata.path.clone();
+                        let data_entry_error = match error {
+                            broker::UpdateError::NotFound => DataEntryError {
+                                path: path.clone(),
+                                error: Some(proto::Error {
+                                    code: 404,
+                                    reason: String::from("not found"),
+                                    message: format!("no datapoint registered for path {path}"),
+                                }),
+                            },
+                            broker::UpdateError::WrongType => DataEntryError {
+                                path,
+                                error: Some(proto::Error {
+                                    code: 400,
+                                    reason: String::from("type mismatch"),
+                                    message:
+                                        "cannot set existing datapoint to value of different type"
+                                            .to_string(),
+                                }),
+                            },
+                            broker::UpdateError::UnsupportedType => DataEntryError {
+                                path,
+                                error: Some(proto::Error {
+                                    code: 400,
+                                    reason: String::from("unsupported type"),
+                                    message: "cannot set datapoint to value of unsupported type"
+                                        .to_string(),
+                                }),
+                            },
+                            broker::UpdateError::OutOfBounds => DataEntryError {
+                                path,
+                                error: Some(proto::Error {
+                                    code: 400,
+                                    reason: String::from("value out of bounds"),
+                                    message: String::from("given value exceeds type's boundaries"),
+                                }),
+                            },
+                            broker::UpdateError::PermissionDenied => DataEntryError {
+                                path: path.clone(),
+                                error: Some(proto::Error {
+                                    code: 403,
+                                    reason: String::from("forbidden"),
+                                    message: format!("Access was denied for {path}"),
+                                }),
+                            },
+                            broker::UpdateError::PermissionExpired => DataEntryError {
+                                path,
+                                error: Some(proto::Error {
+                                    code: 401,
+                                    reason: String::from("unauthorized"),
+                                    message: String::from("Unauthorized"),
+                                }),
+                            },
+                        };
+                        errors.push(data_entry_error);
+                    }
+                }
+            }
+        }
+        let mut response = tonic::Response::new(proto::SetResponse {
+            error: None,
+            errors,
+        });
+
+        // let cpu_percent  = process.cpu_percent().expect("Failed to get memory info");
+ // Get the current SystemTime
+
+
+
+        let set_exit = match  Utc::now().timestamp_nanos_opt(){
+           Some(value) => value.to_string(),
+           None => "None".to_string(),
+        };
+
+        let set_exit_ts: i64 = set_exit.parse().unwrap_or_else(|_| {
+           println!("Error parsing string to i64");
+           0 // Default value if parsing fails
+        });
+
+        response.metadata_mut().insert("databroker_exit_ts",set_exit_ts.into());
+        response.metadata_mut().insert("databroker_enter_ts",set_enter_ts.into());
+
+        // debug!("{:?}",response.metadata_mut());
+        Ok(response)
     }
 
     type SubscribeStream = Pin<
@@ -490,8 +668,29 @@ fn convert_to_proto_stream(
                     .collect(),
             });
         }
-        let response = proto::SubscribeResponse { updates };
-        Ok(response)
+
+               let mut response = proto::SubscribeResponse { updates };
+
+        #[cfg(feature = "stats")]{
+            
+        let subscribe_trigger = match  Utc::now().timestamp_nanos_opt(){
+            Some(value) => value.to_string(),
+            None => "None".to_string(),
+         };
+        
+
+        let subscribe_trigger_time_ns: i64 = subscribe_trigger.parse().unwrap_or_else(|_| {
+           println!("Error parsing string to i64");
+           0 // Default value if parsing fails
+        });
+
+        if let Some(data_entry) = &mut response.updates[0].entry {
+            if let Some(metadata) = &mut data_entry.metadata {
+                metadata.stream_response_time_ns = Some(subscribe_trigger_time_ns.to_string());
+            }
+        }
+    }        
+    Ok(response)
     })
 }
 
@@ -650,6 +849,7 @@ fn combine_view_and_fields(
     combined
 }
 
+#[cfg(not(feature="stats"))]
 impl broker::EntryUpdate {
     fn from_proto_entry_and_fields(
         entry: &proto::DataEntry,
@@ -672,6 +872,42 @@ impl broker::EntryUpdate {
             None
         };
         Self {
+            path: None,
+            datapoint,
+            actuator_target,
+            entry_type: None,
+            data_type: None,
+            description: None,
+            allowed: None,
+            unit: None,
+        }
+    }
+}
+
+#[cfg(feature="stats")]
+impl broker::EntryUpdate {
+    fn from_proto_entry_and_fields(
+        entry: &proto::DataEntry,
+        fields: HashSet<proto::Field>,
+    ) -> Self {
+        let datapoint = if fields.contains(&proto::Field::Value) {
+            entry
+                .value
+                .as_ref()
+                .map(|value| broker::Datapoint::from(value.clone()))
+        } else {
+            None
+        };
+        let actuator_target = if fields.contains(&proto::Field::ActuatorTarget) {
+            match &entry.actuator_target {
+                Some(datapoint) => Some(Some(broker::Datapoint::from(datapoint.clone()))),
+                None => Some(None),
+            }
+        } else {
+            None
+        };
+        Self {
+            subscription_id:None,
             path: None,
             datapoint,
             actuator_target,

@@ -63,6 +63,7 @@ thiserror = "1.0.47"
 axum = { version = "0.6.20", optional = true, features = ["ws"] }
 futures = { version = "0.3.28", optional = true }
 chrono = { version = "0.4.31", optional = true, features = ["std"] }
+blob-uuid = { version = "0.5.0", optional = true}
 uuid = { version = "1.4.1", optional = true, features = ["v4"] }
 
 # systemd related dependency, only relevant on linux systems
@@ -74,6 +75,7 @@ default = ["tls"]
 tls = ["tonic/tls"]
 jemalloc = ["dep:jemallocator"]
 viss = ["dep:axum", "dep:chrono", "dep:futures", "dep:uuid"]
+stats = ["dep:chrono", "dep:uuid", "dep:blob-uuid"]
 libtest = []
 
 [build-dependencies]

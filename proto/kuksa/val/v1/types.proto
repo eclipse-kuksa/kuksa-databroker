@@ -93,6 +93,10 @@ message Metadata {
   // Only restrictions matching the DataType {datatype} above are valid.
   ValueRestriction value_restriction = 17;  // [field: FIELD_METADATA_VALUE_RESTRICTION]
 
+  optional string stream_response_time_ns = 18;
+
+  optional string subscription_id = 19;
+
   // Entry type specific metadata
   oneof entry_specific {
     Actuator actuator   = 20;  // [field: FIELD_METADATA_ACTUATOR]
