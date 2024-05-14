@@ -8,7 +8,7 @@
     - [Terminology](#terminology)
     - [System Architecture](#system-architecture)
 - [Functional requirements](#functional-requirements)
-    - [As Client](#as-client)
+    - [As Client](#as-signal-consumer)
     - [As Databroker](#as-databroker)
     - [As Provider](#as-provider)
 - [Non-Functional Requirements](#non-functional-requirements)
@@ -71,12 +71,12 @@
 
 4. As a client I want to `Subscribe` and be able to apply a filter to receive a sensor value with an interval of x milliseconds only if the value has changed.
    
-5.  As a client I want to `GetMetadata` static Metadata from signals.
-  - Details:
-    * All sensors, actuators, and attributes values for which a client has permission to.
-    * Client must provide the path, paths or wildcard.
+5.  The Signal Consumer shall get static Metadata from all vehicle signals.
+  - Note:
+    * The Signal Consumer shall get static Metadata from all sensors, actuators, and attributes values to which it has permission to.
+    * The Signal Consumer shall provide the paths of the requested signals, which optionally may contain wildcards.
 
-6.  As a client I want to `Get` attributes values once.
+6.  The Signal Consumer shall get attributes values.
 
 7.  As a client I want to `Actuate` a target value of an actuator. This value has to be forwarded to the provider of this actuator if the provider is available, otherwise the target value is lost. 
 
@@ -84,24 +84,18 @@
 
 10.  As a client I want to know if there is a provider up and running by getting some sensor or actuator value.
 
-
 ### As Databroker
-1. The data broker shall be able to handle catalogs of signals described by the syntax as defined by the COVESA Vehicle Signal Specification (VSS). This relates to all aspects of the VSS syntax definition, which is also called VSS rule set. This implies that the data broker can handle the signal catalog as defined by the COVESA VSS.
+1. The Databroker shall handle catalogs of signals described by the syntax as defined by the COVESA Vehicle Signal Specification (VSS). This relates to all aspects of the VSS syntax definition, which is also called VSS rule set. This implies that the data broker can handle the signal catalog as defined by the COVESA VSS.
 
-2. Databroker shall support at least those metadata elements as defined by the VSS rule set.
+2. The Databroker shall support at least those metadata elements as defined by the VSS rule set.
 
 ### As Provider
-1. As a provider I want to `Set` the value and current value of one or many sensors and/or actuators with its timestamp to Databroker.
-2. 
-3. A provider shall be able to continuously and efficiently (e.g. via grpc stream) _**update**_ the current value of one or multiple sensors and/or actuators with its timestamp.
+1. The Provider shall set the value and current value of one or many sensors and/or actuators with optional timestamp to Databroker.
 
-4. A provider shall be able to `Subscribe` to the databroker to receive actuation requests.
+2. The Provider shall continuously and efficiently (e.g. via grpc stream) _**update**_ the current value of one or multiple sensors and/or actuators with its timestamp.
 
-5. As a provider I want to `Set` once attributes values.
+3. The Provider shall subscribe to the Databroker to receive actuation requests and send back with an acknowledgement response if the request has been successfully received.
 
-6. As a provider I don’t need to but I would like to `Get` sensor values or current values of actuatros?.
-   
-7. As a provider I don’t want to `Set` target values to Databroker.
 
 # Non-Functional Requirements
 
