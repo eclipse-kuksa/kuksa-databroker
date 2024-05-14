@@ -84,15 +84,6 @@
 
 10.  As a client I want to know if there is a provider up and running by getting some sensor or actuator value.
 
-11.  As a client I don’t want to `Subscribe` to target values.
-
-12.  As a client I don’t want to `Subscribe` to attributes values.
-
-13.  As a client I don’t want to `Get` target values.
-
-14.  As a client I don’t want to `Set` sensor values.
-
-15.  As a client I don’t want to `Set` attributes values.
 
 ### As Databroker
 1. The data broker shall be able to handle catalogs of signals described by the syntax as defined by the COVESA Vehicle Signal Specification (VSS). This relates to all aspects of the VSS syntax definition, which is also called VSS rule set. This implies that the data broker can handle the signal catalog as defined by the COVESA VSS.
