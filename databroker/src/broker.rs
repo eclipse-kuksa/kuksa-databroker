@@ -763,7 +763,6 @@ impl ChangeSubscription {
                                             }
                                             // fill unit field always
                                             update.unit = entry.metadata.unit.clone();
-                                            println!("---------->>>upd inside change sub{:?}",update );
                                             notifications.updates.push(ChangeNotification {
                                                 update,
                                                 fields: notify_fields,
@@ -776,7 +775,6 @@ impl ChangeSubscription {
                                 }
                             }
                         }
-                        println!("---------->>>upd notifications sub{:?}",notifications );
                         notifications
                     };
                     if notifications.updates.is_empty() {
