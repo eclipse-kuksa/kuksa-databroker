@@ -57,17 +57,17 @@
 ### As Signal Consumer
 1. The Signal Consumer shall have a single service point accessible from my execution environment.
    
-2. A Signal Consumer shall get sensor values or actuator current values of the vehicle signals and its environment(air temperature, etc) in a uniform manner.
+2. The Signal Consumer shall get sensor values or actuator current values of the vehicle signals and its environment(air temperature, etc) in a uniform manner.
   - Notes:
     * IF there is an error THEN the Signal Consumer shall not receive any signal value, just one single error with detailed error information for each signal requested ELSE the Signal Consumer shall receive exactly all the signals’ values requested.
-    * Signal Consumer can only get values for signal to which it has permission to.
-    * Signal Consumer must provide the paths of the requested signals, which optionally may contain wildcards.
+    * The Signal Consumer only shall get values for signal to which it has permission to.
+    * The Signal Consumer shall provide the paths of the requested signals, which optionally may contain wildcards.
   
-3. A Signal Consumer shall subscribe to sensor values or actuator current values of a signal and then get notified when some signal value changed -> what about continuous subscription?
+3. The Signal Consumer shall subscribe to sensor values or actuator current values of a signal and then get notified when some signal value changed -> what about continuous subscription?
   - Notes:
     * IF there is an error THEN the Signal Consumer shall not receive any signal value, just one single error with detailed error information for each signal requested and stop the call ELSE the Signal Consumer shall receive exactly all the signals’ values requested.
-    * Signal Consumer can only get values for signal to which it has permission to.
-    * Signal Consumer must provide the paths of the requested signals, which optionally may contain wildcards.
+    * The Signal Consumer only shall get values for signal to which it has permission to.
+    * Signal Consumer shall provide the paths of the requested signals, which optionally may contain wildcards.
 
 4. As a client I want to `Subscribe` and be able to apply a filter to receive a sensor value with an interval of x milliseconds only if the value has changed.
    
