@@ -1,0 +1,100 @@
+/********************************************************************************
+ * Copyright (c) 2022 Contributors to the Eclipse Foundation
+ *
+ * See the NOTICE file(s) distributed with this work for additional
+ * information regarding copyright ownership.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Apache License 2.0 which is available at
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ********************************************************************************/
+
+syntax = "proto3";
+
+package kuksa.val.v2;
+
+option go_package = "kuksa/val/v2";
+
+import "types.proto";
+
+// Note on authorization:
+// Tokens (auth-token or auth-uuid) are sent as (GRPC / http2) metadata.
+//
+// The auth-token is a JWT compliant token as the examples found here:
+// https://github.com/eclipse-kuksa/kuksa-databroker/tree/main/certificates/jwt
+//
+// See also https://github.com/eclipse-kuksa/kuksa-databroker/blob/main/doc/authorization.md#jwt-access-token
+//
+// Upon reception of auth-token, server shall generate an auth-uuid in metadata
+// that the client can use instead of auth-token in subsequent calls.
+
+service VAL {
+  // get current value of attributes, sensors and actuators
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // provide current value of attributes, sensors and actuator - for low update frequency
+  rpc ProvideOnce(ProviceOnceRequest) returns (ProvideOnceResponse);
+
+  // provide stream of current values of attributes, sensors and actuator - for high frequency
+  // return stream of ACK
+  rpc ProvideStream(stream ProvideStreamRequest) returns (stream ProvideStreamResponse);
+
+  // actuate on actuator value
+  rpc Actuate(ActuateRequest) returns (ActuateResponse);
+
+  //get static metadata
+  rpc GetMetadata(MetadataRequest) returns (MetadataResponse);
+
+  rpc GetServerInfo(GetServerInfoRequest) returns (GetServerInfoResponse);
+}
+
+// Request a set of entries.
+message GetRequest {
+  repeated EntryRequest entries = 1;
+}
+
+message GetResponse {
+  repeated DataEntry entries = 1;
+}
+
+message ProviceOnceRequest {
+  repeated EntryUpdate updates = 1;
+}
+
+message ProvideOnceResponse {
+}
+
+message ProvideStreamRequest {
+  repeated EntryUpdate updates = 1;
+}
+
+message ProvideStreamResponse {
+  bool update_received = 1;
+}
+
+message ActuateRequest {
+  EntryUpdate actuator = 1;
+}
+
+message ActuateResponse {
+}
+
+message MetadataRequest {
+  repeated string path = 1;
+}
+
+message MetadataResponse {
+  repeated Metadata metadata = 1;
+  repeated Field fields = 2;
+}
+
+message GetServerInfoRequest {
+  // Nothing yet
+}
+
+message GetServerInfoResponse {
+  string name    = 1;
+  string version = 2;
+}
