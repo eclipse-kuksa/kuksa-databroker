@@ -90,12 +90,25 @@
 2. The Databroker shall support at least those metadata elements as defined by the VSS rule set.
 
 ### As Provider
-1. The Provider shall set the value and current value of one or many sensors and/or actuators with optional timestamp to Databroker.
+1. The data broker shall offer a method to clients allowing to claim providership of a set of signals.
+   a. IF all claimed signals are known AND
+         the client has providing rights for all claimed signals AND
+         all claimed signal is NOT yet claimed by another provider
+      THEN the data broker shall accept and remember the claim
+      ELSE the data broker shall reject the overall claim and return an error containing the reason.
+   b. The data broker shall remember accepted claims of a provider if the connection to the provider is lost.
+   c. The data broker shall allow providers to re-claim previously successfully claimed signals.
+   
+2. The data broker shall offer a method to providers to subscribe for actuation notifications on a (sub-) set of claimed signals.
+   a. The data broker shall reject subscription requests containing signals where the client is not the provider of.
+   b. The data broker shall notify the provider of a signal about received actuation requests.
 
-2. The Provider shall continuously and efficiently (e.g. via grpc stream) _**update**_ the current value of one or multiple sensors and/or actuators with its timestamp.
-
-3. The Provider shall subscribe to the Databroker to receive actuation requests and send back with an acknowledgement response if the request has been successfully received.
-
+3. The data broker shall offer a method to providers to update the current state of a set of signals.
+   a. The current state consists a timestamp and either of valid value or a failure state.
+   b. The data broker shall offer a method optimized for frequent updates.
+   c. The data broker should offer a second method for non-frequent updates that is easy to use in a provider's implementation.
+   d. The data broker shall reject updating the current state of signals where the client is not the provider of.
+   e. The data broker shall store the updated value or failure state of a signal.
 
 # Non-Functional Requirements
 
