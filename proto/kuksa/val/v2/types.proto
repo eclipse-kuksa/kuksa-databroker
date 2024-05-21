@@ -21,28 +21,25 @@ option go_package = "kuksa/val/v2";
 // Define which data we want
 message EntryRequest {
   string path = 1;
-  EntryType entry_type = 2;
-}
-
-// Define the data we want to set
-message EntryUpdate {
-  DataEntry entry = 1;
 }
 
 message DataEntry {
   // Defines the full VSS path of the entry.
   string path = 1;
-
-  // The value (datapoint)
-  Datapoint value = 2;
-
-  EntryType entry_type = 3;
+  Datapoint datapoint = 2;
 }
 
 message Datapoint {
   google.protobuf.Timestamp timestamp = 1;
 
-  oneof value {
+  oneof state {
+    Failure failure = 2;
+    Value value = 3;
+  }
+}
+
+message Value {
+  oneof typed_value {
     string string            = 11;
     bool bool                = 12;
     sint32 int32             = 13;
@@ -60,6 +57,19 @@ message Datapoint {
     FloatArray float_array   = 27;
     DoubleArray double_array = 28;
   }
+}
+
+enum Failure {
+  // The data point is known, but doesn't have a valid value
+  INVALID_VALUE = 0;
+  // The data point is known, but no value is available
+  NOT_AVAILABLE = 1;
+  // Unknown datapoint
+  UNKNOWN_DATAPOINT = 2;
+  // Access denied
+  ACCESS_DENIED = 3;
+  // Unexpected internal error
+  INTERNAL_ERROR = 4;
 }
 
 message Metadata {
@@ -95,31 +105,6 @@ message Metadata {
   // Restrict which values are allowed.
   // Only restrictions matching the DataType {datatype} above are valid.
   ValueRestriction value_restriction = 17;  // [field: FIELD_METADATA_VALUE_RESTRICTION]
-
-  // Entry type specific metadata
-  oneof entry_specific {
-    Actuator actuator   = 20;  // [field: FIELD_METADATA_ACTUATOR]
-    Sensor sensor       = 30;  // [field: FIELD_METADATA_SENSOR]
-    Attribute attribute = 40;  // [field: FIELD_METADATA_ATTRIBUTE]
-  }
-}
-
-///////////////////////
-// Actuator specific fields
-message Actuator {
-  // Nothing for now
-}
-
-////////////////////////
-// Sensor specific
-message Sensor {
-  // Nothing for now
-}
-
-////////////////////////
-// Attribute specific
-message Attribute {
-  // Nothing for now.
 }
 
 // Value restriction
