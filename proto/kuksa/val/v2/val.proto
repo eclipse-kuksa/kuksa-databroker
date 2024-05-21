@@ -17,7 +17,7 @@ package kuksa.val.v2;
 
 option go_package = "kuksa/val/v2";
 
-import "types.proto";
+import "kuksa/val/v2/types.proto";
 
 // Note on authorization:
 // Tokens (auth-token or auth-uuid) are sent as (GRPC / http2) metadata.
@@ -35,11 +35,14 @@ service VAL {
   rpc Get(GetRequest) returns (GetResponse);
 
   // provide current value of attributes, sensors and actuator - for low update frequency
-  rpc ProvideOnce(ProviceOnceRequest) returns (ProvideOnceResponse);
+  rpc ProvideOnce(ProvideOnceRequest) returns (ProvideOnceResponse);
 
   // provide stream of current values of attributes, sensors and actuator - for high frequency
   // return stream of ACK
   rpc ProvideStream(stream ProvideStreamRequest) returns (stream ProvideStreamResponse);
+
+  // subscribe to sensor and actuator values
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
 
   // actuate on actuator value
   rpc Actuate(ActuateRequest) returns (ActuateResponse);
@@ -59,35 +62,63 @@ message GetResponse {
   repeated DataEntry entries = 1;
 }
 
-message ProviceOnceRequest {
-  repeated EntryUpdate updates = 1;
+/**
+Option 2 for GetResponse:
+
+message GetResponse {
+  map<string, Datapoint> entries = 1;
+}
+
+**/
+
+
+message ProvideOnceRequest {
+  repeated DataEntry updates = 1;
 }
 
 message ProvideOnceResponse {
 }
 
 message ProvideStreamRequest {
-  repeated EntryUpdate updates = 1;
+  repeated DataEntry updates = 1;
 }
 
 message ProvideStreamResponse {
   bool update_received = 1;
 }
 
-message ActuateRequest {
-  EntryUpdate actuator = 1;
+message SubscribeRequest {
+  repeated EntryRequest entries = 1;
 }
 
+message SubscribeResponse {
+  repeated DataEntry entries = 1;
+}
+
+message ActuateRequest {
+  repeated DataEntry actuators = 1;
+}
+
+/**
+Option 2 for ActuateRequest:
+
+message GetResponse {
+  map<string, Datapoint> entries = 1;
+}
+
+**/
+
 message ActuateResponse {
+  bool update_forwarded = 1;
 }
 
 message MetadataRequest {
   repeated string path = 1;
+  repeated Field fields = 2;
 }
 
 message MetadataResponse {
   repeated Metadata metadata = 1;
-  repeated Field fields = 2;
 }
 
 message GetServerInfoRequest {
