@@ -707,7 +707,7 @@ fn proto_entry_from_entry_and_fields(
         }
         if all || fields.contains(&proto::Field::MetadataUnit) {
             metadata_is_set = true;
-            metadata.unit = entry.metadata().unit.clone();
+            metadata.unit.clone_from(&entry.metadata().unit);
         }
         if all || fields.contains(&proto::Field::MetadataValueRestriction) {
             metadata_is_set = true;
