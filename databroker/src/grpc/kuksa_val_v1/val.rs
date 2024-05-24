@@ -25,6 +25,7 @@ use tokio_stream::Stream;
 use tokio_stream::StreamExt;
 use tonic::{Response, Status, Streaming};
 use tracing::debug;
+use tracing::info;
 
 use crate::broker;
 use crate::broker::ReadError;
@@ -304,6 +305,7 @@ impl proto::val_server::Val for broker::DataBroker {
         let (sender, receiver) = mpsc::channel(10);
         // Listening on stream
         tokio::spawn(async move {
+            info!("Update Stream opened");
             let permissions = permissions;
             let broker = broker.authorized_access(&permissions);
             loop {
