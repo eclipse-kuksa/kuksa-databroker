@@ -840,6 +840,7 @@ impl broker::EntryUpdate {
 
 #[cfg(test)]
 mod tests {
+    use databroker_proto::kuksa::val::v1::val_server::Val;
     use super::*;
     use crate::{broker::DataBroker, permissions};
 
@@ -895,6 +896,100 @@ mod tests {
                 assert_eq!(error.code, 400, "unexpected error code");
             }
             Err(_status) => panic!("failed to execute set request"),
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_streamed_update_with_valid_datapoint() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.Speed".to_owned(),
+                broker::DataType::Float,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                None,
+                Some("km/h".to_owned()),
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let streamed_update_request = proto::StreamedUpdateRequest {
+            updates: vec![
+                proto::EntryUpdate {
+                    fields: vec![proto::Field::Value as i32],
+                    entry: Some(proto::DataEntry {
+                        path: "Vehicle.Speed".to_owned(),
+                        value: Some(proto::Datapoint {
+                            timestamp: Some(std::time::SystemTime::now().into()),
+                            value: Some(proto::datapoint::Value::Float(120.0)),
+                        }),
+                        metadata: None,
+                        actuator_target: None,
+                    }),
+                }],
+        };
+
+        let mut streaming_request = tonic_mock::streaming_request(vec![streamed_update_request]);
+        streaming_request.extensions_mut().insert(permissions::ALLOW_ALL.clone());
+        match broker.streamed_update(streaming_request).await {
+            Ok(response) => {
+                tokio::spawn(async move {
+                    let stream = response.into_inner();
+                    let mut receiver = stream.into_inner();
+                    let option = receiver.recv();
+                    assert!(option.await.is_none()) // no errors should occur and no ack is delivered
+                });
+            }
+            Err(_) => {
+                panic!("Should not happen")
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_streamed_update_with_invalid_datapoint() {
+        let broker = DataBroker::default();
+
+        let streamed_update_request = proto::StreamedUpdateRequest {
+            updates: vec![
+                proto::EntryUpdate {
+                    fields: vec![proto::Field::Value as i32],
+                    entry: Some(proto::DataEntry {
+                        path: "Vehicle.Invalid.Speed".to_owned(),
+                        value: Some(proto::Datapoint {
+                            timestamp: Some(std::time::SystemTime::now().into()),
+                            value: Some(proto::datapoint::Value::Float(120.0)),
+                        }),
+                        metadata: None,
+                        actuator_target: None,
+                    }),
+                }],
+        };
+
+        let mut streaming_request = tonic_mock::streaming_request(vec![streamed_update_request]);
+        streaming_request.extensions_mut().insert(permissions::ALLOW_ALL.clone());
+        match broker.streamed_update(streaming_request).await {
+            Ok(response) => {
+                tokio::spawn(async move {
+                    let stream = response.into_inner();
+                    let mut receiver = stream.into_inner();
+                    let option = receiver.recv().await;
+                    assert!(option.is_some());
+                    let result = option.unwrap();
+                    let error_opt = result.unwrap().error;
+                    let error = error_opt.unwrap();
+                    assert_eq!(error.code, 404);
+                    assert_eq!(error.reason, "not_found");
+                    assert_eq!(error.message, "Vehicle.Invalid.Speed not found")
+                });
+            }
+            Err(_) => {
+                panic!("Should not happen")
+            }
         }
     }
 }
