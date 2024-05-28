@@ -34,11 +34,6 @@ use crate::broker::{AuthorizedAccess, EntryReadAccess};
 use crate::glob;
 use crate::permissions::Permissions;
 
-struct Pair<F, S> {
-    first: F,
-    second: S,
-}
-
 #[tonic::async_trait]
 impl proto::val_server::Val for broker::DataBroker {
     async fn get(
@@ -236,7 +231,7 @@ impl proto::val_server::Val for broker::DataBroker {
             match &request.entry {
                 Some(entry) => match broker.get_id_by_path(&entry.path).await {
                     Some(id) => match validate_entry_update(&broker, &request, id).await {
-                        Ok(pair) => updates.push((pair.first, pair.second)),
+                        Ok(result) => updates.push(result),
                         Err(e) => return Err(e),
                     },
                     None => {
@@ -254,7 +249,7 @@ impl proto::val_server::Val for broker::DataBroker {
                 None => {
                     return Err(tonic::Status::invalid_argument(
                         "Path is required".to_string(),
-                    ))
+                    ));
                 }
             }
         }
@@ -280,7 +275,7 @@ impl proto::val_server::Val for broker::DataBroker {
     }
 
     type StreamedUpdateStream =
-        ReceiverStream<Result<proto::StreamedUpdateResponse, tonic::Status>>;
+    ReceiverStream<Result<proto::StreamedUpdateResponse, tonic::Status>>;
 
     async fn streamed_update(
         &self,
@@ -301,7 +296,7 @@ impl proto::val_server::Val for broker::DataBroker {
         // Copy (to move into task below)
         let broker = self.clone();
 
-        // Create stream (to be returned)
+        // Create stream (to be returned); when changing buffer size, throughput should be measured
         let (sender, receiver) = mpsc::channel(10);
         // Listening on stream
         tokio::spawn(async move {
@@ -326,8 +321,8 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 Some(entry) => match broker.get_id_by_path(&entry.path).await {
                                                     Some(id) => {
                                                         match validate_entry_update(&broker, &request, id).await {
-                                                            Ok(pair) => {
-                                                                updates.push((pair.first, pair.second));
+                                                            Ok(result) => {
+                                                                updates.push(result);
                                                             }
                                                             Err(e) => {
                                                                 let message = format!("Data present in the request is invalid: {}", e.message());
@@ -378,18 +373,21 @@ impl proto::val_server::Val for broker::DataBroker {
                                                         errors.push(data_entry_error);
                                                     }
                                                 }
-
-                                                if let Err(err) = sender.send(
-                                                    Ok(proto::StreamedUpdateResponse {
-                                                        errors,
-                                                        error: None, // TODO take first element of errors
-                                                    })
-                                                ).await {
-                                                    debug!("Failed to send errors: {}", err);
-                                                }
                                             }
                                         }
 
+                                        if let Err(err) = sender.send(
+                                            Ok(proto::StreamedUpdateResponse {
+                                                errors: errors.clone(),
+                                                error: if let Some(wrapper_error) = errors.first() {
+                                                    wrapper_error.error.clone()
+                                                } else {
+                                                None
+                                                },
+                                            })
+                                        ).await {
+                                            debug!("Failed to send errors: {}", err);
+                                        }
                                     }
                                     None => {
                                         debug!("provider: no more messages");
@@ -417,10 +415,10 @@ impl proto::val_server::Val for broker::DataBroker {
 
     type SubscribeStream = Pin<
         Box<
-            dyn Stream<Item = Result<proto::SubscribeResponse, tonic::Status>>
-                + Send
-                + Sync
-                + 'static,
+            dyn Stream<Item=Result<proto::SubscribeResponse, tonic::Status>>
+            + Send
+            + Sync
+            + 'static,
         >,
     >;
 
@@ -550,7 +548,7 @@ async fn validate_entry_update(
     broker: &AuthorizedAccess<'_, '_>,
     request: &EntryUpdate,
     id: i32,
-) -> Result<Pair<i32, broker::EntryUpdate>, Status> {
+) -> Result<(i32, broker::EntryUpdate), Status> {
     let entry = &request.entry.clone().unwrap();
 
     let fields = HashSet::<proto::Field>::from_iter(request.fields.iter().filter_map(
@@ -575,11 +573,7 @@ async fn validate_entry_update(
     debug!("Setting fields: {:?}", fields);
     let update = broker::EntryUpdate::from_proto_entry_and_fields(entry, fields);
 
-    let pair = Pair {
-        first: id,
-        second: update,
-    };
-    Ok(pair)
+    return Ok((id, update));
 }
 
 fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> DataEntryError {
