@@ -615,6 +615,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tonic",
+ "tonic-mock",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -3101,6 +3102,20 @@ dependencies = [
  "prost-build",
  "quote",
  "syn 2.0.60",
+]
+
+[[package]]
+name = "tonic-mock"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea9163cf065e21bf30e5ad1789bf334f5ae67e4a25f0e8200a7e375466e755ea"
+dependencies = [
+ "bytes",
+ "futures",
+ "http",
+ "http-body",
+ "prost",
+ "tonic",
 ]
 
 [[package]]
