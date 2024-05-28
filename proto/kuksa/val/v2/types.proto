@@ -32,8 +32,8 @@ message DataEntry {
 message Datapoint {
   google.protobuf.Timestamp timestamp = 1;
 
-  oneof state {
-    Failure failure = 2;
+  oneof data {
+    ValueMissing not_available = 2;
     Value value = 3;
   }
 }
@@ -59,7 +59,7 @@ message Value {
   }
 }
 
-enum Failure {
+enum ValueMissing {
   // The data point is known, but doesn't have a valid value
   INVALID_VALUE = 0;
   // The data point is known, but no value is available
