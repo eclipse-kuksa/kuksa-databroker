@@ -77,6 +77,10 @@ message ProvideOnceRequest {
 }
 
 message ProvideOnceResponse {
+  oneof action {
+    bool ack_update_received = 1;
+    Error error = 2;
+  }
 }
 
 message ProvideStreamRequest {
@@ -84,7 +88,12 @@ message ProvideStreamRequest {
 }
 
 message ProvideStreamResponse {
-  bool update_received = 1;
+  oneof action {
+    ActuateCommand actuator_command = 1;
+    SensorCommand sensor_command = 2;
+    bool ack_update_received = 3;
+    Error error = 4;
+  }
 }
 
 message SubscribeRequest {
