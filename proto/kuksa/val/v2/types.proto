@@ -72,6 +72,14 @@ enum ValueMissing {
   INTERNAL_ERROR = 4;
 }
 
+message ActuateCommand {
+  
+}
+
+message SensorCommand {
+  
+}
+
 message Metadata {
   // Data type
   // The VSS data type of the entry (i.e. the value, min, max etc).
