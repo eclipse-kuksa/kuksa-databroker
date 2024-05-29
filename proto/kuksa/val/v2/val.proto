@@ -73,7 +73,7 @@ message GetResponse {
 
 
 message ProvideOnceRequest {
-  repeated DataEntry updates = 1;
+  repeated DataUpdate updates = 1;
 }
 
 message ProvideOnceResponse {
@@ -84,14 +84,14 @@ message ProvideOnceResponse {
 }
 
 message ProvideStreamRequest {
-  repeated DataEntry updates = 1;
+  repeated DataUpdate updates = 1;
 }
 
 message ProvideStreamResponse {
   oneof action {
     ActuateCommand actuator_command = 1;
     SensorCommand sensor_command = 2;
-    bool ack_update_received = 3;
+    bool ack_command = 3;
     Error error = 4;
   }
 }
@@ -105,7 +105,7 @@ message SubscribeResponse {
 }
 
 message ActuateRequest {
-  repeated DataEntry actuators = 1;
+  repeated DataUpdate actuators = 1;
 }
 
 /**
