@@ -275,7 +275,7 @@ impl proto::val_server::Val for broker::DataBroker {
     }
 
     type StreamedUpdateStream =
-    ReceiverStream<Result<proto::StreamedUpdateResponse, tonic::Status>>;
+        ReceiverStream<Result<proto::StreamedUpdateResponse, tonic::Status>>;
 
     async fn streamed_update(
         &self,
@@ -415,10 +415,10 @@ impl proto::val_server::Val for broker::DataBroker {
 
     type SubscribeStream = Pin<
         Box<
-            dyn Stream<Item=Result<proto::SubscribeResponse, tonic::Status>>
-            + Send
-            + Sync
-            + 'static,
+            dyn Stream<Item = Result<proto::SubscribeResponse, tonic::Status>>
+                + Send
+                + Sync
+                + 'static,
         >,
     >;
 
@@ -840,9 +840,9 @@ impl broker::EntryUpdate {
 
 #[cfg(test)]
 mod tests {
-    use databroker_proto::kuksa::val::v1::val_server::Val;
     use super::*;
     use crate::{broker::DataBroker, permissions};
+    use databroker_proto::kuksa::val::v1::val_server::Val;
 
     #[tokio::test]
     async fn test_update_datapoint_using_wrong_type() {
@@ -918,23 +918,24 @@ mod tests {
             .expect("Register datapoint should succeed");
 
         let streamed_update_request = proto::StreamedUpdateRequest {
-            updates: vec![
-                proto::EntryUpdate {
-                    fields: vec![proto::Field::Value as i32],
-                    entry: Some(proto::DataEntry {
-                        path: "Vehicle.Speed".to_owned(),
-                        value: Some(proto::Datapoint {
-                            timestamp: Some(std::time::SystemTime::now().into()),
-                            value: Some(proto::datapoint::Value::Float(120.0)),
-                        }),
-                        metadata: None,
-                        actuator_target: None,
+            updates: vec![proto::EntryUpdate {
+                fields: vec![proto::Field::Value as i32],
+                entry: Some(proto::DataEntry {
+                    path: "Vehicle.Speed".to_owned(),
+                    value: Some(proto::Datapoint {
+                        timestamp: Some(std::time::SystemTime::now().into()),
+                        value: Some(proto::datapoint::Value::Float(120.0)),
                     }),
-                }],
+                    metadata: None,
+                    actuator_target: None,
+                }),
+            }],
         };
 
         let mut streaming_request = tonic_mock::streaming_request(vec![streamed_update_request]);
-        streaming_request.extensions_mut().insert(permissions::ALLOW_ALL.clone());
+        streaming_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
         match broker.streamed_update(streaming_request).await {
             Ok(response) => {
                 tokio::spawn(async move {
@@ -955,23 +956,24 @@ mod tests {
         let broker = DataBroker::default();
 
         let streamed_update_request = proto::StreamedUpdateRequest {
-            updates: vec![
-                proto::EntryUpdate {
-                    fields: vec![proto::Field::Value as i32],
-                    entry: Some(proto::DataEntry {
-                        path: "Vehicle.Invalid.Speed".to_owned(),
-                        value: Some(proto::Datapoint {
-                            timestamp: Some(std::time::SystemTime::now().into()),
-                            value: Some(proto::datapoint::Value::Float(120.0)),
-                        }),
-                        metadata: None,
-                        actuator_target: None,
+            updates: vec![proto::EntryUpdate {
+                fields: vec![proto::Field::Value as i32],
+                entry: Some(proto::DataEntry {
+                    path: "Vehicle.Invalid.Speed".to_owned(),
+                    value: Some(proto::Datapoint {
+                        timestamp: Some(std::time::SystemTime::now().into()),
+                        value: Some(proto::datapoint::Value::Float(120.0)),
                     }),
-                }],
+                    metadata: None,
+                    actuator_target: None,
+                }),
+            }],
         };
 
         let mut streaming_request = tonic_mock::streaming_request(vec![streamed_update_request]);
-        streaming_request.extensions_mut().insert(permissions::ALLOW_ALL.clone());
+        streaming_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
         match broker.streamed_update(streaming_request).await {
             Ok(response) => {
                 tokio::spawn(async move {
