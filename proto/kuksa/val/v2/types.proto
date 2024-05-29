@@ -72,12 +72,17 @@ enum ValueMissing {
   INTERNAL_ERROR = 4;
 }
 
+message DataUpdate {
+  string path = 1;
+  Value value = 2;
+}
+
 message ActuateCommand {
-  
+  repeated DataUpdate updates = 1;
 }
 
 message SensorCommand {
-  
+  repeated DataUpdate updates = 1;
 }
 
 message Metadata {

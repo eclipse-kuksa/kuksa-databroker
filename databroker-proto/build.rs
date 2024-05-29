@@ -23,6 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/sdv/databroker/v1/collector.proto",
                 "proto/kuksa/val/v1/val.proto",
                 "proto/kuksa/val/v1/types.proto",
+                "proto/kuksa/val/v2/types.proto",
+                "proto/kuksa/val/v2/val.proto"
             ],
             &["proto"],
         )?;
