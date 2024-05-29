@@ -89,11 +89,11 @@ impl proto::val_server::Val for broker::DataBroker {
                     continue;
                 }
 
-                let view = proto::View::from_i32(request.view).ok_or_else(|| {
+                let view = proto::View::try_from(request.view).map_err(|_| {
                     tonic::Status::invalid_argument(format!("Invalid View (id: {}", request.view))
                 })?;
                 let fields = HashSet::<proto::Field>::from_iter(request.fields.iter().filter_map(
-                    |id| proto::Field::from_i32(*id), // Ignore unknown fields for now
+                    |id| proto::Field::try_from(*id).ok(), // Ignore unknown fields for now
                 ));
                 let view_fields = combine_view_and_fields(view, fields);
                 debug!("Getting fields: {:?}", view_fields);
@@ -457,7 +457,7 @@ impl proto::val_server::Val for broker::DataBroker {
             if let Ok(regex) = regex_exp {
                 let mut fields = HashSet::new();
                 for id in &entry.fields {
-                    if let Some(field) = proto::Field::from_i32(*id) {
+                    if let Ok(field) = proto::Field::try_from(*id) {
                         match field {
                             proto::Field::Value => {
                                 fields.insert(broker::Field::Datapoint);
@@ -552,7 +552,7 @@ async fn validate_entry_update(
     let entry = &request.entry.clone().unwrap();
 
     let fields = HashSet::<proto::Field>::from_iter(request.fields.iter().filter_map(
-        |id| proto::Field::from_i32(*id), // Ignore unknown fields for now
+        |id| proto::Field::try_from(*id).ok(), // Ignore unknown fields for now
     ));
 
     if entry.actuator_target.is_some() {
@@ -573,7 +573,7 @@ async fn validate_entry_update(
     debug!("Setting fields: {:?}", fields);
     let update = broker::EntryUpdate::from_proto_entry_and_fields(entry, fields);
 
-    return Ok((id, update));
+    Ok((id, update))
 }
 
 fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> DataEntryError {

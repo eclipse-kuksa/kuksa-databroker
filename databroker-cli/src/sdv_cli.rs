@@ -336,12 +336,12 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                             if let Some(metadata) = datapoint_metadata {
                                 let data_value = try_into_data_value(
                                     value,
-                                    proto::v1::DataType::from_i32(metadata.data_type).unwrap(),
+                                    proto::v1::DataType::try_from(metadata.data_type).unwrap(),
                                 );
                                 if data_value.is_err() {
                                     println!(
                                         "Could not parse \"{value}\" as {:?}",
-                                        proto::v1::DataType::from_i32(metadata.data_type).unwrap()
+                                        proto::v1::DataType::try_from(metadata.data_type).unwrap()
                                     );
                                     continue;
                                 }
@@ -369,8 +369,8 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                             cli::print_resp_ok(cmd)?;
                                         } else {
                                             for (id, error) in message.errors {
-                                                match proto::v1::DatapointError::from_i32(error) {
-                                                    Some(error) => {
+                                                match proto::v1::DatapointError::try_from(error) {
+                                                    Ok(error) => {
                                                         cli::print_resp_ok(cmd)?;
                                                         println!(
                                                             "Error setting {}: {}",
@@ -378,7 +378,7 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                                             Color::Red.paint(format!("{error:?}")),
                                                         );
                                                     }
-                                                    None => cli::print_resp_ok_fmt(
+                                                    Err(_) => cli::print_resp_ok_fmt(
                                                         cmd,
                                                         format_args!("Error setting id {id}"),
                                                     )?,
@@ -431,13 +431,13 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                             if let Some(metadata) = datapoint_metadata {
                                 let data_value = try_into_data_value(
                                     value,
-                                    proto::v1::DataType::from_i32(metadata.data_type).unwrap(),
+                                    proto::v1::DataType::try_from(metadata.data_type).unwrap(),
                                 );
                                 if data_value.is_err() {
                                     println!(
                                         "Could not parse \"{}\" as {:?}",
                                         value,
-                                        proto::v1::DataType::from_i32(metadata.data_type).unwrap()
+                                        proto::v1::DataType::try_from(metadata.data_type).unwrap()
                                     );
                                     continue;
                                 }
@@ -461,14 +461,14 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                                 } else {
                                                     format!("id {id}")
                                                 };
-                                                match proto::v1::DatapointError::from_i32(error) {
-                                                    Some(error) => cli::print_resp_ok_fmt(
+                                                match proto::v1::DatapointError::try_from(error) {
+                                                    Ok(error) => cli::print_resp_ok_fmt(
                                                         cmd,
                                                         format_args!(
                                                             "Error providing {identifier}: {error:?}",
                                                         ),
                                                     )?,
-                                                    None => cli::print_resp_ok_fmt(
+                                                    Err(_) => cli::print_resp_ok_fmt(
                                                         cmd,
                                                         format_args!("Error providing {identifier}",),
                                                     )?,
@@ -723,12 +723,12 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                     println!(
                                         "{:<max_len_path$} {:<10} {:<9}",
                                         entry.name,
-                                        DisplayEntryType::from(proto::v1::EntryType::from_i32(
-                                            entry.entry_type
-                                        )),
-                                        DisplayDataType::from(proto::v1::DataType::from_i32(
-                                            entry.data_type
-                                        )),
+                                        DisplayEntryType::from(
+                                            proto::v1::EntryType::try_from(entry.entry_type).ok()
+                                        ),
+                                        DisplayDataType::from(
+                                            proto::v1::DataType::try_from(entry.data_type).ok()
+                                        ),
                                     );
                                 }
                             }
@@ -968,7 +968,7 @@ impl fmt::Display for DisplayDatapoint {
                 proto::v1::datapoint::Value::BoolValue(value) => f.pad(&format!("{value}")),
                 proto::v1::datapoint::Value::FailureValue(failure) => f.pad(&format!(
                     "( {:?} )",
-                    proto::v1::datapoint::Failure::from_i32(*failure).unwrap()
+                    proto::v1::datapoint::Failure::try_from(*failure).unwrap()
                 )),
                 proto::v1::datapoint::Value::Int32Value(value) => f.pad(&format!("{value}")),
                 proto::v1::datapoint::Value::Int64Value(value) => f.pad(&format!("{value}")),
