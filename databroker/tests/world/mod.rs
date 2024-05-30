@@ -267,7 +267,7 @@ impl DataBrokerWorld {
 
         debug!("started Databroker [address: {addr}]");
 
-        let data_broker_url = format!("http://{}:{}", addr.ip(), addr.port());
+        let data_broker_url = format!("https://{}:{}", addr.ip(), addr.port());
 
         self.broker_client = match kuksa_common::to_uri(data_broker_url.clone()) {
             Ok(uri) => Some(kuksa::KuksaClient::new(uri)),
