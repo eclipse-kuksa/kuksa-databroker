@@ -17,7 +17,7 @@ package kuksa.val.v2;
 
 option go_package = "kuksa/val/v2";
 
-import "kuksa/val/v2/types.proto";
+import "types.proto";
 
 // Note on authorization:
 // Tokens (auth-token or auth-uuid) are sent as (GRPC / http2) metadata.
@@ -73,7 +73,7 @@ message GetResponse {
 
 
 message ProvideOnceRequest {
-  repeated DataUpdate updates = 1;
+  repeated DatapointUpdate updates = 1;
 }
 
 message ProvideOnceResponse {
@@ -83,21 +83,27 @@ message ProvideOnceResponse {
   }
 }
 
-message ProvideStreamRequest {
-  repeated DataUpdate updates = 1;
+message ProvideUpwardsStream {
+  message UpdateValues {
+    repeated DatapointUpdate datapoints = 1;
+  }
+  oneof action {
+    UpdateValues updates = 1;
+    ActuateCommandACK actuate_command_ack = 2;
+  }
 }
 
-message ProvideStreamResponse {
+message ProvideDownwardsStream {
   oneof action {
-    ActuateCommand actuator_command = 1;
-    SensorCommand sensor_command = 2;
-    bool ack_command = 3;
-    Error error = 4;
+    SignalCommand signal_command = 1;
+    ActuateCommand actuate_command = 2;
+    Error error = 3;
   }
 }
 
 message SubscribeRequest {
   repeated EntryRequest entries = 1;
+  optional uint64 interval_ms = 2;
 }
 
 message SubscribeResponse {
@@ -105,7 +111,7 @@ message SubscribeResponse {
 }
 
 message ActuateRequest {
-  repeated DataUpdate actuators = 1;
+  repeated DatapointUpdate actuators = 1;
 }
 
 /**
@@ -118,7 +124,12 @@ message GetResponse {
 **/
 
 message ActuateResponse {
-  bool update_forwarded = 1;
+  bool ack_request_forwarded = 1;
+  oneof status {
+    DatapointStatus not_available = 1;
+    ProviderStatus provider_status = 2;
+    Error error = 3;
+  }
 }
 
 message MetadataRequest {
