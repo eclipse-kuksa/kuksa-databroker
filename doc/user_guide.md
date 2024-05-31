@@ -129,11 +129,14 @@ The command below starts the Databroker using the example key and certificate fr
 docker run --rm -it --name Server --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databroker:main --tls-cert /opt/kuksa/Server.pem --tls-private-key /opt/kuksa/Server.key
 ```
 
+It is mandatory to correctly qualify the Databroker URL with `https://` protocol when the Databroker has an active TLS configuration.
+The `databroker-cli` uses `http://127.0.0.1:55555` as a default value therefore it is required to specify the `--server` flag (e.g. `--server https://127.0.0.1:55555`) when connecting from databroker-cli to a Databroker with an active TLS configuration.
+
 The CLI can then be configured to use a corresponding trusted CA certificate store when connecting to the Databroker:
 
 ```shell
 # in repository root
-docker run --rm -it --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databroker-cli:main --server Server:55555 --ca-cert /opt/kuksa/CA.pem
+docker run --rm -it --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse-kuksa/kuksa-databroker-cli:main --server https://Server:55555 --ca-cert /opt/kuksa/CA.pem
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -264,6 +267,14 @@ Kuksa Databroker implements the following service interfaces:
 - [sdv.databroker.v1.Collector](../proto/sdv/databroker/v1/collector.proto)
 
 <p align="right">(<a href="#top">back to top</a>)</p>
+
+## Troubleshooting
+
+### 'h2 protocol error: http2 error: connection error detected: frame with invalid size'
+
+This error might occur when a client tries to connect to a Databroker with an active TLS configuration while using an 'http://' URL. The URL needs to be changed to 'https://'
+
+The databroker-cli will use 'http://127.0.0.1:55555' as a default value, therefore it is required to specify the `--server` flag (e.g. `--server https://127.0.0.1:55555`) when connecting from databroker-cli.
 
 ## Known Limitations
 
