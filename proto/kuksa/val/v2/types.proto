@@ -33,7 +33,7 @@ message Datapoint {
   google.protobuf.Timestamp timestamp = 1;
 
   oneof data {
-    ValueMissing not_available = 2;
+    DatapointStatus not_available = 2;
     Value value = 3;
   }
 }
@@ -59,7 +59,7 @@ message Value {
   }
 }
 
-enum ValueMissing {
+enum DatapointStatus {
   // The data point is known, but doesn't have a valid value
   INVALID_VALUE = 0;
   // The data point is known, but no value is available
@@ -72,17 +72,43 @@ enum ValueMissing {
   INTERNAL_ERROR = 4;
 }
 
-message DataUpdate {
+message DatapointUpdate {
   string path = 1;
   Value value = 2;
 }
 
 message ActuateCommand {
-  repeated DataUpdate updates = 1;
+  string uuid = 1;
+  repeated DatapointUpdate updates = 2;
 }
 
-message SensorCommand {
-  repeated DataUpdate updates = 1;
+message ActuateCommandResponse {
+  string uuid = 1;
+  bool ack_action_received = 3;
+}
+
+
+message Start {
+  optional uint64 update_interval_ms = 1;
+}
+
+message Stop {
+
+}
+
+message SignalCommand {
+  string uuid = 1;
+  string path = 2;
+
+  oneof signal_behaviour {
+    Start start = 3;
+    Stop stop = 4;
+  }
+}
+
+enum SignalAction {
+  START = 0;
+  STOP = 1;
 }
 
 message Metadata {
