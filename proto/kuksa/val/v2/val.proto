@@ -39,7 +39,7 @@ service VAL {
 
   // provide stream of current values of attributes, sensors and actuator - for high frequency
   // return stream of ACK
-  rpc ProvideStream(stream ProvideStreamRequest) returns (stream ProvideStreamResponse);
+  rpc ProvideStream(stream ProvideUpwardsStream) returns (stream ProvideDownwardsStream);
 
   // subscribe to sensor and actuator values
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
@@ -89,7 +89,8 @@ message ProvideUpwardsStream {
   }
   oneof action {
     UpdateValues updates = 1;
-    ActuateCommandACK actuate_command_ack = 2;
+    SignalCommandACK signal_command_ack = 2;
+    ActuateCommandACK actuate_command_ack = 3;
   }
 }
 
