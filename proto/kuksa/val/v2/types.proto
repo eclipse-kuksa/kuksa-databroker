@@ -82,13 +82,18 @@ message ActuateCommand {
   repeated DatapointUpdate updates = 2;
 }
 
-message ActuateCommandResponse {
+message ActuateCommandACK {
   string uuid = 1;
   bool ack_action_received = 3;
 }
 
+message SignalCommandACK {
+  string uuid = 1;
+  bool ack_action_received = 3;
+}
 
 message Start {
+  repeated string path = 2;
   optional uint64 update_interval_ms = 1;
 }
 
@@ -98,18 +103,17 @@ message Stop {
 
 message SignalCommand {
   string uuid = 1;
-  string path = 2;
-
   oneof signal_behaviour {
     Start start = 3;
     Stop stop = 4;
   }
 }
 
-enum SignalAction {
-  START = 0;
-  STOP = 1;
+enum ProviderStatus {
+  NOT_AVAILABE = 3;
+  INTERNAL_ERROR = 4;
 }
+  
 
 message Metadata {
   // Data type
