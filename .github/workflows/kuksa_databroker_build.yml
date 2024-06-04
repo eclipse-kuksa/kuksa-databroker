@@ -151,7 +151,7 @@ jobs:
 
   check_ghcr_push:
     name: Check access rights
-    uses: eclipse-kuksa/kuksa-actions/.github/workflows/check_ghcr_push.yml@2
+    uses: eclipse-kuksa/kuksa-actions/.github/workflows/check_ghcr_push.yml@4
     secrets: inherit
 
   create-container:
@@ -251,7 +251,7 @@ jobs:
         provenance: false
 
     - name: Posting message
-      uses: eclipse-kuksa/kuksa-actions/post-container-location@2
+      uses: eclipse-kuksa/kuksa-actions/post-container-location@4
       with:
         image: ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}
 
@@ -312,3 +312,11 @@ jobs:
         with:
           dashinput: ${{github.workspace}}/dash-databroker-deps
           dashtoken: ${{ secrets.ECLIPSE_GITLAB_API_TOKEN }}
+
+  check-doc-links:
+    name: Check links in markdown
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: eclipse-kuksa/kuksa-actions/check-markdown@4

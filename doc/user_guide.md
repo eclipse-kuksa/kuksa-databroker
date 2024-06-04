@@ -13,7 +13,7 @@ The following sections provide information for running and configuring Databroke
     <li><a href="#getting-help">Getting Help</a></li>
     <li><a href="#running-databroker">Running Databroker</a></li>
     <li><a href="#enabling-authorization">Enabling Authorization</a></li>
-    <li><a href="#enabling-tLS">Enabling TLS</a></li>
+    <li><a href="#enabling-tls">Enabling TLS</a></li>
     <li><a href="#query-syntax">Query Syntax</a></li>
     <li><a href="#using-custom-vss-data-entries">Using Custom VSS Data Entries</a></li>
     <li><a href="#configuration-reference">Configuration Reference</a></li>
@@ -274,7 +274,7 @@ Kuksa Databroker implements the following service interfaces:
 
 This error might occur when a client tries to connect to a Databroker with an active TLS configuration while using an 'http://' URL. The URL needs to be changed to 'https://'
 
-The databroker-cli will use 'http://127.0.0.1:55555' as a default value, therefore it is required to specify the `--server` flag (e.g. `--server https://127.0.0.1:55555`) when connecting from databroker-cli.
+The databroker-cli will use `http://127.0.0.1:55555` as a default value, therefore it is required to specify the `--server` flag (e.g. `--server https://127.0.0.1:55555`) when connecting from databroker-cli.
 
 ## Known Limitations
 

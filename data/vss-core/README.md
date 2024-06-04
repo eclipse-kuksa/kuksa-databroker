@@ -40,8 +40,8 @@ This is the process for introducing support for a new VSS version:
 * Some files (`*.txt`) instead list all versions, there just add the new version
 * If needed, adapt or extend test cases to use the new version instead of previous version
 * Remember to also integrate new version in [KUKSA Feeder](https://github.com/eclipse/kuksa.val.feeders) repository
-    * Needed for [dbc2val](https://github.com/eclipse/kuksa.val.feeders/blob/main/dbc2val/mapping/mapping.md)
-    * Needed for [dds2val](https://github.com/eclipse/kuksa.val.feeders/blob/main/dds2val/ddsproviderlib/idls/generate_py_dataclass.sh)
+    * Needed for [dbc2val](https://github.com/eclipse-kuksa/kuksa-can-provider/blob/main/mapping/README.md)
+    * Needed for [dds2val](https://github.com/eclipse-kuksa/kuksa-dds-provider/blob/main/ddsproviderlib/idls/generate_py_dataclass.sh)
 
 ### Release Candidate Handling
 
@@ -76,9 +76,9 @@ client> get Vehicle.CurrentLocation.Latitude
 
 ### Kuksa_databroker and dbc2val smoke test
 
-Run dbc2val as described in [documentation](https://github.com/eclipse/kuksa.val.feeders/blob/main/dbc2val/Readme.md) using example [dump file](https://github.com/eclipse/kuksa.val.feeders/blob/main/dbc2val/candump.log). It is important to use databroker mode.
+Run dbc2val as described in [documentation](https://github.com/eclipse-kuksa/kuksa-can-provider/blob/main/README.md) using example [dump file](https://github.com/eclipse-kuksa/kuksa-can-provider/blob/main/candump.log). It is important to use databroker mode.
 
 ```sh
 ./dbcfeeder.py --usecase databroker --address=127.0.0.1:55555
 ```
-Verify that no errors appear in kuksa-val-server log. Not all signals in the [mapping files](https://github.com/eclipse/kuksa.val.feeders/blob/main/dbc2val/mapping) are used by the example dump file, but it can be verified using Kuksa Client that e.g. `Vehicle.Speed` has been given a value.
+Verify that no errors appear in kuksa-val-server log. Not all signals in the [mapping files](https://github.com/eclipse-kuksa/kuksa-can-provider/tree/main/mapping) are used by the example dump file, but it can be verified using Kuksa Client that e.g. `Vehicle.Speed` has been given a value.
