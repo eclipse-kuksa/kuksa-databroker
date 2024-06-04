@@ -88,6 +88,7 @@ vergen = { version = "8", features = [
 anyhow = "1.0"
 chrono = "^0.4"
 cucumber = { version = "0.20", default-features = false, features = ["libtest", "macros"] }
+tonic-mock = "0.3.0"
 
 [[test]]
 name = "read_write_values"

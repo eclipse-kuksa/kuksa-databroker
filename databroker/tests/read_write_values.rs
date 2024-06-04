@@ -213,7 +213,7 @@ fn assert_value(
             };
             match data_entry
                 .metadata
-                .and_then(|m| DataType::from_i32(m.data_type))
+                .and_then(|m| DataType::try_from(m.data_type).ok())
             {
                 None => panic!("no metadata for path: {:?}", path),
                 Some(actual_type) => assert_eq!(actual_type, expected_type),

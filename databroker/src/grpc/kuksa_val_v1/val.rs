@@ -15,17 +15,22 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::pin::Pin;
+use tokio::select;
+use tokio::sync::mpsc;
 
 use databroker_proto::kuksa::val::v1 as proto;
-use databroker_proto::kuksa::val::v1::DataEntryError;
+use databroker_proto::kuksa::val::v1::{DataEntryError, EntryUpdate};
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;
+use tonic::{Response, Status, Streaming};
 use tracing::debug;
+use tracing::info;
 
 use crate::broker;
-use crate::broker::EntryReadAccess;
 use crate::broker::ReadError;
 use crate::broker::SubscriptionError;
+use crate::broker::{AuthorizedAccess, EntryReadAccess};
 use crate::glob;
 use crate::permissions::Permissions;
 
@@ -84,11 +89,11 @@ impl proto::val_server::Val for broker::DataBroker {
                     continue;
                 }
 
-                let view = proto::View::from_i32(request.view).ok_or_else(|| {
+                let view = proto::View::try_from(request.view).map_err(|_| {
                     tonic::Status::invalid_argument(format!("Invalid View (id: {}", request.view))
                 })?;
                 let fields = HashSet::<proto::Field>::from_iter(request.fields.iter().filter_map(
-                    |id| proto::Field::from_i32(*id), // Ignore unknown fields for now
+                    |id| proto::Field::try_from(*id).ok(), // Ignore unknown fields for now
                 ));
                 let view_fields = combine_view_and_fields(view, fields);
                 debug!("Getting fields: {:?}", view_fields);
@@ -216,42 +221,19 @@ impl proto::val_server::Val for broker::DataBroker {
 
         let broker = self.authorized_access(&permissions);
 
+        let entry_updates = request.into_inner().updates;
+
         // Collect errors encountered
         let mut errors = Vec::<DataEntryError>::new();
-
         let mut updates = Vec::<(i32, broker::EntryUpdate)>::new();
-        for request in request.into_inner().updates {
+
+        for request in entry_updates {
             match &request.entry {
                 Some(entry) => match broker.get_id_by_path(&entry.path).await {
-                    Some(id) => {
-                        let fields =
-                            HashSet::<proto::Field>::from_iter(request.fields.iter().filter_map(
-                                |id| proto::Field::from_i32(*id), // Ignore unknown fields for now
-                            ));
-
-                        if entry.actuator_target.is_some() {
-                            if let Some(metadata) = broker.get_metadata(id).await {
-                                if metadata.entry_type != broker::EntryType::Actuator {
-                                    return Err(tonic::Status::invalid_argument(
-                                        "Tried to set a target value for a non-actuator. Non-actuators have no target value.".to_string(),
-                                    ));
-                                }
-                            }
-                        }
-
-                        let entry = match &request.entry {
-                            Some(entry) => entry,
-                            None => {
-                                return Err(tonic::Status::invalid_argument(
-                                    "Empty entry".to_string(),
-                                ))
-                            }
-                        };
-                        debug!("Settings fields: {:?}", fields);
-                        let update =
-                            broker::EntryUpdate::from_proto_entry_and_fields(entry, fields);
-                        updates.push((id, update));
-                    }
+                    Some(id) => match validate_entry_update(&broker, &request, id).await {
+                        Ok(result) => updates.push(result),
+                        Err(e) => return Err(e),
+                    },
                     None => {
                         let message = format!("{} not found", entry.path);
                         errors.push(proto::DataEntryError {
@@ -267,7 +249,7 @@ impl proto::val_server::Val for broker::DataBroker {
                 None => {
                     return Err(tonic::Status::invalid_argument(
                         "Path is required".to_string(),
-                    ))
+                    ));
                 }
             }
         }
@@ -279,59 +261,7 @@ impl proto::val_server::Val for broker::DataBroker {
                 for (id, error) in err.into_iter() {
                     if let Some(metadata) = broker.get_metadata(id).await {
                         let path = metadata.path.clone();
-                        let data_entry_error = match error {
-                            broker::UpdateError::NotFound => DataEntryError {
-                                path: path.clone(),
-                                error: Some(proto::Error {
-                                    code: 404,
-                                    reason: String::from("not found"),
-                                    message: format!("no datapoint registered for path {path}"),
-                                }),
-                            },
-                            broker::UpdateError::WrongType => DataEntryError {
-                                path,
-                                error: Some(proto::Error {
-                                    code: 400,
-                                    reason: String::from("type mismatch"),
-                                    message:
-                                        "cannot set existing datapoint to value of different type"
-                                            .to_string(),
-                                }),
-                            },
-                            broker::UpdateError::UnsupportedType => DataEntryError {
-                                path,
-                                error: Some(proto::Error {
-                                    code: 400,
-                                    reason: String::from("unsupported type"),
-                                    message: "cannot set datapoint to value of unsupported type"
-                                        .to_string(),
-                                }),
-                            },
-                            broker::UpdateError::OutOfBounds => DataEntryError {
-                                path,
-                                error: Some(proto::Error {
-                                    code: 400,
-                                    reason: String::from("value out of bounds"),
-                                    message: String::from("given value exceeds type's boundaries"),
-                                }),
-                            },
-                            broker::UpdateError::PermissionDenied => DataEntryError {
-                                path: path.clone(),
-                                error: Some(proto::Error {
-                                    code: 403,
-                                    reason: String::from("forbidden"),
-                                    message: format!("Access was denied for {path}"),
-                                }),
-                            },
-                            broker::UpdateError::PermissionExpired => DataEntryError {
-                                path,
-                                error: Some(proto::Error {
-                                    code: 401,
-                                    reason: String::from("unauthorized"),
-                                    message: String::from("Unauthorized"),
-                                }),
-                            },
-                        };
+                        let data_entry_error = convert_to_data_entry_error(&path, &error);
                         errors.push(data_entry_error);
                     }
                 }
@@ -342,6 +272,145 @@ impl proto::val_server::Val for broker::DataBroker {
             error: None,
             errors,
         }))
+    }
+
+    type StreamedUpdateStream =
+        ReceiverStream<Result<proto::StreamedUpdateResponse, tonic::Status>>;
+
+    async fn streamed_update(
+        &self,
+        request: tonic::Request<Streaming<proto::StreamedUpdateRequest>>,
+    ) -> Result<tonic::Response<Self::StreamedUpdateStream>, tonic::Status> {
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+        let mut stream = request.into_inner();
+
+        let mut shutdown_trigger = self.get_shutdown_trigger();
+
+        // Copy (to move into task below)
+        let broker = self.clone();
+
+        // Create stream (to be returned); when changing buffer size, throughput should be measured
+        let (sender, receiver) = mpsc::channel(10);
+        // Listening on stream
+        tokio::spawn(async move {
+            info!("Update Stream opened");
+            let permissions = permissions;
+            let broker = broker.authorized_access(&permissions);
+            loop {
+                select! {
+                    message = stream.message() => {
+                        match message {
+                            Ok(request) => {
+                                match request {
+                                    Some(req) => {
+                                        let entry_updates = req.updates;
+
+                                        // Collect errors encountered
+                                        let mut errors = Vec::<DataEntryError>::new();
+                                        let mut updates = Vec::<(i32, broker::EntryUpdate)>::new();
+
+                                        for request in entry_updates {
+                                            match &request.entry {
+                                                Some(entry) => match broker.get_id_by_path(&entry.path).await {
+                                                    Some(id) => {
+                                                        match validate_entry_update(&broker, &request, id).await {
+                                                            Ok(result) => {
+                                                                updates.push(result);
+                                                            }
+                                                            Err(e) => {
+                                                                let message = format!("Data present in the request is invalid: {}", e.message());
+                                                                errors.push(proto::DataEntryError {
+                                                                    path: entry.path.clone(),
+                                                                    error: Some(proto::Error {
+                                                                        code: 400,
+                                                                        reason: "invalid_data".to_string(),
+                                                                        message,
+                                                                    })
+                                                                })
+                                                            }
+                                                        }
+                                                    }
+                                                    None => {
+                                                        let message = format!("{} not found", entry.path);
+                                                        errors.push(proto::DataEntryError {
+                                                            path: entry.path.clone(),
+                                                            error: Some(proto::Error {
+                                                                code: 404,
+                                                                reason: "not_found".to_string(),
+                                                                message,
+                                                            })
+                                                        })
+                                                    }
+                                                },
+                                                None => {
+                                                    errors.push(proto::DataEntryError {
+                                                        path: "".to_string(),
+                                                        error: Some(proto::Error {
+                                                            code: 400,
+                                                            reason: "invalid_data".to_string(),
+                                                            message: "Data present in the request is invalid: Path is required".to_string()
+                                                        })
+                                                    })
+                                                }
+                                            }
+                                        }
+
+                                        match broker.update_entries(updates).await {
+                                            Ok(_) => {}
+                                            Err(err) => {
+                                                debug!("Failed to set datapoint: {:?}", err);
+                                                for (id, error) in err.into_iter() {
+                                                    if let Some(metadata) = broker.get_metadata(id).await {
+                                                        let path = metadata.path.clone();
+                                                        let data_entry_error = convert_to_data_entry_error(&path, &error);
+                                                        errors.push(data_entry_error);
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        if let Err(err) = sender.send(
+                                            Ok(proto::StreamedUpdateResponse {
+                                                errors: errors.clone(),
+                                                error: if let Some(wrapper_error) = errors.first() {
+                                                    wrapper_error.error.clone()
+                                                } else {
+                                                None
+                                                },
+                                            })
+                                        ).await {
+                                            debug!("Failed to send errors: {}", err);
+                                        }
+                                    }
+                                    None => {
+                                        debug!("provider: no more messages");
+                                        break;
+                                    }
+                                }
+                            },
+                            Err(err) => {
+                                debug!("provider: connection broken: {:?}", err);
+                                break;
+                            },
+                        }
+                    },
+                    _ = shutdown_trigger.recv() => {
+                        debug!("provider: shutdown received");
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Return the stream
+        Ok(Response::new(ReceiverStream::new(receiver)))
     }
 
     type SubscribeStream = Pin<
@@ -388,7 +457,7 @@ impl proto::val_server::Val for broker::DataBroker {
             if let Ok(regex) = regex_exp {
                 let mut fields = HashSet::new();
                 for id in &entry.fields {
-                    if let Some(field) = proto::Field::from_i32(*id) {
+                    if let Ok(field) = proto::Field::try_from(*id) {
                         match field {
                             proto::Field::Value => {
                                 fields.insert(broker::Field::Datapoint);
@@ -475,6 +544,91 @@ impl proto::val_server::Val for broker::DataBroker {
     }
 }
 
+async fn validate_entry_update(
+    broker: &AuthorizedAccess<'_, '_>,
+    request: &EntryUpdate,
+    id: i32,
+) -> Result<(i32, broker::EntryUpdate), Status> {
+    let entry = &request.entry.clone().unwrap();
+
+    let fields = HashSet::<proto::Field>::from_iter(request.fields.iter().filter_map(
+        |id| proto::Field::try_from(*id).ok(), // Ignore unknown fields for now
+    ));
+
+    if entry.actuator_target.is_some() {
+        if let Some(metadata) = broker.get_metadata(id).await {
+            if metadata.entry_type != broker::EntryType::Actuator {
+                return Err(tonic::Status::invalid_argument(
+                    "Tried to set a target value for a non-actuator. Non-actuators have no target value.".to_string(),
+                ));
+            }
+        }
+    }
+
+    let entry = match &request.entry {
+        Some(entry) => entry,
+        None => return Err(tonic::Status::invalid_argument("Empty entry".to_string())),
+    };
+
+    debug!("Setting fields: {:?}", fields);
+    let update = broker::EntryUpdate::from_proto_entry_and_fields(entry, fields);
+
+    Ok((id, update))
+}
+
+fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> DataEntryError {
+    match error {
+        broker::UpdateError::NotFound => DataEntryError {
+            path: path.clone(),
+            error: Some(proto::Error {
+                code: 404,
+                reason: String::from("not found"),
+                message: format!("no datapoint registered for path {path}"),
+            }),
+        },
+        broker::UpdateError::WrongType => DataEntryError {
+            path: path.clone(),
+            error: Some(proto::Error {
+                code: 400,
+                reason: String::from("type mismatch"),
+                message: "cannot set existing datapoint to value of different type".to_string(),
+            }),
+        },
+        broker::UpdateError::UnsupportedType => DataEntryError {
+            path: path.clone(),
+            error: Some(proto::Error {
+                code: 400,
+                reason: String::from("unsupported type"),
+                message: "cannot set datapoint to value of unsupported type".to_string(),
+            }),
+        },
+        broker::UpdateError::OutOfBounds => DataEntryError {
+            path: path.clone(),
+            error: Some(proto::Error {
+                code: 400,
+                reason: String::from("value out of bounds"),
+                message: String::from("given value exceeds type's boundaries"),
+            }),
+        },
+        broker::UpdateError::PermissionDenied => DataEntryError {
+            path: path.clone(),
+            error: Some(proto::Error {
+                code: 403,
+                reason: String::from("forbidden"),
+                message: format!("Access was denied for {path}"),
+            }),
+        },
+        broker::UpdateError::PermissionExpired => DataEntryError {
+            path: path.clone(),
+            error: Some(proto::Error {
+                code: 401,
+                reason: String::from("unauthorized"),
+                message: String::from("Unauthorized"),
+            }),
+        },
+    }
+}
+
 fn convert_to_proto_stream(
     input: impl Stream<Item = broker::EntryUpdates>,
 ) -> impl Stream<Item = Result<proto::SubscribeResponse, tonic::Status>> {
@@ -549,7 +703,7 @@ fn proto_entry_from_entry_and_fields(
         }
         if all || fields.contains(&proto::Field::MetadataUnit) {
             metadata_is_set = true;
-            metadata.unit = entry.metadata().unit.clone();
+            metadata.unit.clone_from(&entry.metadata().unit);
         }
         if all || fields.contains(&proto::Field::MetadataValueRestriction) {
             metadata_is_set = true;
@@ -688,6 +842,7 @@ impl broker::EntryUpdate {
 mod tests {
     use super::*;
     use crate::{broker::DataBroker, permissions};
+    use databroker_proto::kuksa::val::v1::val_server::Val;
 
     #[tokio::test]
     async fn test_update_datapoint_using_wrong_type() {
@@ -741,6 +896,102 @@ mod tests {
                 assert_eq!(error.code, 400, "unexpected error code");
             }
             Err(_status) => panic!("failed to execute set request"),
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_streamed_update_with_valid_datapoint() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.Speed".to_owned(),
+                broker::DataType::Float,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                None,
+                Some("km/h".to_owned()),
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let streamed_update_request = proto::StreamedUpdateRequest {
+            updates: vec![proto::EntryUpdate {
+                fields: vec![proto::Field::Value as i32],
+                entry: Some(proto::DataEntry {
+                    path: "Vehicle.Speed".to_owned(),
+                    value: Some(proto::Datapoint {
+                        timestamp: Some(std::time::SystemTime::now().into()),
+                        value: Some(proto::datapoint::Value::Float(120.0)),
+                    }),
+                    metadata: None,
+                    actuator_target: None,
+                }),
+            }],
+        };
+
+        let mut streaming_request = tonic_mock::streaming_request(vec![streamed_update_request]);
+        streaming_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+        match broker.streamed_update(streaming_request).await {
+            Ok(response) => {
+                tokio::spawn(async move {
+                    let stream = response.into_inner();
+                    let mut receiver = stream.into_inner();
+                    let option = receiver.recv();
+                    assert!(option.await.is_none()) // no errors should occur and no ack is delivered
+                });
+            }
+            Err(_) => {
+                panic!("Should not happen")
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_streamed_update_with_invalid_datapoint() {
+        let broker = DataBroker::default();
+
+        let streamed_update_request = proto::StreamedUpdateRequest {
+            updates: vec![proto::EntryUpdate {
+                fields: vec![proto::Field::Value as i32],
+                entry: Some(proto::DataEntry {
+                    path: "Vehicle.Invalid.Speed".to_owned(),
+                    value: Some(proto::Datapoint {
+                        timestamp: Some(std::time::SystemTime::now().into()),
+                        value: Some(proto::datapoint::Value::Float(120.0)),
+                    }),
+                    metadata: None,
+                    actuator_target: None,
+                }),
+            }],
+        };
+
+        let mut streaming_request = tonic_mock::streaming_request(vec![streamed_update_request]);
+        streaming_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+        match broker.streamed_update(streaming_request).await {
+            Ok(response) => {
+                tokio::spawn(async move {
+                    let stream = response.into_inner();
+                    let mut receiver = stream.into_inner();
+                    let option = receiver.recv().await;
+                    assert!(option.is_some());
+                    let result = option.unwrap();
+                    let error_opt = result.unwrap().error;
+                    let error = error_opt.unwrap();
+                    assert_eq!(error.code, 404);
+                    assert_eq!(error.reason, "not_found");
+                    assert_eq!(error.message, "Vehicle.Invalid.Speed not found")
+                });
+            }
+            Err(_) => {
+                panic!("Should not happen")
+            }
         }
     }
 }

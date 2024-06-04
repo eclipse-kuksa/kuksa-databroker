@@ -196,10 +196,10 @@ impl proto::collector_server::Collector for broker::DataBroker {
 
         for metadata in request.into_inner().list {
             match (
-                proto::DataType::from_i32(metadata.data_type),
-                proto::ChangeType::from_i32(metadata.change_type),
+                proto::DataType::try_from(metadata.data_type),
+                proto::ChangeType::try_from(metadata.change_type),
             ) {
-                (Some(value_type), Some(change_type)) => {
+                (Ok(value_type), Ok(change_type)) => {
                     match broker
                         .add_entry(
                             metadata.name.clone(),
@@ -239,7 +239,7 @@ impl proto::collector_server::Collector for broker::DataBroker {
                         }
                     };
                 }
-                (None, _) => {
+                (Err(_), _) => {
                     // Invalid data type
                     error = Some(Status::new(
                         Code::InvalidArgument,
@@ -247,7 +247,7 @@ impl proto::collector_server::Collector for broker::DataBroker {
                     ));
                     break;
                 }
-                (_, None) => {
+                (_, Err(_)) => {
                     // Invalid change type
                     error = Some(Status::new(
                         Code::InvalidArgument,

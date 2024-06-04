@@ -29,15 +29,15 @@ exclude = [
 clap = { version = "4.2", default-features = false }
 databroker-proto = { path = "databroker-proto" }
 # prost has no features
-prost = "0.11"
+prost = "0.12.6"
 # prost-types has no features
-prost-types = "0.11"
+prost-types = "0.12.6"
 # tokio does not enable features by default
 tokio = "1.17.0"
 # tokio-stream has no features
 tokio-stream = "0.1.8"
-tonic = { version = "0.9.1", default-features = false }
-tonic-build = { version = "0.8", default-features = false }
+tonic = { version = "0.11.0", default-features = false }
+tonic-build = { version = "0.11.0", default-features = false }
 
 [profile.release]
 lto = true                 # Link time optimization (dead code removal etc...)

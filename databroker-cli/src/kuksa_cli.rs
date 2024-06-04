@@ -349,13 +349,13 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                     if let Some(metadata) = entry.metadata {
                                         let data_value = try_into_data_value(
                                             value,
-                                            proto::v1::DataType::from_i32(metadata.data_type)
+                                            proto::v1::DataType::try_from(metadata.data_type)
                                                 .unwrap(),
                                         );
                                         if data_value.is_err() {
                                             println!(
                                                 "Could not parse \"{value}\" as {:?}",
-                                                proto::v1::DataType::from_i32(metadata.data_type)
+                                                proto::v1::DataType::try_from(metadata.data_type)
                                                     .unwrap()
                                             );
                                             continue;
@@ -430,14 +430,14 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                     if let Some(metadata) = entry.metadata {
                                         let data_value = try_into_data_value(
                                             value,
-                                            proto::v1::DataType::from_i32(metadata.data_type)
+                                            proto::v1::DataType::try_from(metadata.data_type)
                                                 .unwrap(),
                                         );
                                         if data_value.is_err() {
                                             println!(
                                                 "Could not parse \"{}\" as {:?}",
                                                 value,
-                                                proto::v1::DataType::from_i32(metadata.data_type)
+                                                proto::v1::DataType::try_from(metadata.data_type)
                                                     .unwrap()
                                             );
                                             continue;
@@ -683,14 +683,16 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                                         "{:<max_len_path$} {:<10} {:<9}",
                                                         entry.path,
                                                         DisplayEntryType::from(
-                                                            proto::v1::EntryType::from_i32(
+                                                            proto::v1::EntryType::try_from(
                                                                 entry_metadata.entry_type
                                                             )
+                                                            .ok()
                                                         ),
                                                         DisplayDataType::from(
-                                                            proto::v1::DataType::from_i32(
+                                                            proto::v1::DataType::try_from(
                                                                 entry_metadata.data_type
                                                             )
+                                                            .ok()
                                                         ),
                                                     );
                                                 } else {

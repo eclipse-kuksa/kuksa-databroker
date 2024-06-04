@@ -726,7 +726,7 @@ impl ChangeSubscription {
                                                 notify_fields.insert(Field::ActuatorTarget);
                                             }
                                             // fill unit field always
-                                            update.unit = entry.metadata.unit.clone();
+                                            update.unit.clone_from(&entry.metadata.unit);
                                             notifications.updates.push(ChangeNotification {
                                                 update,
                                                 fields: notify_fields,
@@ -1431,7 +1431,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             {
                 Ok(None) => false,
                 Ok(Some(lag_updates_)) => {
-                    lag_updates = lag_updates_.clone();
+                    lag_updates.clone_from(&lag_updates_);
                     false
                 }
                 Err(_) => true, // Cleanup needed

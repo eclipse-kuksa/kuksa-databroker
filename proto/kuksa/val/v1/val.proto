@@ -37,6 +37,8 @@ service VAL {
   // Set entries
   rpc Set(SetRequest) returns (SetResponse);
 
+  rpc StreamedUpdate(stream StreamedUpdateRequest) returns (stream StreamedUpdateResponse);
+
   // Subscribe to a set of entries
   //
   // Returns a stream of notifications.
@@ -84,6 +86,15 @@ message SetRequest {
 // Global errors are specified in `error`.
 // Errors for individual entries are specified in `errors`.
 message SetResponse {
+  Error error                    = 1;
+  repeated DataEntryError errors = 2;
+}
+
+message StreamedUpdateRequest {
+  repeated EntryUpdate updates = 1;
+}
+
+message StreamedUpdateResponse {
   Error error                    = 1;
   repeated DataEntryError errors = 2;
 }
