@@ -118,8 +118,8 @@ message ProvideUpwardsStream {
 
 message ProvideDownwardsStream {
   oneof action {
-    UpdateValueFailures update_failure = 2;
-    ActuateCommandRequest actuate_command_request = 1;
+    UpdateValueFailures update_failure = 1;
+    ActuateCommandRequest actuate_command_request = 2;
   }
 }
 
