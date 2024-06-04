@@ -48,22 +48,6 @@ message Value {
   }
 }
 
-enum ValueFailure {
-  // Unspecified value failure, reserved for gRPC backwards compatibility
-  // (see https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum)
-  UNSPECIFIED = 0;
-  // The signal is known and provided, but doesn't have a valid value
-  INVALID_VALUE = 1;
-  // The signal is known, but no value is provided currently
-  NOT_PROVIDED = 2;
-  // The referred signal is unknown on the system
-  UNKNOWN_SIGNAL = 3;
-  // The client does not have the necessary access rights to the signal
-  ACCESS_DENIED = 4;
-  // Unexpected internal error
-  INTERNAL_ERROR = 5;
-}
-
 message DatapointsUpdateRequest {
   message ValueUpdate {
     oneof value_state {
@@ -162,6 +146,22 @@ message ValueRestrictionFloat {
 // min, max doesn't make much sense for a string
 message ValueRestrictionString {
   repeated string allowed_values = 3;
+}
+
+enum ValueFailure {
+  // Unspecified value failure, reserved for gRPC backwards compatibility
+  // (see https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum)
+  UNSPECIFIED = 0;
+  // The signal is known and provided, but doesn't have a valid value
+  INVALID_VALUE = 1;
+  // The signal is known, but no value is provided currently
+  NOT_PROVIDED = 2;
+  // The referred signal is unknown on the system
+  UNKNOWN_SIGNAL = 3;
+  // The client does not have the necessary access rights to the signal
+  ACCESS_DENIED = 4;
+  // Unexpected internal error
+  INTERNAL_ERROR = 5;
 }
 
 enum ActuateStatus {
