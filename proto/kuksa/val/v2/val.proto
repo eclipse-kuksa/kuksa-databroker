@@ -31,9 +31,21 @@ import "types.proto";
 // that the client can use instead of auth-token in subsequent calls.
 
 service VAL {
-  // get current value of attributes, sensors and actuators
+  // get current value of a single attribute, sensor or actuator
   rpc Get(GetRequest) returns (GetResponse);
+  
+  // get current values of a set of attributes, sensors or actuators
+  rpc GetBatch(GetRequestBatch) returns (GetResponseBatch);
 
+  // subscribe to sensor and actuator values
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
+
+  // actuate on a single actuator value
+  rpc Actuate(ActuateRequest) returns (ActuateResponse);
+
+  // actuate on more than one actuators values
+  rpc ActuateBatch(ActuateRequestBatch) returns (ActuateResponseBatch);
+  
   // provide current value of attributes, sensors and actuator - for low update frequency
   rpc ProvideOnce(ProvideOnceRequest) returns (ProvideOnceResponse);
 
@@ -41,70 +53,30 @@ service VAL {
   // return stream of ACK
   rpc ProvideStream(stream ProvideUpwardsStream) returns (stream ProvideDownwardsStream);
 
-  // subscribe to sensor and actuator values
-  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
-
-  // actuate on actuator value
-  rpc Actuate(ActuateRequest) returns (ActuateResponse);
-
   //get static metadata
   rpc GetMetadata(MetadataRequest) returns (MetadataResponse);
 
   rpc GetServerInfo(GetServerInfoRequest) returns (GetServerInfoResponse);
 }
 
-// Request a set of entries.
 message GetRequest {
-  repeated EntryRequest entries = 1;
+  EntryRequest entry = 1;
 }
 
 message GetResponse {
-  repeated DataEntry entries = 1;
+  DataEntry entry = 1;
 }
 
-/**
-Option 2 for GetResponse:
-
-message GetResponse {
-  map<string, Datapoint> entries = 1;
+message GetRequestBatch {
+  map<string, EntryRequest> entries = 1;
 }
 
-**/
-
-
-message ProvideOnceRequest {
-  repeated DatapointUpdate updates = 1;
-}
-
-message ProvideOnceResponse {
-  oneof action {
-    bool ack_update_received = 1;
-    Error error = 2;
-  }
-}
-
-message ProvideUpwardsStream {
-  message UpdateValues {
-    repeated DatapointUpdate datapoints = 1;
-  }
-  oneof action {
-    UpdateValues updates = 1;
-    SignalCommandACK signal_command_ack = 2;
-    ActuateCommandACK actuate_command_ack = 3;
-  }
-}
-
-message ProvideDownwardsStream {
-  oneof action {
-    SignalCommand signal_command = 1;
-    ActuateCommand actuate_command = 2;
-    Error error = 3;
-  }
+message GetResponseBatch {
+  map<string, DataEntry> entries = 1;
 }
 
 message SubscribeRequest {
   repeated EntryRequest entries = 1;
-  optional uint64 interval_ms = 2;
 }
 
 message SubscribeResponse {
@@ -112,24 +84,42 @@ message SubscribeResponse {
 }
 
 message ActuateRequest {
-  repeated DatapointUpdate actuators = 1;
+  DatapointUpdate actuator = 1;
 }
-
-/**
-Option 2 for ActuateRequest:
-
-message GetResponse {
-  map<string, Datapoint> entries = 1;
-}
-
-**/
 
 message ActuateResponse {
-  bool ack_request_forwarded = 1;
-  oneof status {
-    DatapointStatus not_available = 1;
-    ProviderStatus provider_status = 2;
-    Error error = 3;
+  ActuationResult result = 1;
+}
+
+message ActuateRequestBatch {
+  map<string, Value>  actuators = 1;
+}
+
+message ActuateResponseBatch {
+  map<string, ActuationResult> responses = 1;
+}
+
+message ProvideOnceRequest {
+  UpdateDatapoints update_datapoints = 1;
+}
+
+message ProvideOnceResponse {
+  oneof action {
+    ValueFailure failure = 1;
+  }
+}
+
+message ProvideUpwardsStream {
+  oneof action {
+    UpdateDatapoints update_datapoints = 1;
+    ActuateCommandResponse actuate_command_response = 2;
+  }
+}
+
+message ProvideDownwardsStream {
+  oneof action {
+    UpdateValueFailures update_failure = 2;
+    ActuateCommandRequest actuate_command_request = 1;
   }
 }
 
