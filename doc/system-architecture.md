@@ -36,9 +36,9 @@ The following picture shows different kinds of possible KUKSA providers
 
 We assume running a KUKSA VSS server on a vehicle computer. Some signals might originate in an embedded ECU only connected via CAN (e.g. ECU 1). If the Vehicle Computer running the VSS Server has access to the bus, it can run a provider component to map VSS Datapoints.
 
-The [DBC Feeder](https://github.com/eclipse/kuksa.val.feeders/tree/main/dbc2val) is an example of a CAN data-provider. It allows mapping of data from a CAN bus based on a DBC description and some mapping rules.
+The [DBC Feeder](https://github.com/eclipse-kuksa/kuksa-can-provider) is an example of a CAN data-provider. It allows mapping of data from a CAN bus based on a DBC description and some mapping rules.
 
-Other ECUs with Ethernet connectivity might publish data as SOME/IP (ECU 2 in the example) or DDS (ECU 3 in the example) services. The KUKSA project provides an [example SOME/IP provider](https://github.com/eclipse/kuksa.val.feeders/tree/main/someip2val) based on [vsomeip](https://github.com/COVESA/vsomeip) emulating a SOME/IP controllable wiper.
+Other ECUs with Ethernet connectivity might publish data as SOME/IP (ECU 2 in the example) or DDS (ECU 3 in the example) services. The KUKSA project provides an [example SOME/IP provider](https://github.com/eclipse-kuksa/kuksa-someip-provider) based on [vsomeip](https://github.com/COVESA/vsomeip) emulating a SOME/IP controllable wiper.
 
 The Vehicle Computer running the VSS server might run other (automotive) middlewares that provides raw data and signals. In this example we assume the Vehicle Computer runs an AUTOSAR Adaptive subsystem. In that case a provider using the APIs of the underlying system can be created, without the need to parse a specific serialization first. In case of AUTOSAR Adaptive, signals might be accessed using the `ara::com` API.
 

@@ -3,7 +3,7 @@ name: Check SPDX headers
 on:
   pull_request:
   workflow_call:
-    
+
 
 concurrency:
       group: ${{ github.ref }}-${{ github.workflow }}
@@ -30,7 +30,7 @@ jobs:
       run: |
         echo "licenses=Apache-2.0" >> $GITHUB_ENV
 
-    - uses: eclipse-kuksa/kuksa-actions/spdx@2
+    - uses: eclipse-kuksa/kuksa-actions/spdx@4
       with:
         files: "${{ env.files }}"
         licenses: "${{ env.licenses }}"

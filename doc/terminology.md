@@ -100,7 +100,7 @@ Attributes are signals that have a default value, specified by its default membe
 The value of a signal. The data type of the value must match the data type specified in the VSS entry for the signal. Currently KUKSA.val supports the _current_value_ for sensors, actuators and attributes as well as _target_value_ for actuators
 
 ## Metadata
-Metadata of a VSS signal is data belonging to a signal, that is not the value. Standard VSS metadata are [unit](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_unit_types/) and [datatype](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_types/) as well as some human readable description or comments. Custom metadata entries may be defined in [VSS overlays](https://covesa.github.io/vehicle_signal_specification/rule_set/overlay/). Currently KUKSA.val does not support custom metadata.
+Metadata of a VSS signal is data belonging to a signal, that is not the value. Standard VSS metadata are [unit](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_units/) and [datatype](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_types/) as well as some human readable description or comments. Custom metadata entries may be defined in [VSS overlays](https://covesa.github.io/vehicle_signal_specification/rule_set/overlay/). Currently KUKSA.val does not support custom metadata.
 
 ## Overlay
 VSS has the concept of layering different signal trees on top of each other. This is called [overlay](https://covesa.github.io/vehicle_signal_specification/rule_set/overlay/). A layer may add signals to an existing VSS tree or extending and overriding existing signal entries.

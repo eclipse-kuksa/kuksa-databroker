@@ -67,7 +67,7 @@ jobs:
 
   check_ghcr_push:
     name: Check access rights
-    uses: eclipse-kuksa/kuksa-actions/.github/workflows/check_ghcr_push.yml@2
+    uses: eclipse-kuksa/kuksa-actions/.github/workflows/check_ghcr_push.yml@4
     secrets: inherit
 
   build:
@@ -218,7 +218,7 @@ jobs:
         provenance: false
 
     - name: Posting message
-      uses: eclipse-kuksa/kuksa-actions/post-container-location@2
+      uses: eclipse-kuksa/kuksa-actions/post-container-location@4
       with:
         image: ttl.sh/eclipse-kuksa/kuksa-databroker-cli-${{github.sha}}
 
