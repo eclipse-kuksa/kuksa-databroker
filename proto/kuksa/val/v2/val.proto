@@ -35,7 +35,7 @@ service VAL {
   rpc Get(GetRequest) returns (GetResponse);
   
   // get current values of a set of attributes, sensors or actuators
-  rpc GetBatch(GetRequestBatch) returns (GetResponseBatch);
+  rpc GetBatch(GetBatchRequest) returns (GetBatchResponse);
 
   // subscribe to sensor and actuator values
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
@@ -44,7 +44,7 @@ service VAL {
   rpc Actuate(ActuateRequest) returns (ActuateResponse);
 
   // actuate on more than one actuators values
-  rpc ActuateBatch(ActuateRequestBatch) returns (ActuateResponseBatch);
+  rpc ActuateBatch(ActuateBatchRequest) returns (ActuateBatchResponse);
   
   // provide current value of attributes, sensors and actuator - for low update frequency
   rpc ProvideOnce(ProvideOnceRequest) returns (ProvideOnceResponse);
@@ -60,65 +60,69 @@ service VAL {
 }
 
 message GetRequest {
-  EntryRequest entry = 1;
+  string path = 1;
 }
 
 message GetResponse {
-  DataEntry entry = 1;
+  Datapoint entry = 1;
 }
 
-message GetRequestBatch {
-  map<string, EntryRequest> entries = 1;
+message GetBatchRequest {
+  repeated string paths = 1;
 }
 
-message GetResponseBatch {
-  map<string, DataEntry> entries = 1;
+message GetBatchResponse {
+  map<string, Datapoint> entries = 1;
 }
 
 message SubscribeRequest {
-  repeated EntryRequest entries = 1;
+  repeated string paths = 1;
 }
 
 message SubscribeResponse {
-  repeated DataEntry entries = 1;
+  map<string, Datapoint> entries = 1;
 }
 
 message ActuateRequest {
-  DatapointUpdate actuator = 1;
+  string actutator_path = 1;
+  Value actutator_value = 2;
 }
 
 message ActuateResponse {
-  ActuationResult result = 1;
+  ActuateStatus status = 1;
 }
 
-message ActuateRequestBatch {
-  map<string, Value>  actuators = 1;
+message ActuateBatchRequest {
+  map<string, Value> actuators_values = 1;
 }
 
-message ActuateResponseBatch {
-  map<string, ActuationResult> responses = 1;
+message ActuateBatchResponse {
+  map<string, ActuateStatus> status = 1;
 }
 
 message ProvideOnceRequest {
-  UpdateDatapoints update_datapoints = 1;
+  string path = 1;
+
+  oneof value_state {
+    ValueFailure failure = 2;
+    Value value = 3;
+  }
 }
 
 message ProvideOnceResponse {
-  oneof action {
-    ValueFailure failure = 1;
-  }
+  ProvideStatus status = 1;
 }
 
 message ProvideUpwardsStream {
   oneof action {
-    UpdateDatapoints update_datapoints = 1;
+    DatapointsUpdateRequest update_datapoints_request = 1;
     ActuateCommandResponse actuate_command_response = 2;
   }
 }
 
 message ProvideDownwardsStream {
   oneof action {
-    UpdateValueFailures update_failure = 1;
+    DatapointsUpdateResponse update_status_response = 1;
     ActuateCommandRequest actuate_command_request = 2;
   }
 }
