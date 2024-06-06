@@ -18,6 +18,11 @@ on:
     branches: [ main]
   pull_request:
   workflow_call:
+    secrets:
+      QUAY_IO_TOKEN:
+        required: true
+      QUAY_IO_USERNAME:
+        required: true
   workflow_dispatch:
 
 # suffix to avoid cancellation when running from release workflow
@@ -207,8 +212,7 @@ jobs:
         username: ${{ secrets.QUAY_IO_USERNAME }}
         password: ${{ secrets.QUAY_IO_TOKEN }}
 
-
-    - name: Build kuksa-databroker container and push to ghcr.io (and ttl.sh)
+    - name: Build kuksa-databroker container and push to ghcr.io, quay.io and ttl.sh
       id: ghcr-build
       if: needs.check_ghcr_push.outputs.push == 'true'
       uses: docker/build-push-action@v5
