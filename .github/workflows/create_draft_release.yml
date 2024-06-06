@@ -53,6 +53,9 @@ jobs:
 
   call_kuksa_databroker_build:
     uses: ./.github/workflows/kuksa_databroker_build.yml
+    secrets:
+      QUAY_IO_TOKEN: ${{ secrets.QUAY_IO_TOKEN }}
+      QUAY_IO_USERNAME: ${{ secrets.QUAY_IO_TOKEN }}
   call_kuksa_databroker-cli_build:
     uses: ./.github/workflows/kuksa_databroker-cli_build.yml
 
