@@ -359,6 +359,7 @@ impl From<broker::EntryUpdate> for proto::DataEntry {
                 let metadata = proto::Metadata {
                     subscription_id:Some(from.subscription_id.unwrap_or(String::from("x"))),
                     unit: from.unit,
+                    description: from.description,
                     ..Default::default()
                 };
                 Some(metadata)

@@ -75,6 +75,7 @@ impl proto::val_server::Val for broker::DataBroker {
 
             // Fill valid_requests structure.
             for request in requested {
+                // println!("---->{:?}", request);
                 if request.path.contains('*') && !glob::is_valid_pattern(&request.path) {
                     errors.push(proto::DataEntryError {
                         path: request.path,
@@ -113,9 +114,11 @@ impl proto::val_server::Val for broker::DataBroker {
                     }
                 }
             }
+            // println!("--------->{:?}",valid_requests);
             if !valid_requests.is_empty() {
                 broker
                     .for_each_entry(|entry| {
+                        // print!("------->{:?}",entry);
                         let mut result_fields: HashSet<proto::Field> = HashSet::new();
                         for (regex, view_fields, _, is_match, op_error) in &mut valid_requests {
                             let path = &entry.metadata().path;
@@ -132,6 +135,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                         Ok(_) => {
                                             // If the entry's path matches the regex and there is access permission,
                                             // add the result fields to the current entry.
+                                            // println!("--------->{:?}",view_fields);
                                             result_fields.extend(view_fields.clone());
                                         }
                                         Err(error) => {
@@ -145,6 +149,7 @@ impl proto::val_server::Val for broker::DataBroker {
 
                         // If there are result fields, add them to the entries list.
                         if !result_fields.is_empty() {
+                            // println!("------->{:?}\n----------->{:?}",entry,result_fields);
                             let proto_entry =
                                 proto_entry_from_entry_and_fields(entry, result_fields);
                             debug!("Getting datapoint: {:?}", proto_entry);
@@ -200,6 +205,7 @@ impl proto::val_server::Val for broker::DataBroker {
                 errors,
                 error,
             };
+            // println!("------>{:?}", response);
             Ok(tonic::Response::new(response))
         }
     }
@@ -906,6 +912,24 @@ impl broker::EntryUpdate {
         } else {
             None
         };
+        let metadata_des = if fields.contains(&proto::Field::MetadataDescription) {
+            match &entry.metadata {
+                Some(metadata) => match &metadata.description {
+                   Some(description) => Some(description),
+                   None => None,
+                }
+                None => None,
+            }
+        } else {
+            None
+        };
+
+        // for field in fields {
+        //     println!("--field--{:?}", field)
+        // }
+
+        // println!("-------{:?}---",datapoint);
+        // println!("------metatata-{:?}---",metadata_des);
         Self {
             subscription_id:None,
             path: None,
@@ -913,7 +937,7 @@ impl broker::EntryUpdate {
             actuator_target,
             entry_type: None,
             data_type: None,
-            description: None,
+            description: metadata_des.cloned(),
             allowed: None,
             unit: None,
         }

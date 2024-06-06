@@ -610,6 +610,10 @@ impl Entry {
             self.actuator_target = actuator_target;
             changed.insert(Field::ActuatorTarget);
         }
+        if let Some(metadata_des) = update.description {
+            self.metadata.description = metadata_des;
+            // changed.insert(Field::ActuatorTarget);
+        }
 
         if let Some(updated_allowed) = update.allowed {
             if updated_allowed != self.metadata.allowed {
@@ -635,6 +639,7 @@ impl Subscriptions {
     }
 
     pub fn add_change_subscription(&mut self, subscription: ChangeSubscription) {
+        info!("<<<< subscriber added >>>>");
         self.change_subscriptions.push(subscription)
     }
 
@@ -878,6 +883,8 @@ impl ChangeSubscription {
                                             }
                                             // fill unit field always
                                             update.unit = entry.metadata.unit.clone();
+                                            update.description = Some(entry.metadata.description.clone());
+
                                             notifications.updates.push(ChangeNotification {
                                                 update,
                                                 fields: notify_fields,
@@ -920,6 +927,7 @@ impl ChangeSubscription {
                                 // TODO: Perhaps make path optional
                                 update.subscription_id = Some(self.subscription_id.clone());
                                 update.path = Some(entry.metadata.path.clone());
+                                update.description = Some(entry.metadata.description.clone());
                                 if fields.contains(&Field::Datapoint) {
                                     update.datapoint = Some(entry.datapoint.clone());
                                     notify_fields.insert(Field::Datapoint);
@@ -1097,6 +1105,7 @@ pub struct DatabaseWriteAccess<'a, 'b> {
     permissions: &'b Permissions,
 }
 
+#[derive(Debug)]
 pub enum EntryReadAccess<'a> {
     Entry(&'a Entry),
     Err(&'a Metadata, ReadError),
@@ -1225,7 +1234,7 @@ impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
                 if update.path.is_some()
                     || update.entry_type.is_some()
                     || update.data_type.is_some()
-                    || update.description.is_some()
+                    // || update.description.is_some()
                 {
                     return Err(UpdateError::PermissionDenied);
                 }
