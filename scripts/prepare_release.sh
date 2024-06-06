@@ -32,7 +32,18 @@ SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
 DATA_BROKER_ROOT=$SCRIPT_DIR/..
 
 # Update Cargo.toml versions.
-sed -i -E "s/^version = \"${VERSION_REGEX}\"$/version = \"${VERSION}\"/" \
+if [[ "$OSTYPE" == "darwin"* ]]; then
+	if ! command -v gsed &> /dev/null; then
+    	echo "gsed could not be found; install gnu-sed"
+    	exit 1
+	else
+		SED_COMMAND="gsed" # requires gnu-sed
+	fi
+else
+	SED_COMMAND="sed"
+fi
+
+$SED_COMMAND -i -E "s/^version = \"${VERSION_REGEX}\"$/version = \"${VERSION}\"/" \
 	"$DATA_BROKER_ROOT/databroker/Cargo.toml" \
 	"$DATA_BROKER_ROOT/databroker-cli/Cargo.toml" \
 	"$DATA_BROKER_ROOT/databroker-proto/Cargo.toml" \
