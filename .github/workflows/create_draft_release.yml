@@ -58,6 +58,9 @@ jobs:
       QUAY_IO_USERNAME: ${{ secrets.QUAY_IO_USERNAME }}
   call_kuksa_databroker-cli_build:
     uses: ./.github/workflows/kuksa_databroker-cli_build.yml
+    secrets:
+      QUAY_IO_TOKEN: ${{ secrets.QUAY_IO_TOKEN }}
+      QUAY_IO_USERNAME: ${{ secrets.QUAY_IO_USERNAME }}
 
   create_release:
     runs-on: ubuntu-latest
