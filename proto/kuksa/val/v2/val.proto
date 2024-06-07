@@ -19,60 +19,96 @@ option go_package = "kuksa/val/v2";
 
 import "types.proto";
 
-// Note on authorization:
-// Tokens (auth-token or auth-uuid) are sent as (GRPC / http2) metadata.
-//
-// The auth-token is a JWT compliant token as the examples found here:
-// https://github.com/eclipse-kuksa/kuksa-databroker/tree/main/certificates/jwt
-//
-// See also https://github.com/eclipse-kuksa/kuksa-databroker/blob/main/doc/authorization.md#jwt-access-token
-//
-// Upon reception of auth-token, server shall generate an auth-uuid in metadata
-// that the client can use instead of auth-token in subsequent calls.
-
 service VAL {
-  // get current value of a single attribute, sensor or actuator
-  rpc Get(GetRequest) returns (GetResponse);
+  // Get the latest value of a signal
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if the requested datapoints doesn't exist
+  //   PERMISSION_DENIED if access is denied
+  rpc GetValue(GetValueRequest) returns (GetValueResponse);
   
-  // get current values of a set of attributes, sensors or actuators
-  rpc GetBatch(GetBatchRequest) returns (GetBatchResponse);
+  // Get the lastest value of a set of signals
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if any of the requested signals doesn't exist.
+  //   PERMISSION_DENIED if access is denied for any of the requested signals.
+  //
+  // grpc NOT_FOUND: Vehicle.Speed2 couldn't be found.
+  // grpc.Status.details = message BatchGetValueError {
+  //    map<String, Error>
+  // }
+  rpc GetValues(GetValuesRequest) returns (GetValuesResponse);
 
-  // subscribe to sensor and actuator values
+  // List values of signals matching the request.
+  //
+  // Returns a list of signal values. Only value that the user is allowed to
+  // read are included (everything else is ignored).
+  //
+  // Returns (grpc error code):
+  //   not_found if the specified root branch does not exist.
+  rpc ListValues(ListValuesRequest) returns (ListValuesResponse);
+
+  // Subscribe to a set of signals
+  // Returns (GRPC error code):
+  //   NOT_FOUND if any of the signals are non-existant.
+  //   PERMISSION_DENIED if access is denied for any of the signals.
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
 
-  // actuate on a single actuator value
+  // Actuate a single actuator
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if the actuator does not exist.
+  //   PERMISSION_DENIED if access is denied for of the actuator.
+  //   UNAVAILABLE if there is no provider currently providing the actuator
   rpc Actuate(ActuateRequest) returns (ActuateResponse);
 
-  // actuate on more than one actuators values
-  rpc ActuateBatch(ActuateBatchRequest) returns (ActuateBatchResponse);
-  
-  // provide current value of attributes, sensors and actuator - for low update frequency
-  rpc ProvideOnce(ProvideOnceRequest) returns (ProvideOnceResponse);
+  // Actuate multiple actuators
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if any of the actuators are non-existant.
+  //   PERMISSION_DENIED if access is denied for any of the actuators.
+  //   UNAVAILABLE if there is no provider currently providing an actuator
+  rpc Actuate(ActuateRequest) returns (ActuateResponse);
+  rpc BatchActuate(BatchActuateRequest) returns (BatchActuateResponse);
 
-  // provide stream of current values of attributes, sensors and actuator - for high frequency
-  // return stream of ACK
-  rpc ProvideStream(stream ProvideUpwardsStream) returns (stream ProvideDownwardsStream);
+  // List metadata of signals matching the request.
+  //   NOT_FOUND if the specified root branch does not exist.
+  rpc ListMetadata(ListMetadataRequest) returns (ListMetadataResponse);
 
-  //get static metadata
-  rpc GetMetadata(MetadataRequest) returns (MetadataResponse);
+  // Publish a signal value. Used for low frequency signals (e.g. attributes).
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if any of the signals are non-existant.
+  //   PERMISSION_DENIED if access is denied for any of the signals.
+  rpc PublishValue(PublishValueRequest) returns (PublishValueResponse);
 
+  // Open a stream used to provide actuation and/or publishing values using
+  // a streaming interface. Used to provide actuators and to enable high frequency
+  // updates of values.
+  //
+  // The open stream is used for request / response type communication between the
+  // provider and server (where the initiator of a request can vary).
+  // Errors are communicated as messages in the stream.
+  rpc OpenProviderStream(stream OpenProviderStreamRequest) returns (stream OpenProviderStreamResponse);
+
+  // Get server information
   rpc GetServerInfo(GetServerInfoRequest) returns (GetServerInfoResponse);
 }
 
-message GetRequest {
+message GetValueRequest {
   string path = 1;
 }
 
-message GetResponse {
-  Datapoint entry = 1;
+message GetValueResponse {
+  Datapoint data_point = 1;
 }
 
-message GetBatchRequest {
+message GetValuesRequest {
   repeated string paths = 1;
 }
 
-message GetBatchResponse {
-  map<string, Datapoint> entries = 1;
+message GetValuesResponse {
+  repeated Datapoint datapoints = 1;
 }
 
 message SubscribeRequest {
@@ -84,52 +120,78 @@ message SubscribeResponse {
 }
 
 message ActuateRequest {
-  string actutator_path = 1;
-  Value actutator_value = 2;
+  string path = 1;
+  Value value = 2;
 }
 
 message ActuateResponse {
-  ActuateStatus status = 1;
 }
 
-message ActuateBatchRequest {
-  map<string, Value> actuators_values = 1;
+message BatchActuateRequest {
+  repeated ActuateRequest actuate_requests = 1;
 }
 
-message ActuateBatchResponse {
-  map<string, ActuateStatus> status = 1;
+message BatchActuateResponse {
 }
 
-message ProvideOnceRequest {
-  string path = 1;
+message PublishValueRequest {
+  // Unique request id that can be used to identify the response.
+  int32 request_id = 1;
 
-  oneof value_state {
-    ValueFailure failure = 2;
-    Value value = 3;
+  // Signal identified by either id or path
+  oneof signal {
+    int32 id = 10;
+    string path = 11;
+  }
+
+  // The value to publish
+  oneof data {
+    Value value = 20;
+    Failure failure = 21;
   }
 }
 
-message ProvideOnceResponse {
-  ProvideStatus status = 1;
+message PublishValueResponse {
+  int32 request_id = 1;
+  // TODO: Add error cases
 }
 
-message ProvideUpwardsStream {
+message OpenProviderStreamRequest {
   oneof action {
-    DatapointsUpdateRequest update_datapoints_request = 1;
-    ActuateCommandResponse actuate_command_response = 2;
+    // Inform server of a sensor this provider provides.
+    ProvideSensorRequest provide_sensor_request = 1;
+    // Inform server of an actuator this provider provides.
+    ProvideActuatorRequest provide_actuator_request = 2;
+    // Publish a value.
+    PublishValueRequest publish_value_request = 3;
+    // Sent to acknowledge the acceptance of a actuate request.
+    ActuateResponse actuate_response = 4;
+    // Sent to acknowledge the acceptance of a batch actuate
+    // request.
+    BatchActuateResponse batch_actuate_response = 5;
   }
 }
 
-message ProvideDownwardsStream {
+message OpenProviderStreamResponse {
   oneof action {
-    DatapointsUpdateResponse update_status_response = 1;
-    ActuateCommandRequest actuate_command_request = 2;
+    // Response to a provide sensor request.
+    ProvideSensorResponse provide_sensor_response = 1;
+    // Response to a provide actuator request.
+    ProvideActuatorResponse provide_actuator_response = 2;
+    // Acknowledgement that a published value was received.
+    PublishValueResponse publish_value_response = 3;
+    // Send an actuate request to a provider.
+    ActuateRequest actuate_request = 4;
+    // Send a batch actuate request to a provider.
+    BatchActuateRequest batch_actuate_request = 5;
   }
 }
 
-message MetadataRequest {
-  repeated string path = 1;
-  repeated Field fields = 2;
+message ListMetadataRequest {
+  // Path of a branch or signal (i.e. the "root" path)
+  string root = 1;
+  // Optional filter
+  string filter = 2;
 }
 
 message MetadataResponse {
