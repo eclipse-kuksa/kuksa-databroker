@@ -42,7 +42,7 @@ This command will stop and remove the containers defined in the Docker Compose c
 
 ## Additional Information
 
-For more details on configuring and using the Kuksa Data Broker, refer to the official [Kuksa Data Broker documentation](https://eclipse.org/kuksa).
+[Kuksa Data Broker Github Repo](https://github.com/eclipse-kuksa/kuksa-databroker).
 
 ---
 
