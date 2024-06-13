@@ -30,10 +30,6 @@ docker compose up
 
 Docker Compose will start the necessary containers for the Kuksa Data Broker and the services defined in your `docker-compose.yml` file.
 
-## Verifying the Stats Feature
-
-Once the Kuksa Data Broker is running, you can verify that the stats feature is enabled. Typically, this involves checking the logs or accessing the broker’s API to ensure it is collecting and reporting statistics as expected.
-
 ## Stopping the Kuksa Data Broker
 
 To stop the Kuksa Data Broker, you can use the following command:
