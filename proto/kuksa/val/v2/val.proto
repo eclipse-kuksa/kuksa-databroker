@@ -26,7 +26,6 @@ service VAL {
   //   NOT_FOUND if the requested signal doesn't exist
   //   PERMISSION_DENIED if access is denied
   rpc GetValue(GetValueRequest) returns (GetValueResponse);
-  
   // Get the latest values of a set of signals
   //
   // Returns (GRPC error code):
@@ -41,7 +40,7 @@ service VAL {
 
   // List values of signals matching the request.
   //
-  // Returns a list of signal values. Only values of signals that the user 
+  // Returns a list of signal values. Only values of signals that the user
   // is allowed to read are included (everything else is ignored).
   //
   // Returns (grpc error code):
@@ -61,9 +60,9 @@ service VAL {
   //   PERMISSION_DENIED if access is denied for of the actuator.
   //   UNAVAILABLE if there is no provider currently providing the actuator
   //   INVALID_ARGUMENT
-  //       - if the data type used in the request does not match 
+  //       - if the data type used in the request does not match
   //            the data type of the addressed signal
-  //       - if the requested value is not accepted, 
+  //       - if the requested value is not accepted,
   //            e.g. if sending an unsupported enum value
   rpc Actuate(ActuateRequest) returns (ActuateResponse);
 
@@ -76,9 +75,9 @@ service VAL {
   //   PERMISSION_DENIED if access is denied for any of the actuators.
   //   UNAVAILABLE if there is no provider currently providing an actuator
   //   INVALID_ARGUMENT
-  //       - if the data type used in the request does not match 
+  //       - if the data type used in the request does not match
   //            the data type of the addressed signal
-  //       - if the requested value is not accepted, 
+  //       - if the requested value is not accepted,
   //            e.g. if sending an unsupported enum value
   rpc BatchActuate(BatchActuateRequest) returns (BatchActuateResponse);
 
@@ -90,13 +89,13 @@ service VAL {
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the signals are non-existant.
-  //   PERMISSION_DENIED 
+  //   PERMISSION_DENIED
   //       - if access is denied for any of the signals.
   //       - if the signal is already provided by another provider.
   //   INVALID_ARGUMENT
-  //       - if the data type used in the request does not match 
+  //       - if the data type used in the request does not match
   //            the data type of the addressed signal
-  //       - if the published value is not accepted, 
+  //       - if the published value is not accepted,
   //            e.g. if sending an unsupported enum value
   rpc PublishValue(PublishValueRequest) returns (PublishValueResponse);
 
