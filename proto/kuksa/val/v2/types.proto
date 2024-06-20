@@ -23,7 +23,7 @@ message Datapoint {
 
   oneof value_state {
     ValueFailure failure = 2;
-    Value value = 3;
+    Value value          = 3;
   }
 }
 
@@ -48,27 +48,23 @@ message Value {
   }
 }
 
-message DatapointsUpdateRequest {
-  message ValueUpdate {
-    oneof value_state {
-      ValueFailure failure = 2;
-      Value value = 3;
-    }
+message SignalID {
+  oneof signal {
+    int32 id    = 1;
+    string path = 2;
   }
-  map<string, ValueUpdate> datapoints = 1;
 }
 
-message DatapointsUpdateResponse {
-  map<string, ProvideStatus> status = 1;
+message Error {
+  ErrorCode code  = 1;
+  string message  = 2;
 }
 
-message ActuateCommandRequest {
-  int32 request_id = 1;
-  map<string, Value> actuators_values = 2;
-}
-
-message ActuateCommandResponse {
-  int32 request_id = 1;
+enum ErrorCode {
+  OK                = 0;
+  INVALID_ARGUMENT  = 1;
+  NOT_FOUND         = 2;
+  PERMISSION_DENIED = 3;
 }
 
 message Metadata {
@@ -77,28 +73,28 @@ message Metadata {
   //
   // NOTE: protobuf doesn't have int8, int16, uint8 or uint16 which means
   // that these values must be serialized as int32 and uint32 respectively.
-  DataType data_type = 11;  // [field: FIELD_METADATA_DATA_TYPE]
+  DataType data_type                 = 11;  // [field: FIELD_METADATA_DATA_TYPE]
 
   // Entry type
-  EntryType entry_type = 12;  // [field: FIELD_METADATA_ENTRY_TYPE]
+  EntryType entry_type               = 12;  // [field: FIELD_METADATA_ENTRY_TYPE]
 
   // Description
   // Describes the meaning and content of the entry.
-  optional string description = 13;  // [field: FIELD_METADATA_DESCRIPTION]
+  optional string description        = 13;  // [field: FIELD_METADATA_DESCRIPTION]
 
   // Comment [optional]
   // A comment can be used to provide additional informal information
   // on a entry.
-  optional string comment = 14;  // [field: FIELD_METADATA_COMMENT]
+  optional string comment            = 14;  // [field: FIELD_METADATA_COMMENT]
 
   // Deprecation [optional]
   // Whether this entry is deprecated. Can contain recommendations of what
   // to use instead.
-  optional string deprecation = 15;  // [field: FIELD_METADATA_DEPRECATION]
+  optional string deprecation        = 15;  // [field: FIELD_METADATA_DEPRECATION]
 
   // Unit [optional]
   // The unit of measurement
-  optional string unit = 16;  // [field: FIELD_METADATA_UNIT]
+  optional string unit               = 16;  // [field: FIELD_METADATA_UNIT]
 
   // Value restrictions [optional]
   // Restrict which values are allowed.
@@ -113,11 +109,11 @@ message Metadata {
 //
 message ValueRestriction {
   oneof type {
-    ValueRestrictionString string = 21;
+    ValueRestrictionString string        = 21;
     // For signed VSS integers
-    ValueRestrictionInt signed = 22;
+    ValueRestrictionInt signed           = 22;
     // For unsigned VSS integers
-    ValueRestrictionUint unsigned = 23;
+    ValueRestrictionUint unsigned        = 23;
     // For floating point VSS values (float and double)
     ValueRestrictionFloat floating_point = 24;
   }
@@ -151,57 +147,17 @@ message ValueRestrictionString {
 enum ValueFailure {
   // Unspecified value failure, reserved for gRPC backwards compatibility
   // (see https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum)
-  UNSPECIFIED = 0;
+  UNSPECIFIED    = 0;
   // The signal is known and provided, but doesn't have a valid value
-  INVALID_VALUE = 1;
+  INVALID_VALUE  = 1;
   // The signal is known, but no value is provided currently
-  NOT_PROVIDED = 2;
+  NOT_PROVIDED   = 2;
   // The referred signal is unknown on the system
   UNKNOWN_SIGNAL = 3;
   // The client does not have the necessary access rights to the signal
-  ACCESS_DENIED = 4;
+  ACCESS_DENIED  = 4;
   // Unexpected internal error
   INTERNAL_ERROR = 5;
-}
-
-enum ActuateStatus {
-  // Unspecified value failure, reserved for gRPC backwards compatibility
-  // (see https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum)
-  UNSPECIFIED = 0;
-  // The actuator value was successfully forwarded to the corresponding provider
-  OK_FORWARDED = 1;
-  // The passed value is not allowed
-  INVALID_VALUE = 2;
-  // The data type of the signal is not correct
-  INVALID_DATA_TYPE = 3;
-  // The signal is known, but there is no provider connected to Databroker
-  PROVIDER_NOT_AVAILABE = 4;
-  // The referred signal is unknown on the system
-  UNKNOWN_SIGNAL = 5;
-  // The client does not have the necessary access rights to the signal
-  ACCESS_DENIED = 6;
-  // Unexpected internal error
-  INTERNAL_ERROR = 7;
-}
-
-enum ProvideStatus {
-  // Unspecified value failure, reserved for gRPC backwards compatibility
-  // (see https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum)
-  UNSPECIFIED = 0;
-  // The actuator value was successfully forwarded to the corresponding provider
-  ACCEPTED = 1;
-  // The passed value is not allowed
-  INVALID_VALUE = 2;
-  // The data type of the signal is not correct
-  INVALID_DATA_TYPE = 3;
-  // The signal is already claimed by another provider.
-  OWNERSHIP_DENIED = 4;
-  // The referred signal is unknown on the system
-  UNKNOWN_SIGNAL = 5;
-  // The client does not have the necessary access rights to the signal
-  ACCESS_DENIED = 6;
-  // Unexpected internal error
-  INTERNAL_ERROR = 7;
 }
 
 // VSS Data type of a signal
@@ -271,14 +227,6 @@ enum Field {
   FIELD_METADATA_ACTUATOR          = 20;  // metadata.actuator.*
   FIELD_METADATA_SENSOR            = 30;  // metadata.sensor.*
   FIELD_METADATA_ATTRIBUTE         = 40;  // metadata.attribute.*
-}
-
-// Error response shall be an HTTP-like code.
-// Should follow https://www.w3.org/TR/viss2-transport/#status-codes.
-message Error {
-  uint32 code    = 1;
-  string reason  = 2;
-  string message = 3;
 }
 
 message StringArray {
