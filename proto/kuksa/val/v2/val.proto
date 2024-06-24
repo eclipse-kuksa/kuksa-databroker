@@ -193,26 +193,33 @@ message ProvidedActuation {
 message ProvideActuatorResponse {
 }
 
+message BatchActuateStreamRequest {
+  repeated ActuateRequest actuate_requests = 1;
+}
+
+message BatchActuateStreamResponse {
+}
+
 message OpenProviderStreamRequest {
   oneof action {
     // Inform server of an actuator this provider provides.
-    ProvidedActuation provided_actuation        = 1;
+    ProvidedActuation provided_actuation                     = 1;
     // Publish a value.
-    PublishValuesRequest publish_values_request = 2;
+    PublishValuesRequest publish_values_request              = 2;
     // Sent to acknowledge the acceptance of a batch actuate
     // request.
-    BatchActuateResponse batch_actuate_response = 3;
+    BatchActuateStreamResponse batch_actuate_stream_response = 3;
   }
 }
 
 message OpenProviderStreamResponse {
   oneof action {
     // Response to a provide actuator request.
-    ProvideActuatorResponse provide_actuator_response = 1;
+    ProvideActuatorResponse provide_actuator_response              = 1;
     // Acknowledgement that a published value was received.
-    PublishValuesResponse publish_value_response      = 2;
+    PublishValuesResponse publish_value_response                   = 2;
     // Send a batch actuate request to a provider.
-    BatchActuateRequest batch_actuate_request         = 3;
+    BatchActuateStreamRequest batch_actuate_stream_request         = 3;
   }
 }
 
