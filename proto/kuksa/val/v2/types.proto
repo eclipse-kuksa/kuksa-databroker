@@ -141,7 +141,7 @@ message ValueRestrictionFloat {
 
 // min, max doesn't make much sense for a string
 message ValueRestrictionString {
-  repeated string allowed_values = 3;
+  repeated string allowed_values = 1;
 }
 
 enum ValueFailure {
@@ -201,32 +201,6 @@ enum EntryType {
   ENTRY_TYPE_ATTRIBUTE   = 1;
   ENTRY_TYPE_SENSOR      = 2;
   ENTRY_TYPE_ACTUATOR    = 3;
-}
-
-// A `Field` corresponds to a specific field of a `DataEntry`.
-//
-// It can be used to:
-//   * populate only specific fields of a `DataEntry` response.
-//   * specify which fields of a `DataEntry` should be set as
-//     part of a `Set` request.
-//   * subscribe to only specific fields of a data entry.
-//   * convey which fields of an updated `DataEntry` have changed.
-enum Field {
-  FIELD_UNSPECIFIED                = 0;   // "*" i.e. everything
-  FIELD_PATH                       = 1;   // path
-  FIELD_VALUE                      = 2;   // value
-  FIELD_ACTUATOR_TARGET            = 3;   // actuator_target
-  FIELD_METADATA                   = 10;  // metadata.*
-  FIELD_METADATA_DATA_TYPE         = 11;  // metadata.data_type
-  FIELD_METADATA_DESCRIPTION       = 12;  // metadata.description
-  FIELD_METADATA_ENTRY_TYPE        = 13;  // metadata.entry_type
-  FIELD_METADATA_COMMENT           = 14;  // metadata.comment
-  FIELD_METADATA_DEPRECATION       = 15;  // metadata.deprecation
-  FIELD_METADATA_UNIT              = 16;  // metadata.unit
-  FIELD_METADATA_VALUE_RESTRICTION = 17;  // metadata.value_restriction.*
-  FIELD_METADATA_ACTUATOR          = 20;  // metadata.actuator.*
-  FIELD_METADATA_SENSOR            = 30;  // metadata.sensor.*
-  FIELD_METADATA_ATTRIBUTE         = 40;  // metadata.attribute.*
 }
 
 message StringArray {
