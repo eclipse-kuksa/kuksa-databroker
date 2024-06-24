@@ -100,7 +100,7 @@ jobs:
       working-directory: ${{github.workspace}}/
       run: |
         cargo install cross cargo-license cargo-cyclonedx
-        pip install "git+https://github.com/eclipse-kuksa/kuksa-common.git@6f3d7627760582d8ba83cc8a0f7449d00fffee84#subdirectory=sbom-tools"
+        pip install "git+https://github.com/eclipse-kuksa/kuksa-common.git@v1#subdirectory=sbom-tools"
     - name: Build
       working-directory: ${{github.workspace}}
       env:
