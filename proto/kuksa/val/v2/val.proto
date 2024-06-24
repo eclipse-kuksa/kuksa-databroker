@@ -26,16 +26,13 @@ service VAL {
   //   NOT_FOUND if the requested signal doesn't exist
   //   PERMISSION_DENIED if access is denied
   rpc GetValue(GetValueRequest) returns (GetValueResponse);
-  // Get the latest values of a set of signals
+
+  // Get the latest values of a set of signals.
+  // The returned list of data points has the same order as the list of the request.
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the requested signals doesn't exist.
   //   PERMISSION_DENIED if access is denied for any of the requested signals.
-  //
-  // grpc NOT_FOUND: Vehicle.Speed2 couldn't be found.
-  // grpc.Status.details = message BatchGetValueError {
-  //    map<SignalID, Error>
-  // }
   rpc GetValues(GetValuesRequest) returns (GetValuesResponse);
 
   // List values of signals matching the request.
@@ -43,7 +40,7 @@ service VAL {
   // Returns a list of signal values. Only values of signals that the user
   // is allowed to read are included (everything else is ignored).
   //
-  // Returns (grpc error code):
+  // Returns (GRPC error code):
   //   NOT_FOUND if the specified root branch does not exist.
   rpc ListValues(ListValuesRequest) returns (ListValuesResponse);
 
@@ -82,6 +79,8 @@ service VAL {
   rpc BatchActuate(BatchActuateRequest) returns (BatchActuateResponse);
 
   // List metadata of signals matching the request.
+  //
+  // Returns (GRPC error code):
   //   NOT_FOUND if the specified root branch does not exist.
   rpc ListMetadata(ListMetadataRequest) returns (ListMetadataResponse);
 
@@ -174,7 +173,7 @@ message PublishValueRequest {
 }
 
 message PublishValueResponse {
-  Error error = 2;
+  Error error = 1;
 }
 
 message PublishValuesRequest {
