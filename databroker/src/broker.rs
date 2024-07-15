@@ -15,7 +15,7 @@ use crate::permissions::{PermissionError, Permissions};
 pub use crate::types;
 
 use crate::query;
-pub use crate::types::{ChangeType, DataType, DataValue, EntryType};
+pub use crate::types::{ChangeType, DataType, DataValue, EntryType, ValueFailure};
 
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
