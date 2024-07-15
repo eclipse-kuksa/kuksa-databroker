@@ -143,5 +143,8 @@ pub mod kuksa {
                 }
             }
         }
+        pub mod v2 {
+            tonic::include_proto!("kuksa.val.v2");
+        }
     }
 }

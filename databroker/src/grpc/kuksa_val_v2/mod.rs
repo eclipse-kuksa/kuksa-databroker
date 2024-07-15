@@ -11,8 +11,5 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-pub mod server;
-
-mod kuksa_val_v1;
-mod kuksa_val_v2;
-mod sdv_databroker_v1;
+mod conversions;
+mod val;
