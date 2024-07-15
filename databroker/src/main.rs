@@ -451,7 +451,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut apis = vec![grpc::server::Api::KuksaValV1];
+    let mut apis = vec![grpc::server::Api::KuksaValV1, grpc::server::Api::KuksaValV2];
 
     if args.get_flag("enable-databroker-v1") {
         apis.push(grpc::server::Api::SdvDatabrokerV1);
