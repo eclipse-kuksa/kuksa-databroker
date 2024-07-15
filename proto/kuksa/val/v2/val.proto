@@ -177,13 +177,13 @@ message PublishValueResponse {
 }
 
 message PublishValuesRequest {
-  int32 request_id                  = 1; /// Unique request id for the stream that can be used to identify the response.
-  map<string, Datapoint> datapoints = 2;
+  int32 request_id                 = 1; /// Unique request id for the stream that can be used to identify the response.
+  map<int32, Datapoint> datapoints = 2;
 }
 
 message PublishValuesResponse {
-  int32 request_id          = 1;
-  map<string, Error> status = 2;
+  int32 request_id         = 1;
+  map<int32, Error> status = 2;
 }
 
 message ProvidedActuation {
@@ -215,11 +215,11 @@ message OpenProviderStreamRequest {
 message OpenProviderStreamResponse {
   oneof action {
     // Response to a provide actuator request.
-    ProvideActuatorResponse provide_actuator_response              = 1;
+    ProvideActuatorResponse provide_actuator_response      = 1;
     // Acknowledgement that a published value was received.
-    PublishValuesResponse publish_value_response                   = 2;
+    PublishValuesResponse publish_values_response          = 2;
     // Send a batch actuate request to a provider.
-    BatchActuateStreamRequest batch_actuate_stream_request         = 3;
+    BatchActuateStreamRequest batch_actuate_stream_request = 3;
   }
 }
 
