@@ -56,6 +56,16 @@ pub enum ChangeType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ValueFailure {
+    Unspecified,
+    InvalidValue,
+    NotProvided,
+    UnknownSignal,
+    AccessDenied,
+    InternalError,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DataValue {
     NotAvailable,
     Bool(bool),
@@ -74,6 +84,7 @@ pub enum DataValue {
     Uint64Array(Vec<u64>),
     FloatArray(Vec<f32>),
     DoubleArray(Vec<f64>),
+    ValueFailure(ValueFailure),
 }
 
 #[derive(Debug)]
