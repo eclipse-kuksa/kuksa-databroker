@@ -37,6 +37,7 @@ pub enum ServerTLS {
 #[derive(PartialEq)]
 pub enum Api {
     KuksaValV1,
+    KuksaValV2,
     SdvDatabrokerV1,
 }
 
@@ -186,6 +187,15 @@ where
     };
 
     let mut router = server.add_optional_service(kuksa_val_v1);
+
+    if apis.contains(&Api::KuksaValV2) {
+        router = router.add_optional_service(Some(
+            kuksa::val::v2::val_server::ValServer::with_interceptor(
+                broker.clone(),
+                authorization.clone(),
+            ),
+        ));
+    }
 
     if apis.contains(&Api::SdvDatabrokerV1) {
         router = router.add_optional_service(Some(
