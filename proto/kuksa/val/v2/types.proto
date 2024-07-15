@@ -56,8 +56,8 @@ message SignalID {
 }
 
 message Error {
-  ErrorCode code  = 1;
-  string message  = 2;
+  ErrorCode code = 1;
+  string message = 2;
 }
 
 enum ErrorCode {
@@ -68,6 +68,9 @@ enum ErrorCode {
 }
 
 message Metadata {
+  // ID field
+  int32 id = 10;  // Unique identifier for the metadata entry
+
   // Data type
   // The VSS data type of the entry (i.e. the value, min, max etc).
   //
