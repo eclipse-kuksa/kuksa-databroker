@@ -153,14 +153,14 @@ impl KuksaClient {
 
     pub async fn get_target_values(
         &mut self,
-        paths: Vec<&str>,
+        paths: Vec<String>,
     ) -> Result<Vec<DataEntry>, ClientError> {
         let mut get_result = Vec::new();
 
         for path in paths {
             match self
                 .get(
-                    path,
+                    &path,
                     proto::v1::View::TargetValue,
                     vec![
                         proto::v1::Field::ActuatorTarget.into(),

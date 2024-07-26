@@ -36,6 +36,7 @@ const TIMEOUT: Duration = Duration::from_millis(500);
 const CLI_COMMANDS: &[(&str, &str, &str)] = &[
     ("connect", "[URI]", "Connect to server"),
     ("get", "<PATH> [[PATH] ...]", "Get signal value(s)"),
+    ("gettarget", "<PATH> [[PATH] ...]", "Get target value(s)"),
     ("actuate", "<PATH> <VALUE>", "Set actuator signal"),
     (
         "subscribe",
@@ -211,6 +212,48 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                     cli::print_resp_ok(cmd)?;
                                     for entry in data_entries {
                                         if let Some(val) = entry.value {
+                                            println!(
+                                                "{}: {} {}",
+                                                entry.path,
+                                                DisplayDatapoint(val),
+                                                entry
+                                                    .metadata
+                                                    .and_then(|meta| meta.unit)
+                                                    .map(|unit| unit.to_string())
+                                                    .unwrap_or_else(|| "".to_string())
+                                            );
+                                        } else {
+                                            println!("{}: NotAvailable", entry.path);
+                                        }
+                                    }
+                                }
+                                Err(kuksa_common::ClientError::Status(err)) => {
+                                    cli::print_resp_err(cmd, &err)?;
+                                }
+                                Err(kuksa_common::ClientError::Connection(msg)) => {
+                                    cli::print_error(cmd, msg)?;
+                                }
+                                Err(kuksa_common::ClientError::Function(msg)) => {
+                                    cli::print_resp_err_fmt(cmd, format_args!("Error {msg:?}"))?;
+                                }
+                            }
+                        }
+                        "gettarget" => {
+                            interface.add_history_unique(line.clone());
+
+                            if args.is_empty() {
+                                print_usage(cmd);
+                                continue;
+                            }
+                            let paths = args
+                                .split_whitespace()
+                                .map(|path| path.to_owned())
+                                .collect();
+                            match client.get_target_values(paths).await {
+                                Ok(data_entries) => {
+                                    cli::print_resp_ok(cmd)?;
+                                    for entry in data_entries {
+                                        if let Some(val) = entry.actuator_target {
                                             println!(
                                                 "{}: {} {}",
                                                 entry.path,
@@ -908,7 +951,7 @@ impl<Term: Terminal> Completer<Term> for CliCompleter {
                     None
                 }
             }
-            Some("get") | Some("metadata") => self.complete_entry_path(word),
+            Some("get") | Some("metadata") | Some("gettarget") => self.complete_entry_path(word),
             Some("subscribe") => {
                 if words.count() == 0 {
                     self.complete_entry_path(word)
