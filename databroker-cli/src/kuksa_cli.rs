@@ -265,7 +265,7 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                                     .unwrap_or_else(|| "".to_string())
                                             );
                                         } else {
-                                            println!("{}: NotAvailable", entry.path);
+                                            println!("{} is not an actuator.", entry.path);
                                         }
                                     }
                                 }
