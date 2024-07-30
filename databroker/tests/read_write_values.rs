@@ -172,7 +172,7 @@ async fn get_value(w: &mut DataBrokerWorld, value_type: ValueType, path: String)
         .as_mut()
         .expect("no Databroker client available, broker not started?");
     match value_type {
-        ValueType::Target => match client.get_target_values(vec![&path]).await {
+        ValueType::Target => match client.get_target_values(vec![path]).await {
             Ok(res) => w.current_data_entries = Some(res),
             Err(e) => {
                 debug!("failed to invoke Databroker's get operation: {:?}", e);
