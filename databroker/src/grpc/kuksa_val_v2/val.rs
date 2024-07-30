@@ -15,6 +15,7 @@ use std::{collections::HashMap, pin::Pin};
 
 use crate::{
     broker::{self, AuthorizedAccess},
+    glob::Matcher,
     permissions::Permissions,
 };
 
@@ -26,6 +27,7 @@ use databroker_proto::kuksa::val::v2::{
     open_provider_stream_response, OpenProviderStreamResponse, PublishValuesResponse,
 };
 
+use kuksa::proto::v2::{ListMetadataResponse, Metadata};
 use tokio::{select, sync::mpsc};
 use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Code, Response};
@@ -84,11 +86,88 @@ impl proto::val_server::Val for broker::DataBroker {
         Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
     }
 
+    /// List metadata of signals matching the wildcard branch request.
+    ///
+    /// # Arguments
+    ///
+    ///      ```
+    ///     `request`:
+    ///      ListMetadataRequest {
+    ///          root: String
+    ///          filter: String
+    ///      }
+    ///
+    /// # Response
+    ///      `response`:
+    ///      ListMetadataResponse {
+    ///          metadata: Vec<Metadata>
+    ///      }
+    ///      ```
+    ///
+    /// # Errors
+    ///
+    /// Returns (GRPC error code):
+    /// NOT_FOUND if the specified root branch does not exist
+    /// INVALID_ARGUMENT if the request pattern is invalid
+    ///
+    /// # Examples
+    /// For details, please refer to
+    /// [Wildcard Matching](https://github.com/eclipse-kuksa/kuksa-databroker/blob/main/doc/wildcard_matching.md#examples)
     async fn list_metadata(
         &self,
-        _request: tonic::Request<proto::ListMetadataRequest>,
+        request: tonic::Request<proto::ListMetadataRequest>,
     ) -> Result<tonic::Response<proto::ListMetadataResponse>, tonic::Status> {
-        Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+        let broker = self.authorized_access(&permissions);
+
+        let metadata_request = request.into_inner();
+
+        match Matcher::new(&metadata_request.root) {
+            Ok(matcher) => {
+                let mut metadata_response = Vec::new();
+                broker
+                    .for_each_entry(|entry| {
+                        let entry_metadata = &entry.metadata();
+                        if matcher.is_match(&entry_metadata.glob_path) {
+                            metadata_response.push(Metadata {
+                                id: entry_metadata.id,
+                                data_type: proto::DataType::from(entry_metadata.data_type.clone())
+                                    as i32,
+                                entry_type: proto::EntryType::from(
+                                    entry_metadata.entry_type.clone(),
+                                ) as i32,
+                                description: Some(entry_metadata.description.clone()),
+                                comment: None,
+                                deprecation: None,
+                                unit: entry_metadata.unit.clone(),
+                                value_restriction: None,
+                            })
+                        }
+                    })
+                    .await;
+                if metadata_response.is_empty() {
+                    Err(tonic::Status::new(
+                        tonic::Code::NotFound,
+                        "Specified root branch does not exist",
+                    ))
+                } else {
+                    Ok(Response::new(ListMetadataResponse {
+                        metadata: metadata_response,
+                    }))
+                }
+            }
+            Err(_) => Err(tonic::Status::new(
+                tonic::Code::InvalidArgument,
+                "Invalid Pattern Argument",
+            )),
+        }
     }
 
     async fn publish_value(
@@ -457,6 +536,132 @@ mod tests {
             }
             Err(_) => {
                 panic!("Should not happen")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_metadata_using_wildcard() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        authorized_access
+            .add_entry(
+                "test.branch.datapoint2".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test branch datapoint 2".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let mut wildcard_req = tonic::Request::new(proto::ListMetadataRequest {
+            root: "test.**".to_owned(),
+            filter: "".to_owned(),
+        });
+
+        // Manually insert permissions
+        wildcard_req
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::list_metadata(&broker, wildcard_req)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(list_response) => {
+                let entries_size = list_response.metadata.len();
+                assert_eq!(entries_size, 2);
+            }
+            Err(_status) => panic!("failed to execute get request"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_metadata_bad_request_pattern_or_not_found() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let mut wildcard_req = tonic::Request::new(proto::ListMetadataRequest {
+            root: "test. **".to_owned(),
+            filter: "".to_owned(),
+        });
+
+        // Manually insert permissions
+        wildcard_req
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::list_metadata(&broker, wildcard_req)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(_) => {}
+            Err(error) => {
+                assert_eq!(
+                    error.code(),
+                    tonic::Code::InvalidArgument,
+                    "unexpected error code"
+                );
+                assert_eq!(
+                    error.message(),
+                    "Invalid Pattern Argument",
+                    "unexpected error reason"
+                );
+            }
+        }
+
+        let mut not_found_req = tonic::Request::new(proto::ListMetadataRequest {
+            root: "test.notfound".to_owned(),
+            filter: "".to_owned(),
+        });
+
+        // Manually insert permissions
+        not_found_req
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::list_metadata(&broker, not_found_req)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(_) => {}
+            Err(error) => {
+                assert_eq!(error.code(), tonic::Code::NotFound, "unexpected error code");
+                assert_eq!(
+                    error.message(),
+                    "Specified root branch does not exist",
+                    "unexpected error reason"
+                );
             }
         }
     }
