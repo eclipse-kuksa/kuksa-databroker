@@ -146,3 +146,44 @@ impl From<&broker::UpdateError> for proto::Error {
         }
     }
 }
+
+impl From<broker::DataType> for proto::DataType {
+    fn from(from: broker::DataType) -> Self {
+        match from {
+            broker::DataType::String => proto::DataType::String,
+            broker::DataType::Bool => proto::DataType::Boolean,
+            broker::DataType::Int8 => proto::DataType::Int8,
+            broker::DataType::Int16 => proto::DataType::Int16,
+            broker::DataType::Int32 => proto::DataType::Int32,
+            broker::DataType::Int64 => proto::DataType::Int64,
+            broker::DataType::Uint8 => proto::DataType::Uint8,
+            broker::DataType::Uint16 => proto::DataType::Uint16,
+            broker::DataType::Uint32 => proto::DataType::Uint32,
+            broker::DataType::Uint64 => proto::DataType::Uint64,
+            broker::DataType::Float => proto::DataType::Float,
+            broker::DataType::Double => proto::DataType::Double,
+            broker::DataType::StringArray => proto::DataType::StringArray,
+            broker::DataType::BoolArray => proto::DataType::BooleanArray,
+            broker::DataType::Int8Array => proto::DataType::Int8Array,
+            broker::DataType::Int16Array => proto::DataType::Int16Array,
+            broker::DataType::Int32Array => proto::DataType::Int32Array,
+            broker::DataType::Int64Array => proto::DataType::Int64Array,
+            broker::DataType::Uint8Array => proto::DataType::Uint8Array,
+            broker::DataType::Uint16Array => proto::DataType::Uint16Array,
+            broker::DataType::Uint32Array => proto::DataType::Uint32Array,
+            broker::DataType::Uint64Array => proto::DataType::Uint64Array,
+            broker::DataType::FloatArray => proto::DataType::FloatArray,
+            broker::DataType::DoubleArray => proto::DataType::DoubleArray,
+        }
+    }
+}
+
+impl From<broker::EntryType> for proto::EntryType {
+    fn from(from: broker::EntryType) -> Self {
+        match from {
+            broker::EntryType::Sensor => proto::EntryType::Sensor,
+            broker::EntryType::Attribute => proto::EntryType::Attribute,
+            broker::EntryType::Actuator => proto::EntryType::Actuator,
+        }
+    }
+}
