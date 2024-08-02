@@ -260,16 +260,14 @@ impl proto::val_server::Val for broker::DataBroker {
             Ok(tonic::Response::new(proto::PublishValueResponse {
                 error: None,
             }))
+        } else if let Some((_, err)) = publish_values_response.status.iter().next() {
+            Ok(tonic::Response::new(proto::PublishValueResponse {
+                error: Some(err.clone()),
+            }))
         } else {
-            if let Some((_, err)) = publish_values_response.status.iter().next() {
-                Ok(tonic::Response::new(proto::PublishValueResponse {
-                    error: Some(err.clone()),
-                }))
-            } else {
-                Err(tonic::Status::internal(
-                    "There is no error provided for the entry",
-                ))
-            }
+            Err(tonic::Status::internal(
+                "There is no error provided for the entry",
+            ))
         }
     }
 
@@ -669,21 +667,21 @@ mod tests {
                                         })
                                     );
                                 } else {
-                                    assert!(false);
+                                    panic!()
                                 }
                             }
                             item_count += 1;
                         }
                         Err(_) => {
-                            assert!(false);
+                            panic!()
                         }
                     }
                 }
 
                 // Assert the total number of items processed
                 assert_eq!(item_count, 2);
-            } else if let Err(_) = result {
-                assert!(false)
+            } else {
+                panic!()
             }
         });
 
@@ -699,7 +697,7 @@ mod tests {
                     })),
                 }),
             };
-            let _ = broker.publish_value(tonic::Request::new(request_1));
+            let _ = broker.publish_value(tonic::Request::new(request_1)).await;
             let request_2 = proto::PublishValueRequest {
                 signal_id: Some(proto::SignalId {
                     signal: Some(proto::signal_id::Signal::Id(entry_id_2)),
@@ -711,7 +709,7 @@ mod tests {
                     })),
                 }),
             };
-            let _ = broker.publish_value(tonic::Request::new(request_2));
+            let _ = broker.publish_value(tonic::Request::new(request_2)).await;
         });
     }
 
