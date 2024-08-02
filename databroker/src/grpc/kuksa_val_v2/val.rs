@@ -14,10 +14,11 @@
 use std::{collections::HashMap, pin::Pin};
 
 use crate::{
-    broker::{self, AuthorizedAccess},
+    broker::{self, AuthorizedAccess, SubscriptionError},
     permissions::Permissions,
 };
 
+use core::result::Result::Ok;
 use databroker_proto::kuksa::val::v2::{
     self as proto,
     open_provider_stream_request::Action::{
@@ -26,10 +27,12 @@ use databroker_proto::kuksa::val::v2::{
     open_provider_stream_response, OpenProviderStreamResponse, PublishValuesResponse,
 };
 
+use std::collections::HashSet;
 use tokio::{select, sync::mpsc};
-use tokio_stream::{wrappers::ReceiverStream, Stream};
-use tonic::{Code, Response};
+use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
 use tracing::debug;
+
+const MAX_REQUEST_PATH_LENGTH: usize = 1000;
 
 #[tonic::async_trait]
 impl proto::val_server::Val for broker::DataBroker {
@@ -37,21 +40,30 @@ impl proto::val_server::Val for broker::DataBroker {
         &self,
         _request: tonic::Request<proto::GetValueRequest>,
     ) -> Result<tonic::Response<proto::GetValueResponse>, tonic::Status> {
-        Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
+        Err(tonic::Status::new(
+            tonic::Code::Unimplemented,
+            "Unimplemented",
+        ))
     }
 
     async fn get_values(
         &self,
         _request: tonic::Request<proto::GetValuesRequest>,
     ) -> Result<tonic::Response<proto::GetValuesResponse>, tonic::Status> {
-        Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
+        Err(tonic::Status::new(
+            tonic::Code::Unimplemented,
+            "Unimplemented",
+        ))
     }
 
     async fn list_values(
         &self,
         _request: tonic::Request<proto::ListValuesRequest>,
     ) -> Result<tonic::Response<proto::ListValuesResponse>, tonic::Status> {
-        Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
+        Err(tonic::Status::new(
+            tonic::Code::Unimplemented,
+            "Unimplemented",
+        ))
     }
 
     type SubscribeStream = Pin<
@@ -65,37 +77,124 @@ impl proto::val_server::Val for broker::DataBroker {
 
     async fn subscribe(
         &self,
-        _request: tonic::Request<proto::SubscribeRequest>,
+        request: tonic::Request<proto::SubscribeRequest>,
     ) -> Result<tonic::Response<Self::SubscribeStream>, tonic::Status> {
-        Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+
+        let broker = self.authorized_access(&permissions);
+
+        let request = request.into_inner();
+
+        let signal_ids = request.signal_ids;
+
+        let mut valid_requests: HashMap<i32, HashSet<broker::Field>> = HashMap::new();
+
+        for signal_id in signal_ids {
+            valid_requests.insert(
+                get_signal_id(Some(signal_id), &broker).await.unwrap(),
+                vec![broker::Field::Datapoint].into_iter().collect(),
+            );
+        }
+
+        match broker.subscribe(valid_requests).await {
+            Ok(stream) => {
+                let stream = convert_to_proto_stream(stream);
+                Ok(tonic::Response::new(Box::pin(stream)))
+            }
+            Err(SubscriptionError::NotFound) => {
+                Err(tonic::Status::new(tonic::Code::NotFound, "Path not found"))
+            }
+            Err(SubscriptionError::InvalidInput) => Err(tonic::Status::new(
+                tonic::Code::InvalidArgument,
+                "Invalid Argument",
+            )),
+            Err(SubscriptionError::InternalError) => {
+                Err(tonic::Status::new(tonic::Code::Internal, "Internal Error"))
+            }
+        }
     }
 
     async fn actuate(
         &self,
         _request: tonic::Request<proto::ActuateRequest>,
     ) -> Result<tonic::Response<proto::ActuateResponse>, tonic::Status> {
-        Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
+        Err(tonic::Status::new(
+            tonic::Code::Unimplemented,
+            "Unimplemented",
+        ))
     }
 
     async fn batch_actuate(
         &self,
         _request: tonic::Request<proto::BatchActuateRequest>,
     ) -> Result<tonic::Response<proto::BatchActuateResponse>, tonic::Status> {
-        Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
+        Err(tonic::Status::new(
+            tonic::Code::Unimplemented,
+            "Unimplemented",
+        ))
     }
 
     async fn list_metadata(
         &self,
         _request: tonic::Request<proto::ListMetadataRequest>,
     ) -> Result<tonic::Response<proto::ListMetadataResponse>, tonic::Status> {
-        Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
+        Err(tonic::Status::new(
+            tonic::Code::Unimplemented,
+            "Unimplemented",
+        ))
     }
 
     async fn publish_value(
         &self,
-        _request: tonic::Request<proto::PublishValueRequest>,
+        request: tonic::Request<proto::PublishValueRequest>,
     ) -> Result<tonic::Response<proto::PublishValueResponse>, tonic::Status> {
-        Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+
+        let broker = self.authorized_access(&permissions);
+
+        let request = request.into_inner();
+
+        let mut updates: HashMap<i32, proto::Datapoint> = HashMap::new();
+
+        updates.insert(
+            get_signal_id(request.signal_id, &broker).await.unwrap(),
+            request.data_point.unwrap(),
+        );
+
+        let values_request: proto::PublishValuesRequest = proto::PublishValuesRequest {
+            request_id: 1,
+            datapoints: updates,
+        };
+        let publish_values_response = publish_values(&broker, &values_request).await;
+        if publish_values_response.status.is_empty() {
+            Ok(tonic::Response::new(proto::PublishValueResponse {
+                error: None,
+            }))
+        } else {
+            if let Some((_, err)) = publish_values_response.status.iter().next() {
+                Ok(tonic::Response::new(proto::PublishValueResponse {
+                    error: Some(err.clone()),
+                }))
+            } else {
+                Err(tonic::Status::internal(
+                    "There is no error provided for the entry",
+                ))
+            }
+        }
     }
 
     // type OpenProviderStreamStream = Pin<
@@ -251,7 +350,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 break;
                                             },
                                             Some(PublishValuesRequest(publish_values_request)) => {
-                                                let response = publish_values(&broker, &publish_values_request).await;
+                                                let response = provider_stream_publish_values(&broker, &publish_values_request).await;
                                                 if let Err(err) = response_stream_sender.send(Ok(response)).await
                                                 {
                                                     debug!("Failed to send response: {}", err);
@@ -288,22 +387,28 @@ impl proto::val_server::Val for broker::DataBroker {
             }
         });
 
-        // Return the error stream
-        Ok(Response::new(ReceiverStream::new(response_stream_receiver)))
+        Ok(tonic::Response::new(ReceiverStream::new(
+            response_stream_receiver,
+        )))
     }
 
     async fn get_server_info(
         &self,
         _request: tonic::Request<proto::GetServerInfoRequest>,
     ) -> Result<tonic::Response<proto::GetServerInfoResponse>, tonic::Status> {
-        Err(tonic::Status::new(Code::Unimplemented, "Unimplemented"))
+        Err(tonic::Status::new(
+            tonic::Code::Unimplemented,
+            "Unimplemented",
+        ))
     }
 }
 
 async fn publish_values(
     broker: &AuthorizedAccess<'_, '_>,
     request: &databroker_proto::kuksa::val::v2::PublishValuesRequest,
-) -> OpenProviderStreamResponse {
+) -> PublishValuesResponse {
+    debug!(?request);
+
     let ids: Vec<(i32, broker::EntryUpdate)> = request
         .datapoints
         .iter()
@@ -325,30 +430,84 @@ async fn publish_values(
         .collect();
 
     match broker.update_entries(ids).await {
-        Ok(_) => OpenProviderStreamResponse {
-            action: Some(
-                open_provider_stream_response::Action::PublishValuesResponse(
-                    PublishValuesResponse {
-                        request_id: request.request_id,
-                        status: HashMap::new(),
-                    },
-                ),
-            ),
+        Ok(_) => proto::PublishValuesResponse {
+            request_id: request.request_id,
+            status: HashMap::new(),
         },
-        Err(err) => OpenProviderStreamResponse {
-            action: Some(
-                open_provider_stream_response::Action::PublishValuesResponse(
-                    PublishValuesResponse {
-                        request_id: request.request_id,
-                        status: err
-                            .iter()
-                            .map(|(id, error)| (*id, proto::Error::from(error)))
-                            .collect(),
-                    },
-                ),
-            ),
+        Err(err) => PublishValuesResponse {
+            request_id: request.request_id,
+            status: err
+                .iter()
+                .map(|(id, error)| (*id, proto::Error::from(error)))
+                .collect(),
         },
     }
+}
+
+async fn provider_stream_publish_values(
+    broker: &AuthorizedAccess<'_, '_>,
+    request: &databroker_proto::kuksa::val::v2::PublishValuesRequest,
+) -> OpenProviderStreamResponse {
+    let publish_values_response = publish_values(broker, request).await;
+    OpenProviderStreamResponse {
+        action: Some(
+            open_provider_stream_response::Action::PublishValuesResponse(publish_values_response),
+        ),
+    }
+}
+
+async fn get_signal_id(
+    signal_id: Option<proto::SignalId>,
+    broker: &AuthorizedAccess<'_, '_>,
+) -> Result<i32, tonic::Status> {
+    if let Some(signal) = signal_id.unwrap().signal {
+        match signal {
+            proto::signal_id::Signal::Path(path) => {
+                if path.len() > MAX_REQUEST_PATH_LENGTH {
+                    return Err(tonic::Status::new(
+                        tonic::Code::InvalidArgument,
+                        "The provided path is too long",
+                    ));
+                }
+                match broker.get_id_by_path(&path).await {
+                    Some(id) => Ok(id),
+                    None => Err(tonic::Status::new(tonic::Code::NotFound, "Path not found")),
+                }
+            }
+            proto::signal_id::Signal::Id(id) => match broker.get_metadata(id).await {
+                Some(_metadata) => Ok(id),
+                None => Err(tonic::Status::new(tonic::Code::NotFound, "Path not found")),
+            },
+        }
+    } else {
+        Err(tonic::Status::new(
+            tonic::Code::InvalidArgument,
+            "No SignalId provided",
+        ))
+    }
+}
+
+fn convert_to_proto_stream(
+    input: impl Stream<Item = broker::EntryUpdates>,
+) -> impl Stream<Item = Result<proto::SubscribeResponse, tonic::Status>> {
+    input.map(move |item| {
+        let mut entries: HashMap<String, proto::Datapoint> = HashMap::new();
+        for update in item.updates {
+            let update_datapoint: Option<proto::Datapoint> = match update.update.datapoint {
+                Some(datapoint) => datapoint.into(),
+                None => None,
+            };
+            entries.insert(
+                update
+                    .update
+                    .path
+                    .expect("Something wrong with subscriptions!"),
+                update_datapoint.expect("Something wrong with subscriptions!"),
+            );
+        }
+        let response = proto::SubscribeResponse { entries };
+        Ok(response)
+    })
 }
 
 #[cfg(test)]
@@ -360,6 +519,127 @@ mod tests {
         BatchActuateStreamRequest, ProvideActuatorResponse, PublishValuesResponse,
     };
     use proto::{open_provider_stream_request, OpenProviderStreamRequest, PublishValuesRequest};
+    use tokio::stream;
+    use std::time::SystemTime;
+
+    /*
+        Test subscribe service method
+    */
+    #[tokio::test]
+    async fn test_subscribe() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let entry_id_1 = authorized_access
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let entry_id_2 = authorized_access
+            .add_entry(
+                "test.datapoint2".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 2".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let request = tonic::Request::new(proto::SubscribeRequest {
+            signal_ids: vec![
+                proto::SignalId {
+                    signal: Some(proto::signal_id::Signal::Path("sample_path".to_string())),
+                },
+                proto::SignalId {
+                    signal: Some(proto::signal_id::Signal::Id(entry_id_2)),
+                },
+            ],
+        });
+
+        let result = broker.subscribe(request).await;
+
+        tokio::spawn(async move {
+            if let Ok(stream) = result {
+                // Process the stream by iterating over the items
+                let mut stream = stream.into_inner();
+                let mut item_count = 0;
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Ok(subscribe_response) => {
+                            // Process the SubscribeResponse
+                            let response = subscribe_response.entries;
+                            assert_eq!(response.len(), 1);
+                            if let Some((path, datapoint)) = response.iter().next() {
+                                if item_count == 1 {
+                                    assert_eq!(path, "test.datapoint1")
+                                }
+                                if item_count == 2 {
+                                    assert_eq!(path, "test.datapoint2")
+                                }
+                                if let Some(value) = &datapoint.value_state {
+                                    assert_eq!(
+                                        *value,
+                                        proto::datapoint::ValueState::Value(proto::Value {
+                                            typed_value: Some(proto::value::TypedValue::Bool(true))
+                                        })
+                                    );
+                                } else {
+                                    assert!(false);
+                                }
+                            }
+                            item_count += 1;
+                        }
+                        Err(_) => {
+                            assert!(false);
+                        }
+                    }
+                }
+
+                // Assert the total number of items processed
+                assert_eq!(item_count, 2);
+            } else if let Err(_) = result {
+                assert!(false)
+            }
+        });
+
+        tokio::spawn(async move {
+            let request_1 = proto::PublishValueRequest {
+                signal_id: Some(proto::SignalId {
+                    signal: Some(proto::signal_id::Signal::Id(entry_id_1)),
+                }),
+                data_point: Some(proto::Datapoint {
+                    timestamp: None,
+                    value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                    })),
+                }),
+            };
+            let _ = broker.publish_value(tonic::Request::new(request_1));
+            let request_2 = proto::PublishValueRequest {
+                signal_id: Some(proto::SignalId {
+                    signal: Some(proto::signal_id::Signal::Id(entry_id_2)),
+                }),
+                data_point: Some(proto::Datapoint {
+                    timestamp: None,
+                    value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                    })),
+                }),
+            };
+            let _ = broker.publish_value(tonic::Request::new(request_2));
+        });
+    }
 
     /*
         Test open_provider_stream service method
