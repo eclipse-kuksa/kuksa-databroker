@@ -571,23 +571,42 @@ mod tests {
             .await
             .expect("Register datapoint should succeed");
 
-        let mut wildcard_req = tonic::Request::new(proto::ListMetadataRequest {
+        let mut wildcard_req_two_asteriks = tonic::Request::new(proto::ListMetadataRequest {
             root: "test.**".to_owned(),
             filter: "".to_owned(),
         });
 
+        let mut wildcard_req_one_asterik = tonic::Request::new(proto::ListMetadataRequest {
+            root: "test.*".to_owned(),
+            filter: "".to_owned(),
+        });
         // Manually insert permissions
-        wildcard_req
+        wildcard_req_two_asteriks
             .extensions_mut()
             .insert(permissions::ALLOW_ALL.clone());
 
-        match proto::val_server::Val::list_metadata(&broker, wildcard_req)
+        wildcard_req_one_asterik
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::list_metadata(&broker, wildcard_req_two_asteriks)
             .await
             .map(|res| res.into_inner())
         {
             Ok(list_response) => {
                 let entries_size = list_response.metadata.len();
                 assert_eq!(entries_size, 2);
+            }
+            Err(_status) => panic!("failed to execute get request"),
+        }
+
+        match proto::val_server::Val::list_metadata(&broker, wildcard_req_one_asterik)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(list_response) => {
+                let entries_size = list_response.metadata.len();
+                assert_eq!(entries_size, 1);
             }
             Err(_status) => panic!("failed to execute get request"),
         }
