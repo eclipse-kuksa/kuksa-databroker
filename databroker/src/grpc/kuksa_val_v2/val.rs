@@ -571,13 +571,15 @@ fn convert_to_proto_stream(
                 Some(datapoint) => datapoint.into(),
                 None => None,
             };
-            entries.insert(
-                update
-                    .update
-                    .path
-                    .expect("Something wrong with subscriptions!"),
-                update_datapoint.expect("Something wrong with subscriptions!"),
-            );
+            if let Some(dp) = update_datapoint {
+                entries.insert(
+                    update
+                        .update
+                        .path
+                        .expect("Something wrong with update path of subscriptions!"),
+                    dp,
+                );
+            }
         }
         let response = proto::SubscribeResponse { entries };
         Ok(response)
@@ -594,14 +596,51 @@ mod tests {
     };
     use proto::{open_provider_stream_request, OpenProviderStreamRequest, PublishValuesRequest};
 
+    async fn check_stream_next(
+        item: &Result<proto::SubscribeResponse, tonic::Status>,
+        expected_response: HashMap<String, proto::Datapoint>,
+    ) {
+        let f = false;
+        match item {
+            Ok(subscribe_response) => {
+                // Process the SubscribeResponse
+                let response = &subscribe_response.entries;
+                assert_eq!(response.len(), expected_response.len());
+                for key in response
+                    .keys()
+                    .chain(expected_response.keys())
+                    .collect::<std::collections::HashSet<_>>()
+                {
+                    match (response.get(key), expected_response.get(key)) {
+                        (Some(entry1), Some(entry2)) => {
+                            assert_eq!(entry1.value_state, entry2.value_state);
+                        }
+                        (Some(entry1), None) => {
+                            assert!(f, "Key '{}' is only in response: {:?}", key, entry1)
+                        }
+                        (None, Some(entry2)) => assert!(
+                            f,
+                            "Key '{}' is only in expected_response: {:?}",
+                            key, entry2
+                        ),
+                        (None, None) => unreachable!(),
+                    }
+                }
+            }
+            Err(err) => {
+                assert!(f, "Error {:?}", err)
+            }
+        }
+    }
+
     /*
         Test subscribe service method
     */
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_subscribe() {
+        let f = false;
         let broker = DataBroker::default();
         let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
-
         let entry_id_1 = authorized_access
             .add_entry(
                 "test.datapoint1".to_owned(),
@@ -628,10 +667,12 @@ mod tests {
             .await
             .unwrap();
 
-        let request = tonic::Request::new(proto::SubscribeRequest {
+        let mut request = tonic::Request::new(proto::SubscribeRequest {
             signal_ids: vec![
                 proto::SignalId {
-                    signal: Some(proto::signal_id::Signal::Path("sample_path".to_string())),
+                    signal: Some(proto::signal_id::Signal::Path(
+                        "test.datapoint1".to_string(),
+                    )),
                 },
                 proto::SignalId {
                     signal: Some(proto::signal_id::Signal::Id(entry_id_2)),
@@ -639,78 +680,133 @@ mod tests {
             ],
         });
 
-        let result = broker.subscribe(request).await;
+        request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
 
-        tokio::spawn(async move {
-            if let Ok(stream) = result {
-                // Process the stream by iterating over the items
-                let mut stream = stream.into_inner();
-                let mut item_count = 0;
-                while let Some(item) = stream.next().await {
-                    match item {
-                        Ok(subscribe_response) => {
-                            // Process the SubscribeResponse
-                            let response = subscribe_response.entries;
-                            assert_eq!(response.len(), 1);
-                            if let Some((path, datapoint)) = response.iter().next() {
-                                if item_count == 1 {
-                                    assert_eq!(path, "test.datapoint1")
-                                }
-                                if item_count == 2 {
-                                    assert_eq!(path, "test.datapoint2")
-                                }
-                                if let Some(value) = &datapoint.value_state {
-                                    assert_eq!(
-                                        *value,
-                                        proto::datapoint::ValueState::Value(proto::Value {
-                                            typed_value: Some(proto::value::TypedValue::Bool(true))
-                                        })
-                                    );
-                                } else {
-                                    panic!()
-                                }
-                            }
-                            item_count += 1;
-                        }
-                        Err(_) => {
-                            panic!()
-                        }
-                    }
+        let result = tokio::task::block_in_place(|| {
+            // Blocking operation here
+            // Since broker.subscribe is async, you need to run it in an executor
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(broker.subscribe(request))
+        });
+
+        let mut request_1 = tonic::Request::new(proto::PublishValueRequest {
+            signal_id: Some(proto::SignalId {
+                signal: Some(proto::signal_id::Signal::Id(entry_id_1)),
+            }),
+            data_point: Some(proto::Datapoint {
+                timestamp: None,
+                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                    typed_value: Some(proto::value::TypedValue::Bool(true)),
+                })),
+            }),
+        });
+        request_1
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+        match broker.publish_value(request_1).await {
+            Ok(response) => {
+                // Handle the successful response
+                let publish_response = response.into_inner();
+
+                // Check if there is an error in the response
+                if let Some(error) = publish_response.error {
+                    assert!(f, "Publish failed with error: {:?}", error);
+                } else {
+                    println!("Publish succeeded.");
                 }
-
-                // Assert the total number of items processed
-                assert_eq!(item_count, 2);
-            } else {
-                panic!()
             }
-        });
+            Err(status) => {
+                // Handle the error from the publish_value function
+                assert!(f, "Publish failed with status: {:?}", status);
+            }
+        }
 
-        tokio::spawn(async move {
-            let request_1 = proto::PublishValueRequest {
-                signal_id: Some(proto::SignalId {
-                    signal: Some(proto::signal_id::Signal::Id(entry_id_1)),
-                }),
-                data_point: Some(proto::Datapoint {
-                    timestamp: None,
-                    value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
-                        typed_value: Some(proto::value::TypedValue::Bool(true)),
-                    })),
-                }),
-            };
-            let _ = broker.publish_value(tonic::Request::new(request_1)).await;
-            let request_2 = proto::PublishValueRequest {
-                signal_id: Some(proto::SignalId {
-                    signal: Some(proto::signal_id::Signal::Id(entry_id_2)),
-                }),
-                data_point: Some(proto::Datapoint {
-                    timestamp: None,
-                    value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
-                        typed_value: Some(proto::value::TypedValue::Bool(true)),
-                    })),
-                }),
-            };
-            let _ = broker.publish_value(tonic::Request::new(request_2)).await;
+        let mut request_2 = tonic::Request::new(proto::PublishValueRequest {
+            signal_id: Some(proto::SignalId {
+                signal: Some(proto::signal_id::Signal::Id(entry_id_2)),
+            }),
+            data_point: Some(proto::Datapoint {
+                timestamp: None,
+                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                    typed_value: Some(proto::value::TypedValue::Bool(true)),
+                })),
+            }),
         });
+        request_2
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+        match broker.publish_value(request_2).await {
+            Ok(response) => {
+                // Handle the successful response
+                let publish_response = response.into_inner();
+
+                // Check if there is an error in the response
+                if let Some(error) = publish_response.error {
+                    assert!(f, "Publish failed with error: {:?}", error);
+                } else {
+                    println!("Publish succeeded.");
+                }
+            }
+            Err(status) => {
+                // Handle the error from the publish_value function
+                assert!(f, "Publish failed with status: {:?}", status);
+            }
+        }
+
+        if let Ok(stream) = result {
+            // Process the stream by iterating over the items
+            let mut stream = stream.into_inner();
+
+            let mut expected_entries: HashMap<String, proto::Datapoint> = HashMap::new();
+
+            let mut item_count = 0;
+            while let Some(item) = stream.next().await {
+                match item_count {
+                    0 => {
+                        check_stream_next(&item, expected_entries.clone()).await;
+                        expected_entries.insert(
+                            "test.datapoint1".to_string(),
+                            proto::Datapoint {
+                                timestamp: None,
+                                value_state: Some(proto::datapoint::ValueState::Value(
+                                    proto::Value {
+                                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                                    },
+                                )),
+                            },
+                        );
+                    }
+                    1 => {
+                        check_stream_next(&item, expected_entries.clone()).await;
+                        expected_entries.clear();
+                        expected_entries.insert(
+                            "test.datapoint2".to_string(),
+                            proto::Datapoint {
+                                timestamp: None,
+                                value_state: Some(proto::datapoint::ValueState::Value(
+                                    proto::Value {
+                                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                                    },
+                                )),
+                            },
+                        );
+                    }
+                    2 => {
+                        check_stream_next(&item, expected_entries.clone()).await;
+                        break;
+                    }
+                    _ => assert!(
+                        f,
+                        "You shouldn't land here too many items reported back to the stream."
+                    ),
+                }
+                item_count += 1;
+            }
+        } else {
+            assert!(f, "Something went wrong while getting the stream.")
+        }
     }
 
     /*
