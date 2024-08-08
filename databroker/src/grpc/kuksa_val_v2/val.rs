@@ -14,8 +14,8 @@
 use std::{collections::HashMap, pin::Pin};
 
 use crate::{
-    glob::Matcher,
     broker::{self, AuthorizedAccess, SubscriptionError},
+    glob::Matcher,
     permissions::Permissions,
 };
 
@@ -215,7 +215,7 @@ impl proto::val_server::Val for broker::DataBroker {
                         "Specified root branch does not exist",
                     ))
                 } else {
-                    Ok(Response::new(ListMetadataResponse {
+                    Ok(tonic::Response::new(ListMetadataResponse {
                         metadata: metadata_response,
                     }))
                 }
