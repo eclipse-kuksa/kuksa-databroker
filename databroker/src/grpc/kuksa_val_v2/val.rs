@@ -726,11 +726,7 @@ mod tests {
                 let publish_response = response.into_inner();
 
                 // Check if there is an error in the response
-                if let Some(error) = publish_response.error {
-                    assert!(f, "Publish failed with error: {:?}", error);
-                } else {
-                    println!("Publish succeeded.");
-                }
+                assert_eq!(publish_response.error, None);
             }
             Err(status) => {
                 // Handle the error from the publish_value function
@@ -872,12 +868,7 @@ mod tests {
                 // Handle the successful response
                 let publish_response = response.into_inner();
 
-                // Check if there is an error in the response
-                if let Some(error) = publish_response.error {
-                    assert!(f, "Publish failed with error: {:?}", error);
-                } else {
-                    println!("Publish succeeded.");
-                }
+                assert_eq!(publish_response.error, None);
             }
             Err(status) => {
                 // Handle the error from the publish_value function
@@ -905,11 +896,7 @@ mod tests {
                 let publish_response = response.into_inner();
 
                 // Check if there is an error in the response
-                if let Some(error) = publish_response.error {
-                    assert!(f, "Publish failed with error: {:?}", error);
-                } else {
-                    println!("Publish succeeded.");
-                }
+                assert_eq!(publish_response.error, None);
             }
             Err(status) => {
                 // Handle the error from the publish_value function
