@@ -142,7 +142,7 @@ message ListValuesResponse {
 }
 
 message SubscribeRequest {
-  repeated string signal_path = 1;
+  repeated string signal_paths = 1;
 }
 
 message SubscribeResponse {
