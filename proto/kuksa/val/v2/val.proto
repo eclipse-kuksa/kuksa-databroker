@@ -44,11 +44,17 @@ service VAL {
   //   NOT_FOUND if the specified root branch does not exist.
   rpc ListValues(ListValuesRequest) returns (ListValuesResponse);
 
-  // Subscribe to a set of signals
+  // Subscribe to a set of signals using string path parameters
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the signals are non-existant.
   //   PERMISSION_DENIED if access is denied for any of the signals.
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
+
+  // Subscribe to a set of signals using i32 id parameters
+  // Returns (GRPC error code):
+  //   NOT_FOUND if any of the signals are non-existant.
+  //   PERMISSION_DENIED if access is denied for any of the signals.
+  rpc SubscribeId(SubscribeRequestId) returns (stream SubscribeResponseId);
 
   // Actuate a single actuator
   //
@@ -136,11 +142,19 @@ message ListValuesResponse {
 }
 
 message SubscribeRequest {
-  repeated SignalID signal_ids = 1;
+  repeated string signal_path = 1;
 }
 
 message SubscribeResponse {
   map<string, Datapoint> entries = 1;
+}
+
+message SubscribeRequestId {
+  repeated int32 signal_ids = 1;
+}
+
+message SubscribeResponseId {
+  map<int32, Datapoint> entries = 1;
 }
 
 message ActuateRequest {
@@ -173,7 +187,6 @@ message PublishValueRequest {
 }
 
 message PublishValueResponse {
-  Error error = 1;
 }
 
 message PublishValuesRequest {
