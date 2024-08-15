@@ -20,6 +20,7 @@ pub use crate::types::{ChangeType, DataType, DataValue, EntryType, ValueFailure}
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
+use tonic::{Code, Status};
 
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -41,6 +42,36 @@ pub enum UpdateError {
     UnsupportedType,
     PermissionDenied,
     PermissionExpired,
+}
+
+impl UpdateError {
+    pub fn to_status_with_code(&self, id: &i32) -> Status {
+        match self {
+            UpdateError::NotFound => {
+                Status::new(Code::NotFound, format!("Signal not found (id: {})", id))
+            }
+            UpdateError::WrongType => Status::new(
+                Code::InvalidArgument,
+                format!("Wrong type provided (id: {})", id),
+            ),
+            UpdateError::OutOfBounds => Status::new(
+                Code::OutOfRange,
+                format!("Index out of bounds (id: {})", id),
+            ),
+            UpdateError::UnsupportedType => Status::new(
+                Code::Unimplemented,
+                format!("Unsupported type (id: {})", id),
+            ),
+            UpdateError::PermissionDenied => Status::new(
+                Code::PermissionDenied,
+                format!("Permission denied (id: {})", id),
+            ),
+            UpdateError::PermissionExpired => Status::new(
+                Code::Unauthenticated,
+                format!("Permission expired (id: {})", id),
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -165,6 +196,8 @@ pub struct NotificationError {}
 
 #[derive(Debug, Clone, Default)]
 pub struct EntryUpdate {
+    pub id: Option<i32>,
+
     pub path: Option<String>,
 
     pub datapoint: Option<Datapoint>,
@@ -1762,6 +1795,7 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
+                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: time1,
@@ -1794,6 +1828,7 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
+                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: time1,
@@ -1816,6 +1851,7 @@ mod tests {
             .update_entries([(
                 id2,
                 EntryUpdate {
+                    id: Some(id2),
                     path: None,
                     datapoint: None,
                     actuator_target: Some(Some(Datapoint {
@@ -1888,6 +1924,7 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
+                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: SystemTime::now(),
@@ -1914,6 +1951,7 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
+                    id: Some(id1),
                     path: None,
                     datapoint: None,
                     actuator_target: None,
@@ -1936,6 +1974,7 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
+                    id: Some(id1),
                     path: None,
                     datapoint: None,
                     actuator_target: None,
@@ -1955,6 +1994,7 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
+                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: time1,
@@ -2026,6 +2066,7 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
+                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: SystemTime::now(),
@@ -2128,6 +2169,7 @@ mod tests {
                 .update_entries([(
                     id1,
                     EntryUpdate {
+                        id: Some(id1),
                         path: None,
                         datapoint: Some(Datapoint {
                             ts: SystemTime::now(),
@@ -2211,6 +2253,7 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
+                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: SystemTime::now(),
@@ -2270,6 +2313,7 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
+                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: SystemTime::now(),
@@ -2368,6 +2412,7 @@ mod tests {
                     (
                         id1,
                         EntryUpdate {
+                            id: Some(id1),
                             path: None,
                             datapoint: Some(Datapoint {
                                 ts: SystemTime::now(),
@@ -2385,6 +2430,7 @@ mod tests {
                     (
                         id2,
                         EntryUpdate {
+                            id: Some(id2),
                             path: None,
                             datapoint: Some(Datapoint {
                                 ts: SystemTime::now(),
@@ -2448,6 +2494,7 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
+                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2513,6 +2560,7 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
+                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2593,6 +2641,7 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
+                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2649,6 +2698,7 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
+                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2704,6 +2754,7 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
+                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2756,6 +2807,7 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
+                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2785,6 +2837,7 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
+                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2842,6 +2895,7 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
+                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2871,6 +2925,7 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
+                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2931,6 +2986,7 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
+                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -3018,6 +3074,7 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
+                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: SystemTime::now(),
