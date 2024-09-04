@@ -43,6 +43,37 @@ pub enum UpdateError {
     PermissionExpired,
 }
 
+impl UpdateError {
+    pub fn to_status_with_code(&self, id: &i32) -> tonic::Status {
+        match self {
+            UpdateError::NotFound => tonic::Status::new(
+                tonic::Code::NotFound,
+                format!("Signal not found (id: {})", id),
+            ),
+            UpdateError::WrongType => tonic::Status::new(
+                tonic::Code::InvalidArgument,
+                format!("Wrong type provided (id: {})", id),
+            ),
+            UpdateError::OutOfBounds => tonic::Status::new(
+                tonic::Code::OutOfRange,
+                format!("Index out of bounds (id: {})", id),
+            ),
+            UpdateError::UnsupportedType => tonic::Status::new(
+                tonic::Code::Unimplemented,
+                format!("Unsupported type (id: {})", id),
+            ),
+            UpdateError::PermissionDenied => tonic::Status::new(
+                tonic::Code::PermissionDenied,
+                format!("Permission denied (id: {})", id),
+            ),
+            UpdateError::PermissionExpired => tonic::Status::new(
+                tonic::Code::Unauthenticated,
+                format!("Permission expired (id: {})", id),
+            ),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ReadError {
     NotFound,
