@@ -83,7 +83,12 @@ jobs:
           pattern: databroker*
           merge-multiple: true
       - name: Display structure of downloaded files
-        run: ls -R build-artifacts
+        run: |
+             ls -R build-artifacts
+             cd build-artifacts
+             # Rename, add release name (usually tag)
+             for f in databroker*.tar.gz; do mv "$f" "$(echo "$f" | sed s/.tar.gz/-${{ needs.get_version.outputs.version }}.tar.gz/)"; done
+
 
       - name: Create release
         id: create_release
@@ -91,7 +96,7 @@ jobs:
         # if: startsWith(github.ref, 'refs/tags/'
         with:
           draft: true
-          tag_name: ${{ needs.get_version.outputs.version }}
+          tag_name: KUKSA Databroker ${{ needs.get_version.outputs.version }}
           fail_on_unmatched_files: true
           files: |
             build-artifacts/*
