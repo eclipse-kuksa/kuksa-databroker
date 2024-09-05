@@ -18,11 +18,13 @@ if [ "$#" -ne 1 ]; then
 	exit 1
 fi
 
-VERSION_REGEX="[0-9]+\.[0-9]+(\.[0-9]+)?"
+VERSION_REGEX="[0-9]+\.[0-9]+\.[0-9]+(-[a-z]*\.[0-9]+)?"
 VERSION="$1"
 
 if [ "$(echo "$1" | sed -E "s/$VERSION_REGEX//")" ]; then
-	echo "<version> should be of the form MAJOR.MINOR[.PATCH]"
+	echo "<version> should be of the form MAJOR.MINOR.PATCH[-<prerelease identifier>.<number>]"
+	echo "Examples: 0.4.7, 0.4.7-pre.0, 0.4.7-alpha.1, 0.4.7-rc0"
+	echo "See https://github.com/eclipse-kuksa/kuksa-databroker/wiki/Release-Process#update-rust-versions for more information"
 	exit 1
 fi
 
