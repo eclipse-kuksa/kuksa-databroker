@@ -298,12 +298,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Arg::new("viss-address")
                     .display_order(31)
                     .long("viss-address")
-                    .help("VISS address")
+                    .help("Bind address for VISS server, if argument is not provided, the value of --address is used")
                     .action(ArgAction::Set)
                     .value_name("IP")
                     .required(false)
                     .env("KUKSA_DATABROKER_VISS_ADDR")
-                    .default_value("127.0.0.1"),
             )
             .arg(
                 Arg::new("viss-port")
@@ -429,10 +428,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "viss")]
     {
+        let viss_bind_addr = if args.contains_id("viss-address") {
+            args.get_one::<String>("viss-address").unwrap().parse()?
+        } else {
+            args.get_one::<String>("address").unwrap().parse()?
+        };
+
         let viss_port = args
             .get_one::<u16>("viss-port")
             .expect("port should be a number");
-        let viss_addr = std::net::SocketAddr::new(ip_addr, *viss_port);
+        let viss_addr = std::net::SocketAddr::new(viss_bind_addr, *viss_port);
 
         if args.get_flag("enable-viss") {
             let broker = broker.clone();
