@@ -14,9 +14,12 @@
 use std::{collections::HashMap, pin::Pin};
 
 use crate::{
-    broker::{self, AuthorizedAccess, ReadError, SubscriptionError},
+    broker::{
+        self, ActuationChange, ActuationProvider, AuthorizedAccess, ReadError, SubscriptionError,
+    },
     glob::Matcher,
     permissions::Permissions,
+    types::DataValue,
 };
 
 use databroker_proto::kuksa::val::v2::{
@@ -27,13 +30,63 @@ use databroker_proto::kuksa::val::v2::{
     open_provider_stream_response, OpenProviderStreamResponse, PublishValuesResponse,
 };
 
-use kuksa::proto::v2::{ListMetadataResponse, Metadata};
+use kuksa::proto::v2::{
+    signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ListMetadataResponse,
+    Metadata, ProvideActuationResponse,
+};
 use std::collections::HashSet;
 use tokio::{select, sync::mpsc};
 use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
 use tracing::debug;
 
 const MAX_REQUEST_PATH_LENGTH: usize = 1000;
+
+pub struct Provider {
+    sender: mpsc::Sender<Result<OpenProviderStreamResponse, tonic::Status>>,
+}
+
+#[async_trait::async_trait]
+impl ActuationProvider for Provider {
+    async fn actuate(
+        &self,
+        actuation_changes: Vec<broker::ActuationChange>,
+    ) -> Result<(), (broker::ActuationError, String)> {
+        let mut actuation_requests: Vec<ActuateRequest> = vec![];
+        for actuation_change in actuation_changes {
+            let data_value = actuation_change.data_value;
+            actuation_requests.push(ActuateRequest {
+                signal_id: Some(proto::SignalId {
+                    signal: Some(signal_id::Signal::Id(actuation_change.id)),
+                }),
+                value: Some(proto::Value::from(data_value)),
+            });
+        }
+
+        let batch_actuate_stream_request =
+            open_provider_stream_response::Action::BatchActuateStreamRequest(
+                BatchActuateStreamRequest {
+                    actuate_requests: actuation_requests,
+                },
+            );
+
+        let response = OpenProviderStreamResponse {
+            action: Some(batch_actuate_stream_request),
+        };
+
+        let result = self.sender.send(Ok(response)).await;
+        if result.is_err() {
+            return Err((
+                broker::ActuationError::TransmissionFailure,
+                "An error occured while sending the data".to_string(),
+            ));
+        }
+        return Ok(());
+    }
+
+    fn is_available(&self) -> bool {
+        !self.sender.is_closed()
+    }
+}
 
 #[tonic::async_trait]
 impl proto::val_server::Val for broker::DataBroker {
@@ -135,10 +188,7 @@ impl proto::val_server::Val for broker::DataBroker {
         &self,
         _request: tonic::Request<proto::ListValuesRequest>,
     ) -> Result<tonic::Response<proto::ListValuesResponse>, tonic::Status> {
-        Err(tonic::Status::new(
-            tonic::Code::Unimplemented,
-            "Unimplemented",
-        ))
+        Err(tonic::Status::unimplemented("Unimplemented"))
     }
 
     type SubscribeStream = Pin<
@@ -194,16 +244,11 @@ impl proto::val_server::Val for broker::DataBroker {
                 let stream = convert_to_proto_stream(stream, size);
                 Ok(tonic::Response::new(Box::pin(stream)))
             }
-            Err(SubscriptionError::NotFound) => {
-                Err(tonic::Status::new(tonic::Code::NotFound, "Path not found"))
+            Err(SubscriptionError::NotFound) => Err(tonic::Status::not_found("Path not found")),
+            Err(SubscriptionError::InvalidInput) => {
+                Err(tonic::Status::invalid_argument("Invalid Argument"))
             }
-            Err(SubscriptionError::InvalidInput) => Err(tonic::Status::new(
-                tonic::Code::InvalidArgument,
-                "Invalid Argument",
-            )),
-            Err(SubscriptionError::InternalError) => {
-                Err(tonic::Status::new(tonic::Code::Internal, "Internal Error"))
-            }
+            Err(SubscriptionError::InternalError) => Err(tonic::Status::internal("Internal Error")),
         }
     }
 
@@ -220,30 +265,133 @@ impl proto::val_server::Val for broker::DataBroker {
         &self,
         _request: tonic::Request<proto::SubscribeByIdRequest>,
     ) -> Result<tonic::Response<Self::SubscribeByIdStream>, tonic::Status> {
-        Err(tonic::Status::new(
-            tonic::Code::Unimplemented,
-            "Unimplemented",
-        ))
+        Err(tonic::Status::unimplemented("Unimplemented"))
     }
 
+    // Actuate a single actuator
+    //
+    // Returns (GRPC error code):
+    //   NOT_FOUND if the actuator does not exist.
+    //   PERMISSION_DENIED if access is denied for the actuator.
+    //   UNAVAILABLE if there is no provider currently providing the actuator
+    //   INVALID_ARGUMENT
+    //       - if the data type used in the request does not match
+    //            the data type of the addressed signal
+    //       - if the requested value is not accepted,
+    //            e.g. if sending an unsupported enum value
     async fn actuate(
         &self,
-        _request: tonic::Request<proto::ActuateRequest>,
+        request: tonic::Request<proto::ActuateRequest>,
     ) -> Result<tonic::Response<proto::ActuateResponse>, tonic::Status> {
-        Err(tonic::Status::new(
-            tonic::Code::Unimplemented,
-            "Unimplemented",
-        ))
+        debug!(?request);
+        let permissions = request
+            .extensions()
+            .get::<Permissions>()
+            .ok_or(tonic::Status::unauthenticated("Unauthenticated"))?
+            .clone();
+        let broker = self.authorized_access(&permissions);
+
+        let actuator_request = request.into_inner();
+        let value = actuator_request
+            .value
+            .ok_or(tonic::Status::invalid_argument("No value provided"))?;
+
+        let signal = actuator_request
+            .signal_id
+            .ok_or(tonic::Status::invalid_argument("No signal_id provided"))?
+            .signal;
+
+        match &signal {
+            Some(proto::signal_id::Signal::Path(path)) => {
+                let id = broker
+                    .get_id_by_path(path)
+                    .await
+                    .ok_or(tonic::Status::not_found(format!(
+                        "Invalid path in signal_id provided {}",
+                        path
+                    )))?;
+
+                match broker.actuate(&id, &DataValue::from(value)).await {
+                    Ok(()) => Ok(tonic::Response::new(ActuateResponse {})),
+                    Err(error) => Err(error.0.to_tonic_status(error.1)),
+                }
+            }
+            Some(proto::signal_id::Signal::Id(id)) => {
+                match broker.actuate(id, &DataValue::from(value)).await {
+                    Ok(()) => Ok(tonic::Response::new(ActuateResponse {})),
+                    Err(error) => Err(error.0.to_tonic_status(error.1)),
+                }
+            }
+            None => Err(tonic::Status::invalid_argument(
+                "SignalID contains neither path or id",
+            )),
+        }
     }
 
+    // Actuate simultaneously multiple actuators.
+    // If any error occurs, the entire operation will be aborted
+    // and no single actuator value will be forwarded to the provider.
+    //
+    // Returns (GRPC error code):
+    //   NOT_FOUND if any of the actuators are non-existant.
+    //   PERMISSION_DENIED if access is denied for any of the actuators.
+    //   UNAVAILABLE if there is no provider currently providing an actuator
+    //   INVALID_ARGUMENT
+    //       - if the data type used in the request does not match
+    //            the data type of the addressed signal
+    //       - if the requested value is not accepted,
+    //            e.g. if sending an unsupported enum value
     async fn batch_actuate(
         &self,
-        _request: tonic::Request<proto::BatchActuateRequest>,
+        request: tonic::Request<proto::BatchActuateRequest>,
     ) -> Result<tonic::Response<proto::BatchActuateResponse>, tonic::Status> {
-        Err(tonic::Status::new(
-            tonic::Code::Unimplemented,
-            "Unimplemented",
-        ))
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+        let broker = self.authorized_access(&permissions);
+        let actuate_requests = request.into_inner().actuate_requests;
+
+        let mut actuation_changes: Vec<ActuationChange> = vec![];
+        for actuate_request in actuate_requests {
+            let vss_id = match actuate_request.signal_id {
+                Some(signal_id) => match signal_id.signal {
+                    Some(proto::signal_id::Signal::Id(vss_id)) => vss_id,
+                    Some(proto::signal_id::Signal::Path(vss_path)) => {
+                        let result = broker.get_id_by_path(&vss_path).await;
+                        match result {
+                            Some(vss_id) => vss_id,
+                            None => {
+                                let message =
+                                    format!("Could not resolve vss_id for path: {}", vss_path);
+                                return Err(tonic::Status::not_found(message));
+                            }
+                        }
+                    }
+                    None => return Err(tonic::Status::invalid_argument("Signal not provided")),
+                },
+                None => return Err(tonic::Status::invalid_argument("Signal_Id not provided")),
+            };
+            let data_value = match actuate_request.value {
+                Some(data_value) => DataValue::from(data_value),
+                None => return Err(tonic::Status::invalid_argument("")),
+            };
+            let actuation_change = ActuationChange {
+                id: vss_id,
+                data_value,
+            };
+            actuation_changes.push(actuation_change);
+        }
+
+        let result = broker.batch_actuate(actuation_changes).await;
+        match result {
+            Ok(_) => Ok(tonic::Response::new(proto::BatchActuateResponse {})),
+            Err(error) => return Err(error.0.to_tonic_status(error.1)),
+        }
     }
 
     /// List metadata of signals matching the wildcard branch request.
@@ -419,8 +567,7 @@ impl proto::val_server::Val for broker::DataBroker {
                     })
                     .await;
                 if metadata_response.is_empty() {
-                    Err(tonic::Status::new(
-                        tonic::Code::NotFound,
+                    Err(tonic::Status::not_found(
                         "Specified root branch does not exist",
                     ))
                 } else {
@@ -429,10 +576,7 @@ impl proto::val_server::Val for broker::DataBroker {
                     }))
                 }
             }
-            Err(_) => Err(tonic::Status::new(
-                tonic::Code::InvalidArgument,
-                "Invalid Pattern Argument",
-            )),
+            Err(_) => Err(tonic::Status::invalid_argument("Invalid Pattern Argument")),
         }
     }
 
@@ -646,7 +790,6 @@ impl proto::val_server::Val for broker::DataBroker {
 
         // Copy (to move into task below)
         let broker = self.clone();
-
         // Create stream (to be returned)
         let (response_stream_sender, response_stream_receiver) = mpsc::channel(10);
 
@@ -662,11 +805,12 @@ impl proto::val_server::Val for broker::DataBroker {
                                 match request {
                                     Some(req) => {
                                         match req.action {
-                                            Some(ProvideActuationRequest(_provide_actuation_request)) => {
-                                                if let Err(err) = response_stream_sender.send(Err(tonic::Status::new(tonic::Code::Unimplemented, "Unimplemented"))).await {
-                                                    debug!("Failed to send error response: {}", err);
+                                            Some(ProvideActuationRequest(provided_actuation)) => {
+                                                let response = provide_actuation(&broker, &provided_actuation, response_stream_sender.clone()).await;
+                                                if let Err(err) = response_stream_sender.send(response).await
+                                                {
+                                                    debug!("Failed to send response: {}", err)
                                                 }
-                                                break;
                                             },
                                             Some(PublishValuesRequest(publish_values_request)) => {
                                                 let response = publish_values(&broker, &publish_values_request).await;
@@ -676,10 +820,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
                                             },
                                             Some(BatchActuateStreamResponse(_batch_actuate_stream_response)) => {
-                                                if let Err(err) = response_stream_sender.send(Err(tonic::Status::new(tonic::Code::Unimplemented, "Unimplemented"))).await {
-                                                    debug!("Failed to send error response: {}", err);
-                                                }
-                                                break;
+                                                // TODO discuss and implement
                                             },
                                             None => {
 
@@ -715,10 +856,75 @@ impl proto::val_server::Val for broker::DataBroker {
         &self,
         _request: tonic::Request<proto::GetServerInfoRequest>,
     ) -> Result<tonic::Response<proto::GetServerInfoResponse>, tonic::Status> {
-        Err(tonic::Status::new(
-            tonic::Code::Unimplemented,
-            "Unimplemented",
-        ))
+        Err(tonic::Status::unimplemented("Unimplemented"))
+    }
+}
+
+async fn provide_actuation(
+    broker: &AuthorizedAccess<'_, '_>,
+    request: &databroker_proto::kuksa::val::v2::ProvideActuationRequest,
+    sender: mpsc::Sender<Result<OpenProviderStreamResponse, tonic::Status>>,
+) -> Result<OpenProviderStreamResponse, tonic::Status> {
+    let vss_paths: Vec<_> = request
+        .actuator_identifiers
+        .iter()
+        .filter_map(|signal_id| match &signal_id.signal {
+            Some(proto::signal_id::Signal::Path(path)) => Some(path.clone()),
+            _ => None,
+        })
+        .collect();
+
+    let future_vss_ids = vss_paths
+        .iter()
+        .map(|vss_path| broker.get_id_by_path(vss_path));
+    let resolved_opt_vss_ids = futures::future::join_all(future_vss_ids).await;
+
+    for (index, opt_vss_id) in resolved_opt_vss_ids.iter().enumerate() {
+        if opt_vss_id.is_none() {
+            let message = format!(
+                "Could not resolve id of vss_path: {}",
+                vss_paths.get(index).unwrap()
+            );
+            return Err(tonic::Status::not_found(message));
+        }
+    }
+
+    let resolved_vss_ids: Vec<i32> = resolved_opt_vss_ids.iter().filter_map(|&opt| opt).collect();
+
+    let vss_ids: Vec<_> = request
+        .actuator_identifiers
+        .iter()
+        .filter_map(|signal_id| match &signal_id.signal {
+            Some(proto::signal_id::Signal::Id(id)) => Some(*id),
+            _ => None,
+        })
+        .collect();
+
+    let mut all_vss_ids = vec![];
+    all_vss_ids.extend(vss_ids);
+    all_vss_ids.extend(resolved_vss_ids);
+
+    let provider = Provider { sender };
+
+    match broker
+        .provide_actuation(all_vss_ids, Box::new(provider))
+        .await
+    {
+        Ok(_) => {
+            let provide_actuation_response = ProvideActuationResponse {};
+
+            let response = OpenProviderStreamResponse {
+                action: Some(
+                    open_provider_stream_response::Action::ProvideActuationResponse(
+                        provide_actuation_response,
+                    ),
+                ),
+            };
+
+            Ok(response)
+        }
+
+        Err(error) => Err(error.0.to_tonic_status(error.1)),
     }
 }
 
@@ -746,6 +952,7 @@ async fn publish_values(
         })
         .collect();
 
+    // TODO check if provider is allowed to update the entries for the provided signals?
     match broker.update_entries(ids).await {
         Ok(_) => OpenProviderStreamResponse {
             action: Some(
@@ -781,26 +988,22 @@ async fn get_signal(
         match signal {
             proto::signal_id::Signal::Path(path) => {
                 if path.len() > MAX_REQUEST_PATH_LENGTH {
-                    return Err(tonic::Status::new(
-                        tonic::Code::InvalidArgument,
+                    return Err(tonic::Status::invalid_argument(
                         "The provided path is too long",
                     ));
                 }
                 match broker.get_id_by_path(&path).await {
                     Some(id) => Ok(id),
-                    None => Err(tonic::Status::new(tonic::Code::NotFound, "Path not found")),
+                    None => Err(tonic::Status::not_found("Path not found")),
                 }
             }
             proto::signal_id::Signal::Id(id) => match broker.get_metadata(id).await {
                 Some(_metadata) => Ok(id),
-                None => Err(tonic::Status::new(tonic::Code::NotFound, "Path not found")),
+                None => Err(tonic::Status::not_found("Path not found")),
             },
         }
     } else {
-        Err(tonic::Status::new(
-            tonic::Code::InvalidArgument,
-            "No SignalId provided",
-        ))
+        Err(tonic::Status::invalid_argument("No SignalId provided"))
     }
 }
 
@@ -838,7 +1041,10 @@ mod tests {
     use proto::open_provider_stream_response::Action::{
         BatchActuateStreamRequest, ProvideActuationResponse, PublishValuesResponse,
     };
-    use proto::{open_provider_stream_request, OpenProviderStreamRequest, PublishValuesRequest};
+    use proto::{
+        open_provider_stream_request, BatchActuateRequest, OpenProviderStreamRequest,
+        PublishValuesRequest, SignalId, Value,
+    };
 
     // Helper for adding an int32 signal and adding value
     async fn helper_add_int32(
@@ -2069,6 +2275,437 @@ mod tests {
                     "Specified root branch does not exist",
                     "unexpected error reason"
                 );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_actuate_signal_not_found() {
+        let broker = DataBroker::default();
+
+        let mut request = tonic::Request::new(ActuateRequest {
+            signal_id: Some(SignalId {
+                signal: Some(proto::signal_id::Signal::Path(
+                    "Vehicle.Cabin.Non.Existing".to_string(),
+                )),
+            }),
+            value: Some(Value {
+                typed_value: Some(proto::value::TypedValue::Bool(true)),
+            }),
+        });
+
+        request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        let result_response = proto::val_server::Val::actuate(&broker, request).await;
+        assert!(result_response.is_err());
+        assert_eq!(result_response.unwrap_err().code(), tonic::Code::NotFound)
+    }
+
+    #[tokio::test]
+    async fn test_actuate_can_provider_unavailable() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.ABS.IsEnabled".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let mut request = tonic::Request::new(ActuateRequest {
+            signal_id: Some(SignalId {
+                signal: Some(proto::signal_id::Signal::Path(
+                    "Vehicle.ADAS.ABS.IsEnabled".to_string(),
+                )),
+            }),
+            value: Some(Value {
+                typed_value: Some(proto::value::TypedValue::Bool(true)),
+            }),
+        });
+
+        request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        let result_response = proto::val_server::Val::actuate(&broker, request).await;
+        assert!(result_response.is_err());
+        assert_eq!(
+            result_response.unwrap_err().code(),
+            tonic::Code::Unavailable
+        )
+    }
+
+    #[tokio::test]
+    async fn test_actuate_success() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.ABS.IsEnabled".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let vss_id = authorized_access
+            .get_id_by_path("Vehicle.ADAS.ABS.IsEnabled")
+            .await
+            .expect("Resolving the id of Vehicle.ADAS.ABS.IsEnabled should succeed");
+        let vss_ids = vec![vss_id];
+
+        let (sender, mut receiver) = mpsc::channel(10);
+        let actuation_provider = Provider { sender };
+        authorized_access
+            .provide_actuation(vss_ids, Box::new(actuation_provider))
+            .await
+            .expect("Registering a new Actuation Provider should succeed");
+
+        let mut request = tonic::Request::new(ActuateRequest {
+            signal_id: Some(SignalId {
+                signal: Some(proto::signal_id::Signal::Path(
+                    "Vehicle.ADAS.ABS.IsEnabled".to_string(),
+                )),
+            }),
+            value: Some(Value {
+                typed_value: Some(proto::value::TypedValue::Bool(true)),
+            }),
+        });
+
+        request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        let result_response = proto::val_server::Val::actuate(&broker, request).await;
+        assert!(result_response.is_ok());
+
+        let result_response = receiver.recv().await.expect("Option should be Some");
+        result_response.expect("Result should be Ok");
+    }
+
+    #[tokio::test]
+    async fn test_batch_actuate_signal_not_found() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.ABS.IsEnabled".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let mut request = tonic::Request::new(BatchActuateRequest {
+            actuate_requests: vec![
+                ActuateRequest {
+                    signal_id: Some(SignalId {
+                        signal: Some(proto::signal_id::Signal::Path(
+                            "Vehicle.ADAS.ABS.IsEnabled".to_string(),
+                        )),
+                    }),
+                    value: Some(Value {
+                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                    }),
+                },
+                ActuateRequest {
+                    signal_id: Some(SignalId {
+                        signal: Some(proto::signal_id::Signal::Path(
+                            "Vehicle.Cabin.Non.Existing".to_string(),
+                        )),
+                    }),
+                    value: Some(Value {
+                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                    }),
+                },
+            ],
+        });
+
+        request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        let result_response = proto::val_server::Val::batch_actuate(&broker, request).await;
+        assert!(result_response.is_err());
+        assert_eq!(result_response.unwrap_err().code(), tonic::Code::NotFound)
+    }
+
+    #[tokio::test]
+    async fn test_batch_actuate_provider_unavailable() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.ABS.IsEnabled".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.CruiseControl.IsActive".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let vss_id_abs = authorized_access
+            .get_id_by_path("Vehicle.ADAS.ABS.IsEnabled")
+            .await
+            .expect("Resolving the id of Vehicle.ADAS.ABS.IsEnabled should succeed");
+
+        let vss_ids = vec![vss_id_abs];
+
+        let (sender, _receiver) = mpsc::channel(10);
+        let actuation_provider = Provider { sender };
+        authorized_access
+            .provide_actuation(vss_ids, Box::new(actuation_provider))
+            .await
+            .expect("Registering a new Actuation Provider should succeed");
+
+        let mut request = tonic::Request::new(BatchActuateRequest {
+            actuate_requests: vec![
+                ActuateRequest {
+                    signal_id: Some(SignalId {
+                        signal: Some(proto::signal_id::Signal::Path(
+                            "Vehicle.ADAS.ABS.IsEnabled".to_string(),
+                        )),
+                    }),
+                    value: Some(Value {
+                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                    }),
+                },
+                ActuateRequest {
+                    signal_id: Some(SignalId {
+                        signal: Some(proto::signal_id::Signal::Path(
+                            "Vehicle.ADAS.CruiseControl.IsActive".to_string(),
+                        )),
+                    }),
+                    value: Some(Value {
+                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                    }),
+                },
+            ],
+        });
+
+        request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        let result_response = proto::val_server::Val::batch_actuate(&broker, request).await;
+        assert!(result_response.is_err());
+        assert_eq!(
+            result_response.unwrap_err().code(),
+            tonic::Code::Unavailable
+        )
+    }
+
+    #[tokio::test]
+    async fn test_batch_actuate_success() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.ABS.IsEnabled".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.CruiseControl.IsActive".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let vss_id_abs = authorized_access
+            .get_id_by_path("Vehicle.ADAS.ABS.IsEnabled")
+            .await
+            .expect("Resolving the id of Vehicle.ADAS.ABS.IsEnabled should succeed");
+        let vss_id_cruise_control = authorized_access
+            .get_id_by_path("Vehicle.ADAS.CruiseControl.IsActive")
+            .await
+            .expect("Resolving the id of Vehicle.ADAS.CruiseControl.IsActive should succeed");
+
+        let vss_ids = vec![vss_id_abs, vss_id_cruise_control];
+
+        let (sender, mut receiver) = mpsc::channel(10);
+        let actuation_provider = Provider { sender };
+        authorized_access
+            .provide_actuation(vss_ids, Box::new(actuation_provider))
+            .await
+            .expect("Registering a new Actuation Provider should succeed");
+
+        let mut request = tonic::Request::new(BatchActuateRequest {
+            actuate_requests: vec![
+                ActuateRequest {
+                    signal_id: Some(SignalId {
+                        signal: Some(proto::signal_id::Signal::Path(
+                            "Vehicle.ADAS.ABS.IsEnabled".to_string(),
+                        )),
+                    }),
+                    value: Some(Value {
+                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                    }),
+                },
+                ActuateRequest {
+                    signal_id: Some(SignalId {
+                        signal: Some(proto::signal_id::Signal::Path(
+                            "Vehicle.ADAS.CruiseControl.IsActive".to_string(),
+                        )),
+                    }),
+                    value: Some(Value {
+                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                    }),
+                },
+            ],
+        });
+
+        request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        let result_response = proto::val_server::Val::batch_actuate(&broker, request).await;
+        assert!(result_response.is_ok());
+
+        let result_response = receiver.recv().await.expect("Option should be Some");
+        result_response.expect("Result should be Ok");
+    }
+
+    #[tokio::test]
+    async fn test_provide_actuation_signal_not_found() {
+        let broker = DataBroker::default();
+
+        let request = OpenProviderStreamRequest {
+            action: Some(
+                open_provider_stream_request::Action::ProvideActuationRequest(
+                    proto::ProvideActuationRequest {
+                        actuator_identifiers: vec![SignalId {
+                            signal: Some(proto::signal_id::Signal::Path(
+                                "Vehicle.Cabin.Non.Existing".to_string(),
+                            )),
+                        }],
+                    },
+                ),
+            ),
+        };
+
+        let mut streaming_request = tonic_mock::streaming_request(vec![request]);
+        streaming_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::open_provider_stream(&broker, streaming_request).await {
+            Ok(response) => {
+                let stream = response.into_inner();
+                let mut receiver = stream.into_inner();
+                let result_response = receiver
+                    .recv()
+                    .await
+                    .expect("result_response should be Some");
+                assert!(result_response.is_err());
+                assert_eq!(result_response.unwrap_err().code(), tonic::Code::NotFound)
+            }
+            Err(_) => {
+                panic!("Should not happen")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_provide_actuation_success() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.ABS.IsEnabled".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let request = OpenProviderStreamRequest {
+            action: Some(
+                open_provider_stream_request::Action::ProvideActuationRequest(
+                    proto::ProvideActuationRequest {
+                        actuator_identifiers: vec![SignalId {
+                            signal: Some(proto::signal_id::Signal::Path(
+                                "Vehicle.ADAS.ABS.IsEnabled".to_string(),
+                            )),
+                        }],
+                    },
+                ),
+            ),
+        };
+
+        let mut streaming_request = tonic_mock::streaming_request(vec![request]);
+        streaming_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::open_provider_stream(&broker, streaming_request).await {
+            Ok(response) => {
+                let stream = response.into_inner();
+                let mut receiver = stream.into_inner();
+                let result_response = receiver
+                    .recv()
+                    .await
+                    .expect("result_response should be Some");
+
+                assert!(result_response.is_ok())
+            }
+            Err(_) => {
+                panic!("Should not happen")
             }
         }
     }
