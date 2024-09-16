@@ -10,9 +10,12 @@
 // *
 // * SPDX-License-Identifier: Apache-2.0
 // ********************************************************************************/
-use databroker_proto::kuksa::val::v2 as proto;
-
 use crate::broker;
+use databroker_proto::kuksa::val::v2 as proto;
+use kuksa::proto::v2::{
+    BoolArray, DoubleArray, FloatArray, Int32Array, Int64Array, StringArray, Uint32Array,
+    Uint64Array,
+};
 
 use std::time::SystemTime;
 
@@ -402,6 +405,152 @@ impl broker::UpdateError {
                 tonic::Code::Unauthenticated,
                 format!("Permission expired (id: {})", id),
             ),
+        }
+    }
+}
+
+impl From<proto::Value> for broker::DataValue {
+    fn from(value: proto::Value) -> Self {
+        match &value.typed_value {
+            Some(proto::value::TypedValue::String(value)) => {
+                broker::DataValue::String(value.to_owned())
+            }
+            Some(proto::value::TypedValue::Bool(value)) => broker::DataValue::Bool(*value),
+            Some(proto::value::TypedValue::Int32(value)) => broker::DataValue::Int32(*value),
+            Some(proto::value::TypedValue::Int64(value)) => broker::DataValue::Int64(*value),
+            Some(proto::value::TypedValue::Uint32(value)) => broker::DataValue::Uint32(*value),
+            Some(proto::value::TypedValue::Uint64(value)) => broker::DataValue::Uint64(*value),
+            Some(proto::value::TypedValue::Float(value)) => broker::DataValue::Float(*value),
+            Some(proto::value::TypedValue::Double(value)) => broker::DataValue::Double(*value),
+            Some(proto::value::TypedValue::StringArray(array)) => {
+                broker::DataValue::StringArray(array.values.clone())
+            }
+            Some(proto::value::TypedValue::BoolArray(array)) => {
+                broker::DataValue::BoolArray(array.values.clone())
+            }
+            Some(proto::value::TypedValue::Int32Array(array)) => {
+                broker::DataValue::Int32Array(array.values.clone())
+            }
+            Some(proto::value::TypedValue::Int64Array(array)) => {
+                broker::DataValue::Int64Array(array.values.clone())
+            }
+            Some(proto::value::TypedValue::Uint32Array(array)) => {
+                broker::DataValue::Uint32Array(array.values.clone())
+            }
+            Some(proto::value::TypedValue::Uint64Array(array)) => {
+                broker::DataValue::Uint64Array(array.values.clone())
+            }
+            Some(proto::value::TypedValue::FloatArray(array)) => {
+                broker::DataValue::FloatArray(array.values.clone())
+            }
+            Some(proto::value::TypedValue::DoubleArray(array)) => {
+                broker::DataValue::DoubleArray(array.values.clone())
+            }
+            None => todo!(),
+        }
+    }
+}
+
+impl From<broker::DataValue> for proto::Value {
+    fn from(value: broker::DataValue) -> Self {
+        match &value {
+            broker::DataValue::String(value) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::String(value.to_owned())),
+            },
+
+            broker::DataValue::Bool(value) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Bool(*value)),
+            },
+
+            broker::DataValue::Int32(value) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Int32(*value)),
+            },
+
+            broker::DataValue::Int64(value) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Int64(*value)),
+            },
+
+            broker::DataValue::Uint32(value) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Uint32(*value)),
+            },
+
+            broker::DataValue::Uint64(value) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Uint64(*value)),
+            },
+
+            broker::DataValue::Float(value) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Float(*value)),
+            },
+
+            broker::DataValue::Double(value) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Double(*value)),
+            },
+
+            broker::DataValue::StringArray(array) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::StringArray(StringArray {
+                    values: array.clone(),
+                })),
+            },
+
+            broker::DataValue::BoolArray(array) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::BoolArray(BoolArray {
+                    values: array.clone(),
+                })),
+            },
+
+            broker::DataValue::Int32Array(array) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Int32Array(Int32Array {
+                    values: array.clone(),
+                })),
+            },
+
+            broker::DataValue::Int64Array(array) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Int64Array(Int64Array {
+                    values: array.clone(),
+                })),
+            },
+
+            broker::DataValue::Uint32Array(array) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Uint32Array(Uint32Array {
+                    values: array.clone(),
+                })),
+            },
+
+            broker::DataValue::Uint64Array(array) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::Uint64Array(Uint64Array {
+                    values: array.clone(),
+                })),
+            },
+
+            broker::DataValue::FloatArray(array) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::FloatArray(FloatArray {
+                    values: array.clone(),
+                })),
+            },
+
+            broker::DataValue::DoubleArray(array) => proto::Value {
+                typed_value: Some(proto::value::TypedValue::DoubleArray(DoubleArray {
+                    values: array.clone(),
+                })),
+            },
+
+            broker::DataValue::NotAvailable => proto::Value { typed_value: None },
+        }
+    }
+}
+
+impl broker::ActuationError {
+    pub fn to_tonic_status(&self, message: String) -> tonic::Status {
+        match self {
+            broker::ActuationError::NotFound => tonic::Status::not_found(message),
+            broker::ActuationError::WrongType => tonic::Status::invalid_argument(message),
+            broker::ActuationError::OutOfBounds => tonic::Status::out_of_range(message),
+            broker::ActuationError::UnsupportedType => tonic::Status::invalid_argument(message),
+            broker::ActuationError::PermissionDenied => tonic::Status::permission_denied(message),
+            broker::ActuationError::PermissionExpired => tonic::Status::unauthenticated(message),
+            broker::ActuationError::ProviderNotAvailable => tonic::Status::unavailable(message),
+            broker::ActuationError::ProviderAlreadyExists => tonic::Status::already_exists(message),
+            broker::ActuationError::TransmissionFailure => tonic::Status::data_loss(message),
         }
     }
 }
