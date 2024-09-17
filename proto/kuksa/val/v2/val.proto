@@ -21,33 +21,45 @@ import "kuksa/val/v2/types.proto";
 
 service VAL {
   // Get the latest value of a signal
+  // If the signal exist but does not have a valid value
+  // a DataPoint where value is None shall be returned.
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if the requested signal doesn't exist
   //   PERMISSION_DENIED if access is denied
+  //
+  //
   rpc GetValue(GetValueRequest) returns (GetValueResponse);
 
   // Get the latest values of a set of signals.
   // The returned list of data points has the same order as the list of the request.
+  // If a requested signal has no value a DataPoint where value is None will be returned.
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the requested signals doesn't exist.
   //   PERMISSION_DENIED if access is denied for any of the requested signals.
+  //
   rpc GetValues(GetValuesRequest) returns (GetValuesResponse);
 
   // List values of signals matching the request.
   //
   // Returns a list of signal values. Only values of signals that the user
   // is allowed to read are included (everything else is ignored).
+  // If a requested signal has no value a DataPoint where value is None will be returned.
   //
   // Returns (GRPC error code):
-  //   NOT_FOUND if the specified root branch does not exist.
+  //   NOT_FOUND if any of the requested signals doesn't exist.
   rpc ListValues(ListValuesRequest) returns (ListValuesResponse);
 
   // Subscribe to a set of signals using string path parameters
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the signals are non-existant.
   //   PERMISSION_DENIED if access is denied for any of the signals.
+  //
+  // When subscribing the Broker shall immediately return the value for all
+  // subscribed entries. If no value is available when subscribing a DataPoint shall be returned
+  // first when a value is available.
+  // If we have the availability to "delete" values then getting a NotAvailable message sort of makes sense
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
 
   // Subscribe to a set of signals using i32 id parameters
