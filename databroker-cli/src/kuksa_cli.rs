@@ -312,7 +312,7 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 }
                                 Err(err) => {
-                                    cli::print_error(cmd, &format!("Malformed token: {err}"))?
+                                    cli::print_error(cmd, format!("Malformed token: {err}"))?
                                 }
                             }
                         }
@@ -350,12 +350,12 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                         }
                                     }
                                     Err(err) => {
-                                        cli::print_error(cmd, &format!("Malformed token: {err}"))?
+                                        cli::print_error(cmd, format!("Malformed token: {err}"))?
                                     }
                                 },
                                 Err(err) => cli::print_error(
                                     cmd,
-                                    &format!(
+                                    format!(
                                         "Failed to open token file \"{token_filename}\": {err}"
                                     ),
                                 )?,
