@@ -317,6 +317,54 @@ impl From<&broker::Metadata> for proto::Metadata {
             data_type: proto::DataType::from(&metadata.data_type) as i32,
             change_type: proto::ChangeType::Continuous as i32, // TODO: Add to metadata
             description: metadata.description.to_owned(),
+            allowed: match metadata.allowed.as_ref() {
+                Some(broker::DataValue::StringArray(vec)) => Some(proto::Allowed {
+                    values: Some(proto::allowed::Values::StringValues(proto::StringArray {
+                        values: vec.clone(),
+                    })),
+                }),
+                Some(broker::DataValue::Int32Array(vec)) => Some(proto::Allowed {
+                    values: Some(proto::allowed::Values::Int32Values(proto::Int32Array {
+                        values: vec.clone(),
+                    })),
+                }),
+                Some(broker::DataValue::Int64Array(vec)) => Some(proto::Allowed {
+                    values: Some(proto::allowed::Values::Int64Values(proto::Int64Array {
+                        values: vec.clone(),
+                    })),
+                }),
+                Some(broker::DataValue::Uint32Array(vec)) => Some(proto::Allowed {
+                    values: Some(proto::allowed::Values::Uint32Values(proto::Uint32Array {
+                        values: vec.clone(),
+                    })),
+                }),
+                Some(broker::DataValue::Uint64Array(vec)) => Some(proto::Allowed {
+                    values: Some(proto::allowed::Values::Uint64Values(proto::Uint64Array {
+                        values: vec.clone(),
+                    })),
+                }),
+                Some(broker::DataValue::FloatArray(vec)) => Some(proto::Allowed {
+                    values: Some(proto::allowed::Values::FloatValues(proto::FloatArray {
+                        values: vec.clone(),
+                    })),
+                }),
+                Some(broker::DataValue::DoubleArray(vec)) => Some(proto::Allowed {
+                    values: Some(proto::allowed::Values::DoubleValues(proto::DoubleArray {
+                        values: vec.clone(),
+                    })),
+                }),
+                Some(broker::DataValue::BoolArray(_))
+                | Some(broker::DataValue::NotAvailable)
+                | Some(broker::DataValue::Bool(_))
+                | Some(broker::DataValue::String(_))
+                | Some(broker::DataValue::Int32(_))
+                | Some(broker::DataValue::Int64(_))
+                | Some(broker::DataValue::Uint32(_))
+                | Some(broker::DataValue::Uint64(_))
+                | Some(broker::DataValue::Float(_))
+                | Some(broker::DataValue::Double(_))
+                | None => None,
+            },
         }
     }
 }
