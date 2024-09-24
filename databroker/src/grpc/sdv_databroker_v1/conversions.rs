@@ -101,9 +101,6 @@ impl From<&broker::Datapoint> for proto::Datapoint {
             broker::DataValue::NotAvailable => proto::datapoint::Value::FailureValue(
                 proto::datapoint::Failure::NotAvailable as i32,
             ),
-            broker::DataValue::ValueFailure(_) => proto::datapoint::Value::FailureValue(
-                proto::datapoint::Failure::InternalError as i32,
-            ),
         };
 
         proto::Datapoint {
@@ -168,9 +165,6 @@ impl From<&broker::QueryField> for proto::Datapoint {
             }
             broker::DataValue::NotAvailable => proto::datapoint::Value::FailureValue(
                 proto::datapoint::Failure::NotAvailable.into(),
-            ),
-            broker::DataValue::ValueFailure(_) => proto::datapoint::Value::FailureValue(
-                proto::datapoint::Failure::InternalError.into(),
             ),
         };
 

@@ -159,10 +159,6 @@ impl From<broker::Datapoint> for Option<proto::Datapoint> {
                 })),
                 timestamp: Some(from.ts.into()),
             }),
-            broker::DataValue::ValueFailure(failure) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Failure(i32::from(&failure))),
-                timestamp: Some(from.ts.into()),
-            }),
         }
     }
 }
@@ -177,31 +173,6 @@ impl From<&broker::ValueFailure> for i32 {
             broker::ValueFailure::AccessDenied => 4,
             broker::ValueFailure::InternalError => 5,
         }
-    }
-}
-
-impl From<&i32> for broker::ValueFailure {
-    fn from(from: &i32) -> Self {
-        match from {
-            1 => broker::ValueFailure::InvalidValue,
-            2 => broker::ValueFailure::NotProvided,
-            3 => broker::ValueFailure::UnknownSignal,
-            4 => broker::ValueFailure::AccessDenied,
-            5 => broker::ValueFailure::InternalError,
-            _ => broker::ValueFailure::Unspecified,
-        }
-    }
-}
-
-fn from_i32(value: i32) -> proto::ValueFailure {
-    // Use a match statement to convert the i32 to the corresponding enum variant
-    match value {
-        1 => proto::ValueFailure::InvalidValue,
-        2 => proto::ValueFailure::NotProvided,
-        3 => proto::ValueFailure::UnknownSignal,
-        4 => proto::ValueFailure::AccessDenied,
-        5 => proto::ValueFailure::InternalError,
-        _ => proto::ValueFailure::Unspecified,
     }
 }
 
@@ -256,11 +227,9 @@ impl From<&proto::Datapoint> for broker::DataValue {
                 Some(proto::value::TypedValue::DoubleArray(array)) => {
                     broker::DataValue::DoubleArray(array.values.clone())
                 }
-                None => todo!(),
+                None => broker::DataValue::NotAvailable,
             },
-            Some(Failure(value)) => {
-                broker::DataValue::ValueFailure(broker::ValueFailure::from(&from_i32(*value)))
-            }
+            Some(Failure(_)) => broker::DataValue::NotAvailable,
             None => broker::DataValue::NotAvailable,
         }
     }
