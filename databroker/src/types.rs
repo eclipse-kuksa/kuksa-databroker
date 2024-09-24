@@ -84,7 +84,6 @@ pub enum DataValue {
     Uint64Array(Vec<u64>),
     FloatArray(Vec<f32>),
     DoubleArray(Vec<f64>),
-    ValueFailure(ValueFailure),
 }
 
 #[derive(Debug)]

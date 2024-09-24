@@ -143,7 +143,6 @@ impl From<broker::Datapoint> for Option<proto::Datapoint> {
                 })),
                 timestamp: Some(from.ts.into()),
             }),
-            broker::DataValue::ValueFailure(_) => None,
         }
     }
 }
@@ -232,7 +231,6 @@ impl From<broker::DataValue> for Option<proto::Datapoint> {
                 })),
                 timestamp: None,
             }),
-            broker::DataValue::ValueFailure(_) => None,
         }
     }
 }
