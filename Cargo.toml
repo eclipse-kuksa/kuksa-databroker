@@ -45,5 +45,8 @@ opt-level = "s"
 codegen-units = 1
 incremental = false
 strip = true
-# debug = true               # for profiling (turn off otherwise)
-# split-debuginfo = "packed" # only enable when `debug = true``
+
+[profile.release-with-debug]
+inherits = "release"
+strip = false # do not strip debug symbols
+debug = true  # enable debug symbols
