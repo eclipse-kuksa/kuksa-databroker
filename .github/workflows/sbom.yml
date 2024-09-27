@@ -26,7 +26,7 @@ jobs:
         curl -X "POST" "http://34.46.105.78:8080/api/v1/bom" \
         -H "X-Api-Key: odt_LCjFjndcfjTpWEKr2oSc3KKsbgVHO3VC" \
         -H "Content-Type: multipart/form-data" \
-        -F "project=d2f9cf45-e514-4039-a666-4ae157245879" \
+        -F "project=a0e707a1-9463-428a-8453-46ba5fc78532" \
         -F "bom=@sbom.json"
         
     - name: Upload SBOM  artifact
