@@ -38,6 +38,7 @@ tokio = "1.17.0"
 tokio-stream = "0.1.8"
 tonic = { version = "0.11.0", default-features = false }
 tonic-build = { version = "0.11.0", default-features = false }
+serde = "1.0"
 
 [profile.release]
 lto = true                 # Link time optimization (dead code removal etc...)
