@@ -18,13 +18,11 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "kuksa/val/v2";
 
+// A Datapoint represents a timestamped value.
+// The 'value' field can be explicitly 'None', meaning the Datapoint exists but no value is present.
 message Datapoint {
-  google.protobuf.Timestamp timestamp = 1;
-
-  oneof value_state {
-    ValueFailure failure = 2;
-    Value value          = 3;
-  }
+  google.protobuf.Timestamp timestamp = 1;  // The timestamp of the datapoint.
+  Value value                         = 2;  // The value associated with the timestamp. If no value is present, this field can be 'None'.
 }
 
 message Value {
@@ -145,22 +143,6 @@ message ValueRestrictionFloat {
 // min, max doesn't make much sense for a string
 message ValueRestrictionString {
   repeated string allowed_values = 1;
-}
-
-enum ValueFailure {
-  // Unspecified value failure, reserved for gRPC backwards compatibility
-  // (see https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum)
-  UNSPECIFIED    = 0;
-  // The signal is known and provided, but doesn't have a valid value
-  INVALID_VALUE  = 1;
-  // The signal is known, but no value is provided currently
-  NOT_PROVIDED   = 2;
-  // The referred signal is unknown on the system
-  UNKNOWN_SIGNAL = 3;
-  // The client does not have the necessary access rights to the signal
-  ACCESS_DENIED  = 4;
-  // Unexpected internal error
-  INTERNAL_ERROR = 5;
 }
 
 // VSS Data type of a signal

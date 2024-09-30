@@ -22,7 +22,7 @@ use crate::{
 use databroker_proto::kuksa::val::v2::{
     self as proto,
     open_provider_stream_request::Action::{
-        BatchActuateStreamResponse, ProvidedActuation, PublishValuesRequest,
+        BatchActuateStreamResponse, ProvideActuationRequest, PublishValuesRequest,
     },
     open_provider_stream_response, OpenProviderStreamResponse, PublishValuesResponse,
 };
@@ -133,19 +133,19 @@ impl proto::val_server::Val for broker::DataBroker {
         }
     }
 
-    type SubscribeIdStream = Pin<
+    type SubscribeByIdStream = Pin<
         Box<
-            dyn Stream<Item = Result<proto::SubscribeResponseId, tonic::Status>>
+            dyn Stream<Item = Result<proto::SubscribeByIdResponse, tonic::Status>>
                 + Send
                 + Sync
                 + 'static,
         >,
     >;
 
-    async fn subscribe_id(
+    async fn subscribe_by_id(
         &self,
-        _request: tonic::Request<proto::SubscribeRequestId>,
-    ) -> Result<tonic::Response<Self::SubscribeIdStream>, tonic::Status> {
+        _request: tonic::Request<proto::SubscribeByIdRequest>,
+    ) -> Result<tonic::Response<Self::SubscribeByIdStream>, tonic::Status> {
         Err(tonic::Status::new(
             tonic::Code::Unimplemented,
             "Unimplemented",
@@ -361,7 +361,7 @@ impl proto::val_server::Val for broker::DataBroker {
     ///      ```
     ///     `request`:
     ///      OpenProviderStreamRequest {
-    ///          action: ProvidedActuation {
+    ///          action: ProvideActuationRequest {
     ///              {
     ///                  signal: id: 30,
     ///              },
@@ -374,7 +374,7 @@ impl proto::val_server::Val for broker::DataBroker {
     ///
     ///      `response`:
     ///      OpenProviderStreamStream {
-    ///          action: ProvideActuatorResponse { }
+    ///          action: ProvideActuattionResponse { }
     ///      }
     ///      ```
     ///
@@ -434,7 +434,7 @@ impl proto::val_server::Val for broker::DataBroker {
     ///
     /// * `request` - The request should contain the necessary permissions if the databroker is started with secure mode.
     ///   The request `OpenProviderStreamRequest` can contain messages according to the action:
-    ///   - Action 1: `ProvidedActuation`
+    ///   - Action 1: `ProvideActuationRequest`
     ///   - Action 2: `PublishValuesRequest`
     ///   - Action 3: `BatchActuateStreamResponse`
     ///
@@ -482,7 +482,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                 match request {
                                     Some(req) => {
                                         match req.action {
-                                            Some(ProvidedActuation(_provided_actuation)) => {
+                                            Some(ProvideActuationRequest(_provide_actuation_request)) => {
                                                 if let Err(err) = response_stream_sender.send(Err(tonic::Status::new(tonic::Code::Unimplemented, "Unimplemented"))).await {
                                                     debug!("Failed to send error response: {}", err);
                                                 }
@@ -656,7 +656,7 @@ mod tests {
     use crate::{broker::DataBroker, permissions};
     use databroker_proto::kuksa::val::v2::val_server::Val;
     use proto::open_provider_stream_response::Action::{
-        BatchActuateStreamRequest, ProvideActuatorResponse, PublishValuesResponse,
+        BatchActuateStreamRequest, ProvideActuationResponse, PublishValuesResponse,
     };
     use proto::{open_provider_stream_request, OpenProviderStreamRequest, PublishValuesRequest};
 
@@ -677,7 +677,7 @@ mod tests {
                 {
                     match (response.get(key), expected_response.get(key)) {
                         (Some(entry1), Some(entry2)) => {
-                            assert_eq!(entry1.value_state, entry2.value_state);
+                            assert_eq!(entry1.value, entry2.value);
                         }
                         (Some(entry1), None) => {
                             assert!(f, "Key '{}' is only in response: {:?}", key, entry1)
@@ -729,7 +729,7 @@ mod tests {
 
                 Some(proto::Datapoint {
                     timestamp,
-                    value_state: Some(proto::datapoint::ValueState::Value(value)),
+                    value: Some(value),
                 })
             },
         };
@@ -785,7 +785,7 @@ mod tests {
 
                 Some(proto::Datapoint {
                     timestamp,
-                    value_state: Some(proto::datapoint::ValueState::Value(value)),
+                    value: Some(value),
                 })
             },
         };
@@ -852,9 +852,9 @@ mod tests {
             }),
             data_point: Some(proto::Datapoint {
                 timestamp: None,
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                value: Some(proto::Value {
                     typed_value: Some(proto::value::TypedValue::Bool(true)),
-                })),
+                }),
             }),
         });
         request
@@ -880,9 +880,9 @@ mod tests {
             }),
             data_point: Some(proto::Datapoint {
                 timestamp: None,
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                value: Some(proto::Value {
                     typed_value: Some(proto::value::TypedValue::Bool(false)),
-                })),
+                }),
             }),
         });
         request_false
@@ -917,11 +917,9 @@ mod tests {
                             "test.datapoint1".to_string(),
                             proto::Datapoint {
                                 timestamp: None,
-                                value_state: Some(proto::datapoint::ValueState::Value(
-                                    proto::Value {
-                                        typed_value: Some(proto::value::TypedValue::Bool(true)),
-                                    },
-                                )),
+                                value: Some(proto::Value {
+                                    typed_value: Some(proto::value::TypedValue::Bool(true)),
+                                }),
                             },
                         );
                     }
@@ -932,11 +930,9 @@ mod tests {
                             "test.datapoint1".to_string(),
                             proto::Datapoint {
                                 timestamp: None,
-                                value_state: Some(proto::datapoint::ValueState::Value(
-                                    proto::Value {
-                                        typed_value: Some(proto::value::TypedValue::Bool(false)),
-                                    },
-                                )),
+                                value: Some(proto::Value {
+                                    typed_value: Some(proto::value::TypedValue::Bool(false)),
+                                }),
                             },
                         );
                     }
@@ -993,7 +989,7 @@ mod tests {
 
                         let datapoint = proto::Datapoint {
                             timestamp,
-                            value_state: Some(proto::datapoint::ValueState::Value(value)),
+                            value: Some(value),
                         };
 
                         let mut map = HashMap::new();
@@ -1020,7 +1016,7 @@ mod tests {
                     while let Some(value) = receiver.recv().await {
                         match value {
                             Ok(value) => match value.action {
-                                Some(ProvideActuatorResponse(_)) => {
+                                Some(ProvideActuationResponse(_)) => {
                                     panic!("Should not happen")
                                 }
                                 Some(PublishValuesResponse(publish_values_response)) => {

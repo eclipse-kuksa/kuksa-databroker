@@ -270,7 +270,6 @@ impl From<broker::DataValue> for Value {
             broker::DataValue::DoubleArray(array) => {
                 Value::Array(array.iter().map(|value| value.to_string()).collect())
             }
-            broker::DataValue::ValueFailure(_) => Value::None,
         }
     }
 }

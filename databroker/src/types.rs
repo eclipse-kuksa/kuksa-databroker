@@ -56,16 +56,6 @@ pub enum ChangeType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ValueFailure {
-    Unspecified,
-    InvalidValue,
-    NotProvided,
-    UnknownSignal,
-    AccessDenied,
-    InternalError,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum DataValue {
     NotAvailable,
     Bool(bool),
