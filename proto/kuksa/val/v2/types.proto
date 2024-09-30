@@ -18,9 +18,11 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "kuksa/val/v2";
 
+// A Datapoint represents a timestamped value.
+// The 'value' field can be explicitly 'None', meaning the Datapoint exists but no value is present.
 message Datapoint {
-  google.protobuf.Timestamp timestamp = 1;
-  Value value                         = 2;
+  google.protobuf.Timestamp timestamp = 1;  // The timestamp of the datapoint.
+  Value value                         = 2;  // The value associated with the timestamp. If no value is present, this field can be 'None'.
 }
 
 message Value {
