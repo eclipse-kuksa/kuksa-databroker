@@ -11,7 +11,6 @@
 // * SPDX-License-Identifier: Apache-2.0
 // ********************************************************************************/
 use databroker_proto::kuksa::val::v2 as proto;
-use proto::datapoint::{ValueState::Failure, ValueState::Value};
 
 use crate::broker;
 
@@ -48,151 +47,125 @@ impl From<broker::Datapoint> for Option<proto::Datapoint> {
         match from.value {
             broker::DataValue::NotAvailable => None,
             broker::DataValue::Bool(value) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
-                    typed_value: Some(proto::value::TypedValue::Bool(value)),
-                })),
                 timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
+                    typed_value: Some(proto::value::TypedValue::Bool(value)),
+                }),
             }),
             broker::DataValue::String(value) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
-                    typed_value: Some(proto::value::TypedValue::String(value)),
-                })),
                 timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
+                    typed_value: Some(proto::value::TypedValue::String(value)),
+                }),
             }),
             broker::DataValue::Int32(value) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
-                    typed_value: Some(proto::value::TypedValue::Int32(value)),
-                })),
                 timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
+                    typed_value: Some(proto::value::TypedValue::Int32(value)),
+                }),
             }),
             broker::DataValue::Int64(value) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
-                    typed_value: Some(proto::value::TypedValue::Int64(value)),
-                })),
                 timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
+                    typed_value: Some(proto::value::TypedValue::Int64(value)),
+                }),
             }),
             broker::DataValue::Uint32(value) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
-                    typed_value: Some(proto::value::TypedValue::Uint32(value)),
-                })),
                 timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
+                    typed_value: Some(proto::value::TypedValue::Uint32(value)),
+                }),
             }),
             broker::DataValue::Uint64(value) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
-                    typed_value: Some(proto::value::TypedValue::Uint64(value)),
-                })),
                 timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
+                    typed_value: Some(proto::value::TypedValue::Uint64(value)),
+                }),
             }),
             broker::DataValue::Float(value) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
-                    typed_value: Some(proto::value::TypedValue::Float(value)),
-                })),
                 timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
+                    typed_value: Some(proto::value::TypedValue::Float(value)),
+                }),
             }),
             broker::DataValue::Double(value) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
-                    typed_value: Some(proto::value::TypedValue::Double(value)),
-                })),
                 timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
+                    typed_value: Some(proto::value::TypedValue::Double(value)),
+                }),
             }),
             broker::DataValue::BoolArray(values) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
                     typed_value: Some(proto::value::TypedValue::BoolArray(proto::BoolArray {
                         values,
                     })),
-                })),
-                timestamp: Some(from.ts.into()),
+                }),
             }),
             broker::DataValue::StringArray(values) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
                     typed_value: Some(proto::value::TypedValue::StringArray(proto::StringArray {
                         values,
                     })),
-                })),
-                timestamp: Some(from.ts.into()),
+                }),
             }),
             broker::DataValue::Int32Array(values) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
                     typed_value: Some(proto::value::TypedValue::Int32Array(proto::Int32Array {
                         values,
                     })),
-                })),
-                timestamp: Some(from.ts.into()),
+                }),
             }),
             broker::DataValue::Int64Array(values) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
                     typed_value: Some(proto::value::TypedValue::Int64Array(proto::Int64Array {
                         values,
                     })),
-                })),
-                timestamp: Some(from.ts.into()),
+                }),
             }),
             broker::DataValue::Uint32Array(values) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
                     typed_value: Some(proto::value::TypedValue::Uint32Array(proto::Uint32Array {
                         values,
                     })),
-                })),
-                timestamp: Some(from.ts.into()),
+                }),
             }),
             broker::DataValue::Uint64Array(values) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
                     typed_value: Some(proto::value::TypedValue::Uint64Array(proto::Uint64Array {
                         values,
                     })),
-                })),
-                timestamp: Some(from.ts.into()),
+                }),
             }),
             broker::DataValue::FloatArray(values) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
                     typed_value: Some(proto::value::TypedValue::FloatArray(proto::FloatArray {
                         values,
                     })),
-                })),
-                timestamp: Some(from.ts.into()),
+                }),
             }),
             broker::DataValue::DoubleArray(values) => Some(proto::Datapoint {
-                value_state: Some(proto::datapoint::ValueState::Value(proto::Value {
+                timestamp: Some(from.ts.into()),
+                value: Some(proto::Value {
                     typed_value: Some(proto::value::TypedValue::DoubleArray(proto::DoubleArray {
                         values,
                     })),
-                })),
-                timestamp: Some(from.ts.into()),
+                }),
             }),
-        }
-    }
-}
-
-impl From<&broker::ValueFailure> for i32 {
-    fn from(from: &broker::ValueFailure) -> Self {
-        match from {
-            broker::ValueFailure::Unspecified => 0,
-            broker::ValueFailure::InvalidValue => 1,
-            broker::ValueFailure::NotProvided => 2,
-            broker::ValueFailure::UnknownSignal => 3,
-            broker::ValueFailure::AccessDenied => 4,
-            broker::ValueFailure::InternalError => 5,
-        }
-    }
-}
-
-impl From<&proto::ValueFailure> for broker::ValueFailure {
-    fn from(value_failure: &proto::ValueFailure) -> Self {
-        match value_failure {
-            proto::ValueFailure::Unspecified => broker::ValueFailure::Unspecified,
-            proto::ValueFailure::InvalidValue => broker::ValueFailure::InvalidValue,
-            proto::ValueFailure::NotProvided => broker::ValueFailure::NotProvided,
-            proto::ValueFailure::UnknownSignal => broker::ValueFailure::UnknownSignal,
-            proto::ValueFailure::AccessDenied => broker::ValueFailure::AccessDenied,
-            proto::ValueFailure::InternalError => broker::ValueFailure::InternalError,
         }
     }
 }
 
 impl From<&proto::Datapoint> for broker::DataValue {
     fn from(datapoint: &proto::Datapoint) -> Self {
-        match &datapoint.value_state {
-            Some(Value(value)) => match &value.typed_value {
+        match &datapoint.value {
+            Some(value) => match &value.typed_value {
                 Some(proto::value::TypedValue::String(value)) => {
                     broker::DataValue::String(value.to_owned())
                 }
@@ -229,7 +202,6 @@ impl From<&proto::Datapoint> for broker::DataValue {
                 }
                 None => broker::DataValue::NotAvailable,
             },
-            Some(Failure(_)) => broker::DataValue::NotAvailable,
             None => broker::DataValue::NotAvailable,
         }
     }
