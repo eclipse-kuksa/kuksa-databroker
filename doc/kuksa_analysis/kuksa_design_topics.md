@@ -38,6 +38,13 @@
       - [Bidirectional stream](#bidirectional-stream)
       - [Actuators](#actuators)
   - [Overview](#overview)
+- [message Datapoint](#message-datapoint)
+    - [Alternative 1](#alternative-1)
+    - [Alternative 2](#alternative-2)
+    - [Alternative 3](#alternative-3)
+- [Split subscribe method due to performance reasons](#split-subscribe-method-due-to-performance-reasons)
+- [Service VAL better naming](#service-val-better-naming)
+- [Extend and split service definition for V3?](#extend-and-split-service-definition-for-v3)
 - [COVESA topics](#covesa-topics)
 
 # Data availability/persistence according to lifecycle of Client, Databroker and Provider 
@@ -545,4 +552,94 @@ It also showcases that it's possible to wrap this GRPC interface in a simple lib
     provider.stop()
 
 ```
+
+# message Datapoint
+
+Suggestion -> https://github.com/boschglobal/kuksa-databroker/pull/4#discussion_r1766459917
+
+Discussion -> https://github.com/eclipse-kuksa/kuksa-databroker/pull/33#discussion_r1776993874
+
+### Alternative 1
+```proto
+message Datapoint {
+    google.protobuf.Timestamp timestamp = 1;
+    Value value   = 1;
+}
+```
+pros : easy to access value
+
+cons : no possible value status/state
+
+### Alternative 2
+```proto
+message Datapoint {
+  google.protobuf.Timestamp timestamp = 1;
+ 
+  oneof value_state {
+    State state = 2;
+    Value value = 3;
+  }
+}
+
+enum State {
+    // Unspecified value failure, reserved for gRPC backwards compatibility
+    // (see https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum)
+    UNSPECIFIED    = 0;
+    // The signal is known and provided, but doesn't have a valid value
+    INVALID_VALUE  = 1;
+    // The signal is known, but no value is provided currently
+    NOT_PROVIDED   = 2;
+}
+```
+
+pros : easy to understand
+
+cons : "more difficult to implement" depend on programming language
+ 
+### Alternative 3
+```proto
+message Datapoint {
+    google.protobuf.Timestamp timestamp = 1;
+     
+    Status status = 2;
+    Value value   = 3;
+}
+ 
+enum Status {
+    STATUS_UNSPECIFIED = 0;  
+    STATUS_OK = 1;
+    STATUS_VALUE_NOT_AVAILBLE = 2;
+}
+``` 
+ 
+pros : easy to understand and access
+
+cons : Difficult to keep consistency between `status` and `value` values.
+
+# Split subscribe method due to performance reasons
+ 
+  Before:
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse); -> Signal_ID (path, id)
+ 
+ 
+  Now:
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse); -> strings path
+ 
+  rpc SubscribeId(SubscribeRequestId) returns (stream SubscribeResponseId); -> int32 path -> faster
+ 
+ 
+message SubscribeByIdResponse {
+  map<int32, Datapoint> entries = 1;
+  //map<int32, Notification> entries = 1; // add to discussion PR
+}
+
+# Service VAL better naming
+ 
+ 
+# Extend and split service definition for V3?
+* split up signal service (consumer, provider)
+ 
+* split services (signals -> VAL, metadata -> server_info, health_check -> metrics, num providers, vss_validation, ...)
+
+
 # COVESA topics
