@@ -662,14 +662,7 @@ fn convert_to_proto_stream(
         let mut entries: HashMap<String, proto::Datapoint> = HashMap::with_capacity(size);
         for update in item.updates {
             let update_datapoint: Option<proto::Datapoint> = match update.update.datapoint {
-                Some(datapoint) => {
-                    // For subscribe streams we do not want to return NotAvailable
-                    // even if the value is not available when subscribe starts
-                    match datapoint.value {
-                        broker::DataValue::NotAvailable => None,
-                        _ => datapoint.into(),
-                    }
-                }
+                Some(datapoint) => datapoint.into(),
                 None => None,
             };
             if let Some(dp) = update_datapoint {
@@ -696,43 +689,6 @@ mod tests {
         BatchActuateStreamRequest, ProvideActuationResponse, PublishValuesResponse,
     };
     use proto::{open_provider_stream_request, OpenProviderStreamRequest, PublishValuesRequest};
-
-    async fn check_stream_next(
-        item: &Result<proto::SubscribeResponse, tonic::Status>,
-        expected_response: HashMap<String, proto::Datapoint>,
-    ) {
-        let f = false;
-        match item {
-            Ok(subscribe_response) => {
-                // Process the SubscribeResponse
-                let response = &subscribe_response.entries;
-                assert_eq!(response.len(), expected_response.len());
-                for key in response
-                    .keys()
-                    .chain(expected_response.keys())
-                    .collect::<std::collections::HashSet<_>>()
-                {
-                    match (response.get(key), expected_response.get(key)) {
-                        (Some(entry1), Some(entry2)) => {
-                            assert_eq!(entry1.value, entry2.value);
-                        }
-                        (Some(entry1), None) => {
-                            assert!(f, "Key '{}' is only in response: {:?}", key, entry1)
-                        }
-                        (None, Some(entry2)) => assert!(
-                            f,
-                            "Key '{}' is only in expected_response: {:?}",
-                            key, entry2
-                        ),
-                        (None, None) => unreachable!(),
-                    }
-                }
-            }
-            Err(err) => {
-                assert!(f, "Error {:?}", err)
-            }
-        }
-    }
 
     // Helper for adding an int32 signal and adding value
     async fn helper_add_int32(
@@ -1132,24 +1088,128 @@ mod tests {
     /*
         Test subscribe service method
     */
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_subscribe() {
+    async fn test_subscribe_case(has_value: bool) {
+        async fn check_stream_next(
+            item: &Result<proto::SubscribeResponse, tonic::Status>,
+            input_value: Option<bool>,
+        ) {
+            // Create Datapoint
+            let mut expected_response: HashMap<String, proto::Datapoint> = HashMap::new();
+            // We expect to get an empty response first
+            expected_response.insert(
+                "test.datapoint1".to_string(),
+                proto::Datapoint {
+                    timestamp: None,
+                    value: match input_value {
+                        Some(true) => Some(proto::Value {
+                            typed_value: Some(proto::value::TypedValue::Bool(true)),
+                        }),
+                        Some(false) => Some(proto::Value {
+                            typed_value: Some(proto::value::TypedValue::Bool(false)),
+                        }),
+                        None => None,
+                    },
+                },
+            );
+
+            let f = false;
+            match item {
+                Ok(subscribe_response) => {
+                    // Process the SubscribeResponse
+                    let response = &subscribe_response.entries;
+                    assert_eq!(response.len(), expected_response.len());
+                    for key in response
+                        .keys()
+                        .chain(expected_response.keys())
+                        .collect::<std::collections::HashSet<_>>()
+                    {
+                        match (response.get(key), expected_response.get(key)) {
+                            (Some(entry1), Some(entry2)) => {
+                                assert_eq!(entry1.value, entry2.value);
+                            }
+                            (Some(entry1), None) => {
+                                assert!(f, "Key '{}' is only in response: {:?}", key, entry1)
+                            }
+                            (None, Some(entry2)) => assert!(
+                                f,
+                                "Key '{}' is only in expected_response: {:?}",
+                                key, entry2
+                            ),
+                            (None, None) => unreachable!(),
+                        }
+                    }
+                }
+                Err(err) => {
+                    assert!(f, "Error {:?}", err)
+                }
+            }
+        }
+
+        async fn publish_value(
+            broker: &DataBroker,
+            entry_id: i32,
+            input_value: Option<bool>,
+            input_timestamp: Option<std::time::SystemTime>,
+        ) {
+            let timestamp = input_timestamp.map(|input_timestamp| input_timestamp.into());
+
+            let mut request = tonic::Request::new(proto::PublishValueRequest {
+                signal_id: Some(proto::SignalId {
+                    signal: Some(proto::signal_id::Signal::Id(entry_id)),
+                }),
+                data_point: Some(proto::Datapoint {
+                    timestamp,
+
+                    value: match input_value {
+                        Some(true) => Some(proto::Value {
+                            typed_value: Some(proto::value::TypedValue::Bool(true)),
+                        }),
+                        Some(false) => Some(proto::Value {
+                            typed_value: Some(proto::value::TypedValue::Bool(false)),
+                        }),
+                        None => None,
+                    },
+                }),
+            });
+
+            request
+                .extensions_mut()
+                .insert(permissions::ALLOW_ALL.clone());
+            match broker.publish_value(request).await {
+                Ok(response) => {
+                    // Handle the successful response
+                    let publish_response = response.into_inner();
+
+                    // Check if there is an error in the response
+                    assert_eq!(publish_response, proto::PublishValueResponse {});
+                }
+                Err(status) => {
+                    // Handle the error from the publish_value function
+                    panic!("Publish failed with status: {:?}", status);
+                }
+            }
+        }
+
         let f = false;
         let broker = DataBroker::default();
-        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
 
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
         let entry_id = authorized_access
             .add_entry(
-                "test.datapoint1".to_owned(),
+                "test.datapoint1".to_string(),
                 broker::DataType::Bool,
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
-                "Test datapoint 1".to_owned(),
+                "Some Description that Does Not Matter".to_owned(),
                 None,
                 None,
             )
             .await
             .unwrap();
+
+        if has_value {
+            publish_value(&broker, entry_id, Some(false), None).await
+        }
 
         let mut request = tonic::Request::new(proto::SubscribeRequest {
             signal_paths: vec!["test.datapoint1".to_string()],
@@ -1168,98 +1228,47 @@ mod tests {
             rt.block_on(broker.subscribe(request))
         });
 
-        let mut request = tonic::Request::new(proto::PublishValueRequest {
-            signal_id: Some(proto::SignalId {
-                signal: Some(proto::signal_id::Signal::Id(entry_id)),
-            }),
-            data_point: Some(proto::Datapoint {
-                timestamp: None,
-                value: Some(proto::Value {
-                    typed_value: Some(proto::value::TypedValue::Bool(true)),
-                }),
-            }),
-        });
-        request
-            .extensions_mut()
-            .insert(permissions::ALLOW_ALL.clone());
-        match broker.publish_value(request).await {
-            Ok(response) => {
-                // Handle the successful response
-                let publish_response = response.into_inner();
+        // Publish "true" as value
+        publish_value(&broker, entry_id, Some(true), None).await;
 
-                // Check if there is an error in the response
-                assert_eq!(publish_response, proto::PublishValueResponse {});
-            }
-            Err(status) => {
-                // Handle the error from the publish_value function
-                assert!(f, "Publish failed with status: {:?}", status);
-            }
-        }
+        // Publish "false" as value
+        publish_value(&broker, entry_id, Some(false), None).await;
 
-        let mut request_false = tonic::Request::new(proto::PublishValueRequest {
-            signal_id: Some(proto::SignalId {
-                signal: Some(proto::signal_id::Signal::Id(entry_id)),
-            }),
-            data_point: Some(proto::Datapoint {
-                timestamp: None,
-                value: Some(proto::Value {
-                    typed_value: Some(proto::value::TypedValue::Bool(false)),
-                }),
-            }),
-        });
-        request_false
-            .extensions_mut()
-            .insert(permissions::ALLOW_ALL.clone());
-        match broker.publish_value(request_false).await {
-            Ok(response) => {
-                // Handle the successful response
-                let publish_response = response.into_inner();
+        // Publish "false" again but with new timestamp - as it is not an update we shall not get anything
 
-                // Check if there is an error in the response
-                assert_eq!(publish_response, proto::PublishValueResponse {});
-            }
-            Err(status) => {
-                // Handle the error from the publish_value function
-                assert!(f, "Publish failed with status: {:?}", status);
-            }
-        }
+        let timestamp = std::time::SystemTime::now();
+        publish_value(&broker, entry_id, Some(false), timestamp.into()).await;
+
+        // Publish None as value, equals reset
+        publish_value(&broker, entry_id, None, None).await;
+
+        // Publish "true" as value
+
+        publish_value(&broker, entry_id, Some(true), None).await;
 
         if let Ok(stream) = result {
             // Process the stream by iterating over the items
             let mut stream = stream.into_inner();
 
-            let mut expected_entries: HashMap<String, proto::Datapoint> = HashMap::new();
-
             let mut item_count = 0;
             while let Some(item) = stream.next().await {
                 match item_count {
                     0 => {
-                        check_stream_next(&item, expected_entries.clone()).await;
-                        expected_entries.insert(
-                            "test.datapoint1".to_string(),
-                            proto::Datapoint {
-                                timestamp: None,
-                                value: Some(proto::Value {
-                                    typed_value: Some(proto::value::TypedValue::Bool(true)),
-                                }),
-                            },
-                        );
+                        check_stream_next(&item, if has_value { Some(false) } else { None }).await;
                     }
                     1 => {
-                        check_stream_next(&item, expected_entries.clone()).await;
-                        expected_entries.clear();
-                        expected_entries.insert(
-                            "test.datapoint1".to_string(),
-                            proto::Datapoint {
-                                timestamp: None,
-                                value: Some(proto::Value {
-                                    typed_value: Some(proto::value::TypedValue::Bool(false)),
-                                }),
-                            },
-                        );
+                        check_stream_next(&item, Some(true)).await;
                     }
                     2 => {
-                        check_stream_next(&item, expected_entries.clone()).await;
+                        // As long as value stays as false we do not get anything new, so prepare for None
+                        check_stream_next(&item, Some(false)).await;
+                    }
+                    3 => {
+                        check_stream_next(&item, None).await;
+                    }
+                    4 => {
+                        check_stream_next(&item, Some(true)).await;
+                        // And we do not expect more
                         break;
                     }
                     _ => assert!(
@@ -1269,9 +1278,17 @@ mod tests {
                 }
                 item_count += 1;
             }
+            // Make sure stream is not closed in advance
+            assert_eq!(item_count, 4);
         } else {
             assert!(f, "Something went wrong while getting the stream.")
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_subscribe() {
+        test_subscribe_case(false).await;
+        test_subscribe_case(true).await;
     }
 
     /*
