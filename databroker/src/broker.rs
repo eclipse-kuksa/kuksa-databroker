@@ -1785,6 +1785,11 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                 .find(|subscription| subscription.vss_ids.contains(&vss_id));
             match opt_actuation_subscription {
                 Some(actuation_subscription) => {
+                    if !actuation_subscription.actuation_provider.is_available() {
+                        let message = format!("Provider for vss_id {} does not exist", vss_id);
+                        return Err((ActuationError::ProviderNotAvailable, message));
+                    }
+
                     actuation_subscription
                         .actuation_provider
                         .actuate(actuation_changes)
@@ -1890,6 +1895,11 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                         Err((ActuationError::PermissionExpired, message))
                     }
                     Ok(_) => {
+                        if !actuation_subscription.actuation_provider.is_available() {
+                            let message = format!("Provider for vss_id {} does not exist", vss_id);
+                            return Err((ActuationError::ProviderNotAvailable, message));
+                        }
+
                         actuation_subscription
                             .actuation_provider
                             .actuate(vec![ActuationChange {
