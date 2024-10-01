@@ -1645,7 +1645,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .iter()
             .flat_map(|subscription| subscription.vss_ids.clone())
             .collect();
-        let intersection: Vec<_> = vss_ids
+        let intersection: Vec<&i32> = vss_ids
             .iter()
             .filter(|&x| provided_vss_ids.contains(x))
             .collect();
@@ -1675,17 +1675,18 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         &self,
         actuation_changes: Vec<ActuationChange>,
     ) -> HashMap<i32, Vec<ActuationChange>> {
-        let mut actuation_changes_per_vss_id: HashMap<i32, Vec<ActuationChange>> = HashMap::new();
-        for ele in actuation_changes {
-            let vss_id = ele.id;
+        let mut actuation_changes_per_vss_id: HashMap<i32, Vec<ActuationChange>> =
+            HashMap::with_capacity(actuation_changes.len());
+        for actuation_change in actuation_changes {
+            let vss_id = actuation_change.id;
 
             let opt_vss_ids = actuation_changes_per_vss_id.get_mut(&vss_id);
             match opt_vss_ids {
                 Some(vss_ids) => {
-                    vss_ids.push(ele.clone());
+                    vss_ids.push(actuation_change.clone());
                 }
                 None => {
-                    let vec = vec![ele.clone()];
+                    let vec = vec![actuation_change.clone()];
                     actuation_changes_per_vss_id.insert(vss_id, vec);
                 }
             }
@@ -1707,6 +1708,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         for actuation_change in &actuation_changes {
             let vss_id = actuation_change.id;
             let result_entry = self.get_entry_by_id(vss_id).await;
+
             match result_entry {
                 Ok(entry) => {
                     let vss_path = entry.metadata.path;
@@ -1719,10 +1721,8 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                             return Err((ActuationError::PermissionDenied, message));
                         }
                         Err(PermissionError::Expired) => {
-                            return Err((
-                                ActuationError::PermissionExpired,
-                                "Permission expired".to_string(),
-                            ))
+                            let message = "Permission expired".to_string();
+                            return Err((ActuationError::PermissionExpired, message));
                         }
                     }
                 }
@@ -1776,9 +1776,9 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         let actuation_changes_per_vss_id = &self
             .map_actuation_changes_by_vss_id(actuation_changes)
             .await;
-        for ele in actuation_changes_per_vss_id {
-            let vss_id = *ele.0;
-            let actuation_changes = ele.1.clone();
+        for actuation_change_per_vss_id in actuation_changes_per_vss_id {
+            let vss_id = *actuation_change_per_vss_id.0;
+            let actuation_changes = actuation_change_per_vss_id.1.clone();
 
             let opt_actuation_subscription = actuation_subscriptions
                 .iter()

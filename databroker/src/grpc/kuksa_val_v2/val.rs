@@ -368,8 +368,8 @@ impl proto::val_server::Val for broker::DataBroker {
         let actuate_requests = request.into_inner().actuate_requests;
 
         let mut actuation_changes: Vec<ActuationChange> = vec![];
-        for ele in actuate_requests {
-            let vss_id = match ele.signal_id {
+        for actuate_request in actuate_requests {
+            let vss_id = match actuate_request.signal_id {
                 Some(signal_id) => match signal_id.signal {
                     Some(proto::signal_id::Signal::Id(vss_id)) => vss_id,
                     Some(proto::signal_id::Signal::Path(vss_path)) => {
@@ -387,7 +387,7 @@ impl proto::val_server::Val for broker::DataBroker {
                 },
                 None => return Err(tonic::Status::invalid_argument("Signal_Id not provided")),
             };
-            let data_value = match ele.value {
+            let data_value = match actuate_request.value {
                 Some(data_value) => DataValue::from(data_value),
                 None => return Err(tonic::Status::invalid_argument("")),
             };
