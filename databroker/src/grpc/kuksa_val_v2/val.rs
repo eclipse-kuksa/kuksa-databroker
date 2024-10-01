@@ -309,11 +309,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                 let result = broker.actuate(&id, &DataValue::from(value)).await;
                                 match result {
                                     Ok(_) => return Ok(tonic::Response::new(ActuateResponse {})),
-                                    Err(error) => {
-                                        return Err(convert_actuation_error_to_status(
-                                            error.0, error.1,
-                                        ))
-                                    }
+                                    Err(error) => return Err(error.0.to_tonic_status(error.1)),
                                 };
                             }
                             return Err(tonic::Status::not_found(format!(
@@ -325,9 +321,7 @@ impl proto::val_server::Val for broker::DataBroker {
                             let result = broker.actuate(&vss_id, &DataValue::from(value)).await;
                             match result {
                                 Ok(_) => return Ok(tonic::Response::new(ActuateResponse {})),
-                                Err(error) => {
-                                    return Err(convert_actuation_error_to_status(error.0, error.1))
-                                }
+                                Err(error) => return Err(error.0.to_tonic_status(error.1)),
                             };
                         }
                         None => {
@@ -407,7 +401,7 @@ impl proto::val_server::Val for broker::DataBroker {
         let result = broker.batch_actuate(actuation_changes).await;
         match result {
             Ok(_) => Ok(tonic::Response::new(proto::BatchActuateResponse {})),
-            Err(error) => return Err(convert_actuation_error_to_status(error.0, error.1)),
+            Err(error) => return Err(error.0.to_tonic_status(error.1)),
         }
     }
 
@@ -941,7 +935,7 @@ async fn provide_actuation(
             Ok(response)
         }
 
-        Err(error) => Err(convert_actuation_error_to_status(error.0, error.1)),
+        Err(error) => Err(error.0.to_tonic_status(error.1)),
     }
 }
 
@@ -1048,23 +1042,6 @@ fn convert_to_proto_stream(
         let response = proto::SubscribeResponse { entries };
         Ok(response)
     })
-}
-
-fn convert_actuation_error_to_status(
-    actuation_error: broker::ActuationError,
-    message: String,
-) -> tonic::Status {
-    match actuation_error {
-        broker::ActuationError::NotFound => tonic::Status::not_found(message),
-        broker::ActuationError::WrongType => tonic::Status::invalid_argument(message),
-        broker::ActuationError::OutOfBounds => tonic::Status::out_of_range(message),
-        broker::ActuationError::UnsupportedType => tonic::Status::invalid_argument(message),
-        broker::ActuationError::PermissionDenied => tonic::Status::permission_denied(message),
-        broker::ActuationError::PermissionExpired => tonic::Status::unauthenticated(message),
-        broker::ActuationError::ProviderNotAvailable => tonic::Status::unavailable(message),
-        broker::ActuationError::ProviderAlreadyExists => tonic::Status::already_exists(message),
-        broker::ActuationError::TransmissionFailure => tonic::Status::data_loss(message),
-    }
 }
 
 #[cfg(test)]

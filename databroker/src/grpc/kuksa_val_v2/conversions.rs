@@ -535,3 +535,19 @@ impl From<broker::DataValue> for proto::Value {
         }
     }
 }
+
+impl broker::ActuationError {
+    pub fn to_tonic_status(&self, message: String) -> tonic::Status {
+        match self {
+            broker::ActuationError::NotFound => tonic::Status::not_found(message),
+            broker::ActuationError::WrongType => tonic::Status::invalid_argument(message),
+            broker::ActuationError::OutOfBounds => tonic::Status::out_of_range(message),
+            broker::ActuationError::UnsupportedType => tonic::Status::invalid_argument(message),
+            broker::ActuationError::PermissionDenied => tonic::Status::permission_denied(message),
+            broker::ActuationError::PermissionExpired => tonic::Status::unauthenticated(message),
+            broker::ActuationError::ProviderNotAvailable => tonic::Status::unavailable(message),
+            broker::ActuationError::ProviderAlreadyExists => tonic::Status::already_exists(message),
+            broker::ActuationError::TransmissionFailure => tonic::Status::data_loss(message),
+        }
+    }
+}
