@@ -142,7 +142,7 @@ message GetValuesRequest {
 }
 
 message GetValuesResponse {
-  repeated Datapoint datapoints = 1;
+  repeated Datapoint data_points = 1;
 }
 
 message ListValuesRequest {
@@ -150,7 +150,7 @@ message ListValuesRequest {
 }
 
 message ListValuesResponse {
-  repeated Datapoint datapoints = 1;
+  repeated Datapoint data_points = 1;
 }
 
 message SubscribeRequest {

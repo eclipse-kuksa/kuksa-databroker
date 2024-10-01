@@ -61,14 +61,12 @@ impl proto::val_server::Val for broker::DataBroker {
 
         let datapoint = match broker.get_datapoint(signal_id).await {
             Ok(datapoint) => datapoint,
-            Err(ReadError::NotFound) => {
-                return Err(tonic::Status::new(tonic::Code::NotFound, "Path not found"))
+            Err(ReadError::NotFound) => return Err(tonic::Status::not_found("Path not found")),
+            Err(ReadError::PermissionDenied) => {
+                return Err(tonic::Status::permission_denied("Permission denied"))
             }
-            Err(ReadError::PermissionDenied | ReadError::PermissionExpired) => {
-                return Err(tonic::Status::new(
-                    tonic::Code::PermissionDenied,
-                    "Permission Denied",
-                ))
+            Err(ReadError::PermissionExpired) => {
+                return Err(tonic::Status::unauthenticated("Unauthenticated"))
             }
         };
 
@@ -79,22 +77,111 @@ impl proto::val_server::Val for broker::DataBroker {
 
     async fn get_values(
         &self,
-        _request: tonic::Request<proto::GetValuesRequest>,
+        request: tonic::Request<proto::GetValuesRequest>,
     ) -> Result<tonic::Response<proto::GetValuesResponse>, tonic::Status> {
-        Err(tonic::Status::new(
-            tonic::Code::Unimplemented,
-            "Unimplemented",
-        ))
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+
+        let broker = self.authorized_access(&permissions);
+
+        let requested = request.into_inner().signal_ids;
+        let mut response_datapoints = Vec::new();
+
+        for request in requested {
+            let signal_id = match get_signal(Some(request), &broker).await {
+                Ok(signal_id) => signal_id,
+                Err(err) => return Err(err),
+            };
+
+            match broker.get_datapoint(signal_id).await {
+                Ok(datapoint) => {
+                    let proto_datapoint_opt: Option<proto::Datapoint> = datapoint.into();
+                    //let proto_datapoint: proto::Datapoint = proto_datapoint_opt.into();
+                    response_datapoints.push(proto_datapoint_opt.unwrap());
+                }
+                Err(ReadError::NotFound) => {
+                    return Err(tonic::Status::not_found(format!(
+                        "Path not found (id: {})",
+                        signal_id
+                    )));
+                }
+                Err(ReadError::PermissionDenied) => {
+                    return Err(tonic::Status::permission_denied(format!(
+                        "Permission denied(id: {})",
+                        signal_id
+                    )))
+                }
+                Err(ReadError::PermissionExpired) => {
+                    return Err(tonic::Status::unauthenticated(format!(
+                        "Permission xxpired (id: {})",
+                        signal_id
+                    )))
+                }
+            };
+        }
+
+        Ok(tonic::Response::new(proto::GetValuesResponse {
+            data_points: response_datapoints,
+        }))
     }
 
+    // Almost the same as get_values
+    // the difference is in how denied access is handled
+    // Here it is just ignored
     async fn list_values(
         &self,
-        _request: tonic::Request<proto::ListValuesRequest>,
+        request: tonic::Request<proto::ListValuesRequest>,
     ) -> Result<tonic::Response<proto::ListValuesResponse>, tonic::Status> {
-        Err(tonic::Status::new(
-            tonic::Code::Unimplemented,
-            "Unimplemented",
-        ))
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+
+        let broker = self.authorized_access(&permissions);
+
+        let requested = request.into_inner().signal_ids;
+        let mut response_datapoints = Vec::new();
+
+        for request in requested {
+            let signal_id = match get_signal(Some(request), &broker).await {
+                Ok(signal_id) => signal_id,
+                Err(err) => return Err(err),
+            };
+
+            match broker.get_datapoint(signal_id).await {
+                Ok(datapoint) => {
+                    let proto_datapoint_opt: Option<proto::Datapoint> = datapoint.into();
+                    //let proto_datapoint: proto::Datapoint = proto_datapoint_opt.into();
+                    response_datapoints.push(proto_datapoint_opt.unwrap());
+                }
+                Err(ReadError::NotFound) => {
+                    return Err(tonic::Status::not_found(format!(
+                        "Path not found (id: {})",
+                        signal_id
+                    )));
+                }
+                Err(ReadError::PermissionDenied | ReadError::PermissionExpired) => {
+                    debug!(
+                        "Permission denied or expired, ignoring it (id: {})",
+                        signal_id
+                    );
+                }
+            };
+        }
+
+        Ok(tonic::Response::new(proto::ListValuesResponse {
+            data_points: response_datapoints,
+        }))
     }
 
     type SubscribeStream = Pin<
