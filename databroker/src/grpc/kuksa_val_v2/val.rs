@@ -193,10 +193,7 @@ impl proto::val_server::Val for broker::DataBroker {
         &self,
         _request: tonic::Request<proto::ListValuesRequest>,
     ) -> Result<tonic::Response<proto::ListValuesResponse>, tonic::Status> {
-        Err(tonic::Status::new(
-            tonic::Code::Unimplemented,
-            "Unimplemented",
-        ))
+        Err(tonic::Status::unimplemented("Unimplemented"))
     }
 
     type SubscribeStream = Pin<
@@ -252,16 +249,11 @@ impl proto::val_server::Val for broker::DataBroker {
                 let stream = convert_to_proto_stream(stream, size);
                 Ok(tonic::Response::new(Box::pin(stream)))
             }
-            Err(SubscriptionError::NotFound) => {
-                Err(tonic::Status::new(tonic::Code::NotFound, "Path not found"))
+            Err(SubscriptionError::NotFound) => Err(tonic::Status::not_found("Path not found")),
+            Err(SubscriptionError::InvalidInput) => {
+                Err(tonic::Status::invalid_argument("Invalid Argument"))
             }
-            Err(SubscriptionError::InvalidInput) => Err(tonic::Status::new(
-                tonic::Code::InvalidArgument,
-                "Invalid Argument",
-            )),
-            Err(SubscriptionError::InternalError) => {
-                Err(tonic::Status::new(tonic::Code::Internal, "Internal Error"))
-            }
+            Err(SubscriptionError::InternalError) => Err(tonic::Status::internal("Internal Error")),
         }
     }
 
@@ -278,10 +270,7 @@ impl proto::val_server::Val for broker::DataBroker {
         &self,
         _request: tonic::Request<proto::SubscribeByIdRequest>,
     ) -> Result<tonic::Response<Self::SubscribeByIdStream>, tonic::Status> {
-        Err(tonic::Status::new(
-            tonic::Code::Unimplemented,
-            "Unimplemented",
-        ))
+        Err(tonic::Status::unimplemented("Unimplemented"))
     }
 
     // Actuate a single actuator
@@ -342,19 +331,13 @@ impl proto::val_server::Val for broker::DataBroker {
                             };
                         }
                         None => {
-                            return Err(tonic::Status::new(
-                                tonic::Code::InvalidArgument,
+                            return Err(tonic::Status::invalid_argument(
                                 "Signal needs to provide Path or Id",
                             ))
                         }
                     };
                 }
-                None => {
-                    return Err(tonic::Status::new(
-                        tonic::Code::InvalidArgument,
-                        "No Signal_Id provided",
-                    ))
-                }
+                None => return Err(tonic::Status::invalid_argument("No Signal_Id provided")),
             };
         };
         return Err(tonic::Status::invalid_argument(
@@ -601,8 +584,7 @@ impl proto::val_server::Val for broker::DataBroker {
                     })
                     .await;
                 if metadata_response.is_empty() {
-                    Err(tonic::Status::new(
-                        tonic::Code::NotFound,
+                    Err(tonic::Status::not_found(
                         "Specified root branch does not exist",
                     ))
                 } else {
@@ -611,10 +593,7 @@ impl proto::val_server::Val for broker::DataBroker {
                     }))
                 }
             }
-            Err(_) => Err(tonic::Status::new(
-                tonic::Code::InvalidArgument,
-                "Invalid Pattern Argument",
-            )),
+            Err(_) => Err(tonic::Status::invalid_argument("Invalid Pattern Argument")),
         }
     }
 
@@ -894,10 +873,7 @@ impl proto::val_server::Val for broker::DataBroker {
         &self,
         _request: tonic::Request<proto::GetServerInfoRequest>,
     ) -> Result<tonic::Response<proto::GetServerInfoResponse>, tonic::Status> {
-        Err(tonic::Status::new(
-            tonic::Code::Unimplemented,
-            "Unimplemented",
-        ))
+        Err(tonic::Status::unimplemented("Unimplemented"))
     }
 }
 
@@ -1029,26 +1005,22 @@ async fn get_signal(
         match signal {
             proto::signal_id::Signal::Path(path) => {
                 if path.len() > MAX_REQUEST_PATH_LENGTH {
-                    return Err(tonic::Status::new(
-                        tonic::Code::InvalidArgument,
+                    return Err(tonic::Status::invalid_argument(
                         "The provided path is too long",
                     ));
                 }
                 match broker.get_id_by_path(&path).await {
                     Some(id) => Ok(id),
-                    None => Err(tonic::Status::new(tonic::Code::NotFound, "Path not found")),
+                    None => Err(tonic::Status::not_found("Path not found")),
                 }
             }
             proto::signal_id::Signal::Id(id) => match broker.get_metadata(id).await {
                 Some(_metadata) => Ok(id),
-                None => Err(tonic::Status::new(tonic::Code::NotFound, "Path not found")),
+                None => Err(tonic::Status::not_found("Path not found")),
             },
         }
     } else {
-        Err(tonic::Status::new(
-            tonic::Code::InvalidArgument,
-            "No SignalId provided",
-        ))
+        Err(tonic::Status::invalid_argument("No SignalId provided"))
     }
 }
 
@@ -1088,7 +1060,7 @@ fn convert_actuation_error_to_status(
         broker::ActuationError::OutOfBounds => tonic::Status::out_of_range(message),
         broker::ActuationError::UnsupportedType => tonic::Status::invalid_argument(message),
         broker::ActuationError::PermissionDenied => tonic::Status::permission_denied(message),
-        broker::ActuationError::PermissionExpired => tonic::Status::permission_denied(message),
+        broker::ActuationError::PermissionExpired => tonic::Status::unauthenticated(message),
         broker::ActuationError::ProviderNotAvailable => tonic::Status::unavailable(message),
         broker::ActuationError::ProviderAlreadyExists => tonic::Status::already_exists(message),
         broker::ActuationError::TransmissionFailure => tonic::Status::data_loss(message),
