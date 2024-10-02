@@ -207,6 +207,99 @@ impl From<&proto::Datapoint> for broker::DataValue {
     }
 }
 
+impl From<&broker::Metadata> for proto::Metadata {
+    fn from(metadata: &broker::Metadata) -> Self {
+        proto::Metadata {
+            id: metadata.id,
+            data_type: proto::DataType::from(metadata.data_type.clone()) as i32,
+            entry_type: proto::EntryType::from(metadata.entry_type.clone()) as i32,
+            description: Some(metadata.description.clone()),
+            comment: None,
+            deprecation: None,
+            unit: metadata.unit.clone(),
+            value_restriction: match metadata.allowed.as_ref() {
+                Some(allowed) => match allowed {
+                    broker::DataValue::StringArray(vec) => Some(proto::ValueRestriction {
+                        r#type: Some(proto::value_restriction::Type::String(
+                            proto::ValueRestrictionString {
+                                allowed_values: vec.clone(),
+                            },
+                        )),
+                    }),
+                    broker::DataValue::Int32Array(vec) => {
+                        Some(proto::ValueRestriction {
+                            r#type: Some(proto::value_restriction::Type::Signed(
+                                proto::ValueRestrictionInt {
+                                    allowed_values: vec.iter().cloned().map(i64::from).collect(),
+                                    min: None, // TODO: Implement
+                                    max: None, // TODO: Implement
+                                },
+                            )),
+                        })
+                    }
+                    broker::DataValue::Int64Array(vec) => {
+                        Some(proto::ValueRestriction {
+                            r#type: Some(proto::value_restriction::Type::Signed(
+                                proto::ValueRestrictionInt {
+                                    allowed_values: vec.clone(),
+                                    min: None, // TODO: Implement
+                                    max: None, // TODO: Implement
+                                },
+                            )),
+                        })
+                    }
+                    broker::DataValue::Uint32Array(vec) => {
+                        Some(proto::ValueRestriction {
+                            r#type: Some(proto::value_restriction::Type::Unsigned(
+                                proto::ValueRestrictionUint {
+                                    allowed_values: vec.iter().cloned().map(u64::from).collect(),
+                                    min: None, // TODO: Implement
+                                    max: None, // TODO: Implement
+                                },
+                            )),
+                        })
+                    }
+                    broker::DataValue::Uint64Array(vec) => {
+                        Some(proto::ValueRestriction {
+                            r#type: Some(proto::value_restriction::Type::Unsigned(
+                                proto::ValueRestrictionUint {
+                                    allowed_values: vec.clone(),
+                                    min: None, // TODO: Implement
+                                    max: None, // TODO: Implement
+                                },
+                            )),
+                        })
+                    }
+                    broker::DataValue::FloatArray(vec) => {
+                        Some(proto::ValueRestriction {
+                            r#type: Some(proto::value_restriction::Type::FloatingPoint(
+                                proto::ValueRestrictionFloat {
+                                    allowed_values: vec.iter().cloned().map(f64::from).collect(),
+                                    min: None, // TODO: Implement
+                                    max: None, // TODO: Implement
+                                },
+                            )),
+                        })
+                    }
+                    broker::DataValue::DoubleArray(vec) => {
+                        Some(proto::ValueRestriction {
+                            r#type: Some(proto::value_restriction::Type::FloatingPoint(
+                                proto::ValueRestrictionFloat {
+                                    allowed_values: vec.clone(),
+                                    min: None, // TODO: Implement
+                                    max: None, // TODO: Implement
+                                },
+                            )),
+                        })
+                    }
+                    _ => None,
+                },
+                None => None,
+            },
+        }
+    }
+}
+
 impl From<&broker::UpdateError> for proto::Error {
     fn from(update_error: &broker::UpdateError) -> Self {
         match update_error {
