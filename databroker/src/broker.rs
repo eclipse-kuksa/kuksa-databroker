@@ -1737,36 +1737,6 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                     ))
                 }
             }
-
-            let entry_update = EntryUpdate {
-                path: None,
-                datapoint: None,
-                actuator_target: Some(Some(Datapoint {
-                    ts: SystemTime::now(),
-                    source_ts: None,
-                    value: actuation_change.data_value.clone(),
-                })),
-                entry_type: None,
-                data_type: None,
-                description: None,
-                allowed: None,
-                unit: None,
-            };
-
-            let entry_updates = [(vss_id, entry_update)];
-            let legacy_result = self.update_entries(entry_updates).await;
-            if legacy_result.is_err() {
-                let update_errors = legacy_result.unwrap_err();
-                let opt_error = update_errors.first();
-                if opt_error.is_some() {
-                    let error = opt_error.unwrap();
-                    let message = format!(
-                        "Could not set actuator target for vss_id {}: {:?}",
-                        vss_id, error.1
-                    );
-                    warn!(message);
-                }
-            }
         }
 
         let actuation_changes_per_vss_id = &self
@@ -1853,36 +1823,6 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                     ActuationError::PermissionExpired,
                     "Permission expired".to_string(),
                 ))
-            }
-        }
-
-        let entry_update = EntryUpdate {
-            path: None,
-            datapoint: None,
-            actuator_target: Some(Some(Datapoint {
-                ts: SystemTime::now(),
-                source_ts: None,
-                value: data_value.clone(),
-            })),
-            entry_type: None,
-            data_type: None,
-            description: None,
-            allowed: None,
-            unit: None,
-        };
-
-        let entry_updates = [(vss_id, entry_update)];
-        let legacy_result = self.update_entries(entry_updates).await;
-        if legacy_result.is_err() {
-            let update_errors = legacy_result.unwrap_err();
-            let opt_error = update_errors.first();
-            if opt_error.is_some() {
-                let error = opt_error.unwrap();
-                let message = format!(
-                    "Could not set actuator target for vss_id {}: {:?}",
-                    vss_id, error.1
-                );
-                warn!(message);
             }
         }
 
