@@ -405,6 +405,9 @@ impl broker::UpdateError {
                 tonic::Code::Unauthenticated,
                 format!("Permission expired (id: {})", id),
             ),
+        }
+    }
+}
 
 impl From<proto::Value> for broker::DataValue {
     fn from(value: proto::Value) -> Self {
