@@ -1698,12 +1698,8 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         &self,
         actuation_changes: Vec<ActuationChange>,
     ) -> Result<(), (ActuationError, String)> {
-        let actuation_subscriptions = &self
-            .broker
-            .subscriptions
-            .read()
-            .await
-            .actuation_subscriptions;
+        let read_subscription_guard = self.broker.subscriptions.read().await;
+        let actuation_subscriptions = &read_subscription_guard.actuation_subscriptions;
 
         for actuation_change in &actuation_changes {
             let vss_id = actuation_change.id;
@@ -1785,15 +1781,28 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                 .find(|subscription| subscription.vss_ids.contains(&vss_id));
             match opt_actuation_subscription {
                 Some(actuation_subscription) => {
-                    if !actuation_subscription.actuation_provider.is_available() {
-                        let message = format!("Provider for vss_id {} does not exist", vss_id);
-                        return Err((ActuationError::ProviderNotAvailable, message));
-                    }
+                    let is_expired = actuation_subscription.permissions.expired();
+                    match is_expired {
+                        Err(_) => {
+                            let message = format!(
+                                "Permission for vss_ids {:?} expired",
+                                actuation_subscription.vss_ids
+                            );
+                            return Err((ActuationError::PermissionExpired, message));
+                        }
+                        Ok(_) => {
+                            if !actuation_subscription.actuation_provider.is_available() {
+                                let message =
+                                    format!("Provider for vss_id {} does not exist", vss_id);
+                                return Err((ActuationError::ProviderNotAvailable, message));
+                            }
 
-                    actuation_subscription
-                        .actuation_provider
-                        .actuate(actuation_changes)
-                        .await?
+                            actuation_subscription
+                                .actuation_provider
+                                .actuate(actuation_changes)
+                                .await?
+                        }
+                    }
                 }
                 None => {
                     let message = format!("actuation provider for vss_id {} not available", vss_id);
@@ -1877,8 +1886,8 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             }
         }
 
-        let mut guard = self.broker.subscriptions.write().await;
-        let opt_actuation_subscription = &guard
+        let read_subscription_guard = self.broker.subscriptions.read().await;
+        let opt_actuation_subscription = &read_subscription_guard
             .actuation_subscriptions
             .iter()
             .find(|subscription| subscription.vss_ids.contains(&vss_id));
@@ -1888,10 +1897,9 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                 match is_expired {
                     Err(_) => {
                         let message = format!(
-                            "Permission for vss_ids {:?} expired, removing actuation subscription",
+                            "Permission for vss_ids {:?} expired",
                             actuation_subscription.vss_ids
                         );
-                        guard.cleanup();
                         Err((ActuationError::PermissionExpired, message))
                     }
                     Ok(_) => {
