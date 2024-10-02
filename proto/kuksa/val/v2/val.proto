@@ -49,6 +49,11 @@ service VAL {
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the requested signals doesn't exist.
+  //
+  // TODO: Needs to be redesigned, returning a list with only DataPoints (without names/id)
+  // is not sufficient for an rpc were you may get back a subset of the values you requested.
+  // Like if you request A, B, C and only have access to one of them, then you do not
+  // know which of them that is returned.
   rpc ListValues(ListValuesRequest) returns (ListValuesResponse);
 
   // Subscribe to a set of signals using string path parameters
@@ -57,9 +62,8 @@ service VAL {
   //   PERMISSION_DENIED if access is denied for any of the signals.
   //
   // When subscribing the Broker shall immediately return the value for all
-  // subscribed entries. If no value is available when subscribing a DataPoint shall be returned
-  // first when a value is available.
-  // If we have the availability to "delete" values then getting a NotAvailable message sort of makes sense
+  // subscribed entries. If no value is available when subscribing a DataPoint
+  // with value None shall be returned.
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
 
   // Subscribe to a set of signals using i32 id parameters

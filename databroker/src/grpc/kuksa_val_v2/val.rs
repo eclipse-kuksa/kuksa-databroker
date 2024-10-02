@@ -119,7 +119,7 @@ impl proto::val_server::Val for broker::DataBroker {
                 }
                 Err(ReadError::PermissionExpired) => {
                     return Err(tonic::Status::unauthenticated(format!(
-                        "Permission xxpired (id: {})",
+                        "Permission expired (id: {})",
                         signal_id
                     )))
                 }
@@ -131,57 +131,14 @@ impl proto::val_server::Val for broker::DataBroker {
         }))
     }
 
-    // Almost the same as get_values
-    // the difference is in how denied access is handled
-    // Here it is just ignored
     async fn list_values(
         &self,
-        request: tonic::Request<proto::ListValuesRequest>,
+        _request: tonic::Request<proto::ListValuesRequest>,
     ) -> Result<tonic::Response<proto::ListValuesResponse>, tonic::Status> {
-        debug!(?request);
-        let permissions = match request.extensions().get::<Permissions>() {
-            Some(permissions) => {
-                debug!(?permissions);
-                permissions.clone()
-            }
-            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
-        };
-
-        let broker = self.authorized_access(&permissions);
-
-        let requested = request.into_inner().signal_ids;
-        let mut response_datapoints = Vec::new();
-
-        for request in requested {
-            let signal_id = match get_signal(Some(request), &broker).await {
-                Ok(signal_id) => signal_id,
-                Err(err) => return Err(err),
-            };
-
-            match broker.get_datapoint(signal_id).await {
-                Ok(datapoint) => {
-                    let proto_datapoint_opt: Option<proto::Datapoint> = datapoint.into();
-                    //let proto_datapoint: proto::Datapoint = proto_datapoint_opt.into();
-                    response_datapoints.push(proto_datapoint_opt.unwrap());
-                }
-                Err(ReadError::NotFound) => {
-                    return Err(tonic::Status::not_found(format!(
-                        "Path not found (id: {})",
-                        signal_id
-                    )));
-                }
-                Err(ReadError::PermissionDenied | ReadError::PermissionExpired) => {
-                    debug!(
-                        "Permission denied or expired, ignoring it (id: {})",
-                        signal_id
-                    );
-                }
-            };
-        }
-
-        Ok(tonic::Response::new(proto::ListValuesResponse {
-            data_points: response_datapoints,
-        }))
+        Err(tonic::Status::new(
+            tonic::Code::Unimplemented,
+            "Unimplemented",
+        ))
     }
 
     type SubscribeStream = Pin<
@@ -1060,6 +1017,396 @@ mod tests {
         }
     }
 
+    struct GetValuesConfig {
+        send_auth: bool,
+        request_first: bool,
+        use_name_for_first: bool,
+        first_exist: bool,
+        auth_first: bool,
+        request_second: bool,
+        use_name_for_second: bool,
+        second_exist: bool,
+        auth_second: bool,
+    }
+
+    struct GetValuesConfigBuilder {
+        send_auth: bool,
+        request_first: bool,
+        use_name_for_first: bool,
+        first_exist: bool,
+        auth_first: bool,
+        request_second: bool,
+        use_name_for_second: bool,
+        second_exist: bool,
+        auth_second: bool,
+    }
+
+    impl GetValuesConfigBuilder {
+        fn new() -> GetValuesConfigBuilder {
+            GetValuesConfigBuilder {
+                send_auth: false,
+                request_first: false,
+                use_name_for_first: false,
+                first_exist: false,
+                auth_first: false,
+                request_second: false,
+                use_name_for_second: false,
+                second_exist: false,
+                auth_second: false,
+            }
+        }
+
+        fn send_auth(&mut self) -> &mut Self {
+            self.send_auth = true;
+            self
+        }
+
+        fn request_first(&mut self) -> &mut Self {
+            self.request_first = true;
+            self
+        }
+
+        fn use_name_for_first(&mut self) -> &mut Self {
+            self.use_name_for_first = true;
+            self
+        }
+
+        fn first_exist(&mut self) -> &mut Self {
+            self.first_exist = true;
+            self
+        }
+
+        fn auth_first(&mut self) -> &mut Self {
+            self.auth_first = true;
+            self
+        }
+
+        fn request_second(&mut self) -> &mut Self {
+            self.request_second = true;
+            self
+        }
+
+        fn use_name_for_second(&mut self) -> &mut Self {
+            self.use_name_for_second = true;
+            self
+        }
+
+        fn second_exist(&mut self) -> &mut Self {
+            self.second_exist = true;
+            self
+        }
+
+        fn auth_second(&mut self) -> &mut Self {
+            self.auth_second = true;
+            self
+        }
+
+        fn build(&self) -> GetValuesConfig {
+            GetValuesConfig {
+                send_auth: self.send_auth,
+                request_first: self.request_first,
+                use_name_for_first: self.use_name_for_first,
+                first_exist: self.first_exist,
+                auth_first: self.auth_first,
+                request_second: self.request_second,
+                use_name_for_second: self.use_name_for_second,
+                second_exist: self.second_exist,
+                auth_second: self.auth_second,
+            }
+        }
+    }
+
+    async fn test_get_values_combo(config: GetValuesConfig) {
+        static SIGNAL1: &str = "test.datapoint1";
+        static SIGNAL2: &str = "test.datapoint2";
+
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        let mut entry_id = -1;
+        if config.first_exist {
+            entry_id = helper_add_int32(&broker, SIGNAL1, -64, timestamp).await;
+        }
+
+        let mut entry_id2 = -1;
+        if config.second_exist {
+            entry_id2 = helper_add_int32(&broker, SIGNAL2, -13, timestamp).await;
+        }
+
+        let mut permission_builder = permissions::PermissionBuilder::new();
+
+        if config.auth_first {
+            permission_builder = permission_builder
+                .add_read_permission(permissions::Permission::Glob(SIGNAL1.to_string()));
+        }
+        if config.auth_second {
+            permission_builder = permission_builder
+                .add_read_permission(permissions::Permission::Glob(SIGNAL2.to_string()));
+        }
+        let permissions = permission_builder.build().expect("Oops!");
+
+        // Build the request
+
+        let mut request_signals = Vec::new();
+        if config.request_first {
+            if !config.use_name_for_first {
+                request_signals.push(proto::SignalId {
+                    signal: Some(proto::signal_id::Signal::Id(entry_id)),
+                });
+            } else {
+                request_signals.push(proto::SignalId {
+                    signal: Some(proto::signal_id::Signal::Path(SIGNAL1.to_string())),
+                });
+            }
+        }
+        if config.request_second {
+            if !config.use_name_for_second {
+                request_signals.push(proto::SignalId {
+                    signal: Some(proto::signal_id::Signal::Id(entry_id2)),
+                });
+            } else {
+                request_signals.push(proto::SignalId {
+                    signal: Some(proto::signal_id::Signal::Path(SIGNAL2.to_string())),
+                });
+            }
+        }
+
+        let request = proto::GetValuesRequest {
+            signal_ids: request_signals,
+        };
+
+        let mut tonic_request = tonic::Request::new(request);
+
+        if config.send_auth {
+            tonic_request.extensions_mut().insert(permissions);
+        }
+
+        match broker.get_values(tonic_request).await {
+            Ok(response) => {
+                // Check that we actually expect an Ok answer
+
+                if config.request_first & !config.first_exist {
+                    panic!("Should not get Ok as signal test.datapoint1 should not exist")
+                }
+                if config.request_first & !config.auth_first {
+                    panic!("Should not get Ok as we do not have permission for signal test.datapoint2 ")
+                }
+                if config.request_second & !config.second_exist {
+                    panic!("Should not get Ok as signal test.datapoint1 should not exist")
+                }
+                if config.request_second & !config.auth_second {
+                    panic!("Should not get Ok as we do not have permission for signal test.datapoint2 ")
+                }
+
+                let get_response = response.into_inner();
+
+                let mut response_signals = Vec::new();
+
+                if config.request_first {
+                    let value = proto::Value {
+                        typed_value: Some(proto::value::TypedValue::Int32(-64)),
+                    };
+                    let datapoint = proto::Datapoint {
+                        timestamp: Some(timestamp.into()),
+                        value: Some(value),
+                    };
+                    response_signals.push(datapoint);
+                }
+                if config.request_second {
+                    let value = proto::Value {
+                        typed_value: Some(proto::value::TypedValue::Int32(-13)),
+                    };
+                    let datapoint = proto::Datapoint {
+                        timestamp: Some(timestamp.into()),
+                        value: Some(value),
+                    };
+                    response_signals.push(datapoint);
+                }
+
+                assert_eq!(
+                    get_response,
+                    proto::GetValuesResponse {
+                        data_points: response_signals,
+                    }
+                );
+            }
+            Err(status) => {
+                // It can be discussed what has precendce NotFound or Unauthenticated, does not really matter
+                // For now assuming that NotFound has precedence, at least if we have a valid token
+                if !config.send_auth {
+                    assert_eq!(status.code(), tonic::Code::Unauthenticated)
+                } else if config.request_first & !config.first_exist {
+                    assert_eq!(status.code(), tonic::Code::NotFound)
+                } else if config.request_first & !config.auth_first {
+                    assert_eq!(status.code(), tonic::Code::PermissionDenied)
+                } else if config.request_second & !config.second_exist {
+                    assert_eq!(status.code(), tonic::Code::NotFound)
+                } else if config.request_second & !config.auth_second {
+                    assert_eq!(status.code(), tonic::Code::PermissionDenied)
+                } else {
+                    panic!("GetValues failed with status: {:?}", status);
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_values_id_one_signal_ok() {
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .request_first()
+            .send_auth()
+            .auth_first()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_id_two_signals_ok() {
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .second_exist()
+            .request_first()
+            .request_second()
+            .send_auth()
+            .auth_first()
+            .auth_second()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_path_one_signal_ok() {
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .request_first()
+            .use_name_for_first()
+            .send_auth()
+            .auth_first()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_path_two_signals_ok() {
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .second_exist()
+            .request_first()
+            .use_name_for_first()
+            .request_second()
+            .use_name_for_second()
+            .send_auth()
+            .auth_first()
+            .auth_second()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_no_signals_ok() {
+        // Expecting an empty list back
+
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .second_exist()
+            .send_auth()
+            .auth_first()
+            .auth_second()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_id_two_signals_first_missing() {
+        let config = GetValuesConfigBuilder::new()
+            .second_exist()
+            .request_first()
+            .request_second()
+            .send_auth()
+            .auth_first()
+            .auth_second()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_id_two_signals_second_missing() {
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .request_first()
+            .request_second()
+            .send_auth()
+            .auth_first()
+            .auth_second()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_id_two_signals_first_unauthorized() {
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .second_exist()
+            .request_first()
+            .request_second()
+            .send_auth()
+            .auth_second()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_id_two_signals_second_unauthorized() {
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .second_exist()
+            .request_first()
+            .request_second()
+            .send_auth()
+            .auth_first()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_id_two_signals_first_missing_unauthorized() {
+        let config = GetValuesConfigBuilder::new()
+            .second_exist()
+            .request_first()
+            .request_second()
+            .send_auth()
+            .auth_second()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_id_two_signals_second_missing_unauthorized() {
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .request_first()
+            .request_second()
+            .send_auth()
+            .auth_first()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_id_two_signals_not_send_auth() {
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .second_exist()
+            .request_first()
+            .request_second()
+            .auth_first()
+            .auth_second()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
     #[tokio::test]
     async fn test_publish_value() {
         let broker = DataBroker::default();
@@ -1306,8 +1653,6 @@ mod tests {
             .extensions_mut()
             .insert(permissions::ALLOW_ALL.clone());
 
-        // Note: We subscribe before the signal test.datapoint1 has any value
-        // but we do not expect to get a NOT_AVAILABLE message back!
         let result = tokio::task::block_in_place(|| {
             // Blocking operation here
             // Since broker.subscribe is async, you need to run it in an executor
