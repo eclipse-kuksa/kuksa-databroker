@@ -278,3 +278,34 @@ impl From<broker::EntryType> for proto::EntryType {
         }
     }
 }
+
+impl broker::UpdateError {
+    pub fn to_status_with_code(&self, id: &i32) -> tonic::Status {
+        match self {
+            broker::UpdateError::NotFound => tonic::Status::new(
+                tonic::Code::NotFound,
+                format!("Signal not found (id: {})", id),
+            ),
+            broker::UpdateError::WrongType => tonic::Status::new(
+                tonic::Code::InvalidArgument,
+                format!("Wrong type provided (id: {})", id),
+            ),
+            broker::UpdateError::OutOfBounds => tonic::Status::new(
+                tonic::Code::OutOfRange,
+                format!("Index out of bounds (id: {})", id),
+            ),
+            broker::UpdateError::UnsupportedType => tonic::Status::new(
+                tonic::Code::Unimplemented,
+                format!("Unsupported type (id: {})", id),
+            ),
+            broker::UpdateError::PermissionDenied => tonic::Status::new(
+                tonic::Code::PermissionDenied,
+                format!("Permission denied (id: {})", id),
+            ),
+            broker::UpdateError::PermissionExpired => tonic::Status::new(
+                tonic::Code::Unauthenticated,
+                format!("Permission expired (id: {})", id),
+            ),
+        }
+    }
+}
