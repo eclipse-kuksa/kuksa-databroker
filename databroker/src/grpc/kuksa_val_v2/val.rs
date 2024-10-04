@@ -66,7 +66,7 @@ impl proto::val_server::Val for broker::DataBroker {
                 return Err(tonic::Status::permission_denied("Permission denied"))
             }
             Err(ReadError::PermissionExpired) => {
-                return Err(tonic::Status::unauthenticated("Unauthenticated"))
+                return Err(tonic::Status::unauthenticated("Permission expired"))
             }
         };
 
@@ -906,6 +906,7 @@ mod tests {
 
         let broker = DataBroker::default();
         let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
         let entry_id = authorized_access
             .add_entry(
                 "test.datapoint1".to_string(),
@@ -938,17 +939,10 @@ mod tests {
                 // Handle the successful response
                 let get_response = response.into_inner();
 
-                assert_eq!(
-                    get_response,
-                    proto::GetValueResponse {
-                        data_point: {
-                            Some(proto::Datapoint {
-                                timestamp: None,
-                                value: None,
-                            })
-                        },
-                    }
-                );
+                // As of today Databroker assigns "Now" when registering a Datapoint so if there is no value
+                // we do not know exact time. For now just checking that it is not None
+                assert_eq!(get_response.data_point.clone().unwrap().value, None);
+                assert_ne!(get_response.data_point.unwrap().timestamp, None);
             }
             Err(status) => {
                 // Handle the error from the publish_value function
@@ -1056,6 +1050,8 @@ mod tests {
             }
         }
 
+        // Request credentials to be sent.
+        // Do not need to be explcitly requested if auth_first/auth_second is used
         fn send_auth(&mut self) -> &mut Self {
             self.send_auth = true;
             self
@@ -1076,8 +1072,10 @@ mod tests {
             self
         }
 
+        // Request credentials and include credentials for signal 1
         fn auth_first(&mut self) -> &mut Self {
             self.auth_first = true;
+            self.send_auth = true;
             self
         }
 
@@ -1096,7 +1094,9 @@ mod tests {
             self
         }
 
+        // Request credentials and include credentials for signal 2
         fn auth_second(&mut self) -> &mut Self {
+            self.send_auth = true;
             self.auth_second = true;
             self
         }
@@ -1256,7 +1256,6 @@ mod tests {
         let config = GetValuesConfigBuilder::new()
             .first_exist()
             .request_first()
-            .send_auth()
             .auth_first()
             .build();
         test_get_values_combo(config).await;
@@ -1269,7 +1268,6 @@ mod tests {
             .second_exist()
             .request_first()
             .request_second()
-            .send_auth()
             .auth_first()
             .auth_second()
             .build();
@@ -1282,7 +1280,6 @@ mod tests {
             .first_exist()
             .request_first()
             .use_name_for_first()
-            .send_auth()
             .auth_first()
             .build();
         test_get_values_combo(config).await;
@@ -1297,7 +1294,6 @@ mod tests {
             .use_name_for_first()
             .request_second()
             .use_name_for_second()
-            .send_auth()
             .auth_first()
             .auth_second()
             .build();
@@ -1311,7 +1307,6 @@ mod tests {
         let config = GetValuesConfigBuilder::new()
             .first_exist()
             .second_exist()
-            .send_auth()
             .auth_first()
             .auth_second()
             .build();
@@ -1324,7 +1319,6 @@ mod tests {
             .second_exist()
             .request_first()
             .request_second()
-            .send_auth()
             .auth_first()
             .auth_second()
             .build();
@@ -1337,7 +1331,6 @@ mod tests {
             .first_exist()
             .request_first()
             .request_second()
-            .send_auth()
             .auth_first()
             .auth_second()
             .build();
@@ -1351,7 +1344,6 @@ mod tests {
             .second_exist()
             .request_first()
             .request_second()
-            .send_auth()
             .auth_second()
             .build();
         test_get_values_combo(config).await;
@@ -1364,8 +1356,19 @@ mod tests {
             .second_exist()
             .request_first()
             .request_second()
-            .send_auth()
             .auth_first()
+            .build();
+        test_get_values_combo(config).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_values_id_two_signals_both_unauthorized() {
+        let config = GetValuesConfigBuilder::new()
+            .first_exist()
+            .second_exist()
+            .request_first()
+            .request_second()
+            .send_auth()
             .build();
         test_get_values_combo(config).await;
     }
@@ -1376,7 +1379,6 @@ mod tests {
             .second_exist()
             .request_first()
             .request_second()
-            .send_auth()
             .auth_second()
             .build();
         test_get_values_combo(config).await;
@@ -1388,7 +1390,6 @@ mod tests {
             .first_exist()
             .request_first()
             .request_second()
-            .send_auth()
             .auth_first()
             .build();
         test_get_values_combo(config).await;
@@ -1401,8 +1402,6 @@ mod tests {
             .second_exist()
             .request_first()
             .request_second()
-            .auth_first()
-            .auth_second()
             .build();
         test_get_values_combo(config).await;
     }

@@ -47,7 +47,7 @@ impl From<broker::Datapoint> for Option<proto::Datapoint> {
         match from.value {
             broker::DataValue::NotAvailable => Some(proto::Datapoint {
                 value: None,
-                timestamp: None,
+                timestamp: Some(from.ts.into()),
             }),
             broker::DataValue::Bool(value) => Some(proto::Datapoint {
                 timestamp: Some(from.ts.into()),

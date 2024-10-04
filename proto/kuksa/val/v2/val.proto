@@ -26,8 +26,8 @@ service VAL {
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if the requested signal doesn't exist
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied
-  //
   //
   rpc GetValue(GetValueRequest) returns (GetValueResponse);
 
@@ -37,6 +37,7 @@ service VAL {
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the requested signals doesn't exist.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied for any of the requested signals.
   //
   rpc GetValues(GetValuesRequest) returns (GetValuesResponse);
