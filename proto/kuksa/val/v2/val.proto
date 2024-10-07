@@ -77,7 +77,7 @@ service VAL {
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if the actuator does not exist.
-  //   PERMISSION_DENIED if access is denied for of the actuator.
+  //   PERMISSION_DENIED if access is denied for the actuator.
   //   UNAVAILABLE if there is no provider currently providing the actuator
   //   INVALID_ARGUMENT
   //       - if the data type used in the request does not match

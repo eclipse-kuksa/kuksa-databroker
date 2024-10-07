@@ -73,13 +73,6 @@ impl ActuationProvider for Provider {
 
         let result = self.sender.send(Ok(response)).await;
         if result.is_err() {
-            let send_error = result.unwrap_err().0;
-            if send_error.is_err() {
-                return Err((
-                    broker::ActuationError::TransmissionFailure,
-                    "An error occured while sending the data".to_string(),
-                ));
-            }
             return Err((
                 broker::ActuationError::TransmissionFailure,
                 "An error occured while sending the data".to_string(),
@@ -277,7 +270,7 @@ impl proto::val_server::Val for broker::DataBroker {
     //
     // Returns (GRPC error code):
     //   NOT_FOUND if the actuator does not exist.
-    //   PERMISSION_DENIED if access is denied for of the actuator.
+    //   PERMISSION_DENIED if access is denied for the actuator.
     //   UNAVAILABLE if there is no provider currently providing the actuator
     //   INVALID_ARGUMENT
     //       - if the data type used in the request does not match
@@ -893,7 +886,7 @@ async fn provide_actuation(
     for (index, opt_vss_id) in resolved_opt_vss_ids.iter().enumerate() {
         if opt_vss_id.is_none() {
             let message = format!(
-                "could not resolve id of vss_path: {}",
+                "Could not resolve id of vss_path: {}",
                 vss_paths.get(index).unwrap()
             );
             return Err(tonic::Status::not_found(message));

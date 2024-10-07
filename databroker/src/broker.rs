@@ -705,40 +705,23 @@ impl Subscriptions {
             if sub.sender.is_closed() {
                 info!("Subscriber gone: removing subscription");
                 false
+            } else if sub.permissions.expired() {
+                info!("Permissions of Subscriber expired: removing subscription");
+                false
             } else {
-                match &sub.permissions.expired() {
-                    Ok(()) => true,
-                    Err(PermissionError::Expired) => {
-                        info!("Token expired: removing subscription");
-                        false
-                    }
-                    Err(err) => {
-                        info!("Error: {:?} -> removing subscription", err);
-                        false
-                    }
-                }
+                true
             }
         });
 
         self.actuation_subscriptions.retain(|sub| {
             if !sub.actuation_provider.is_available() {
-                info!("actuation provider gone: removing subscription");
+                info!("Provider gone: removing subscription");
+                false
+            } else if sub.permissions.expired() {
+                info!("Permissions of Provider expired: removing subscription");
                 false
             } else {
-                match sub.permissions.expired() {
-                    Ok(()) => true,
-                    Err(PermissionError::Expired) => {
-                        info!("Token expired for actuation provider: removing subscription");
-                        false
-                    }
-                    Err(err) => {
-                        info!(
-                            "actuation provider error: {:?} -> removing subscription",
-                            err
-                        );
-                        false
-                    }
-                }
+                true
             }
         });
     }
@@ -1752,30 +1735,26 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             match opt_actuation_subscription {
                 Some(actuation_subscription) => {
                     let is_expired = actuation_subscription.permissions.expired();
-                    match is_expired {
-                        Err(_) => {
-                            let message = format!(
-                                "Permission for vss_ids {:?} expired",
-                                actuation_subscription.vss_ids
-                            );
-                            return Err((ActuationError::PermissionExpired, message));
-                        }
-                        Ok(_) => {
-                            if !actuation_subscription.actuation_provider.is_available() {
-                                let message =
-                                    format!("Provider for vss_id {} does not exist", vss_id);
-                                return Err((ActuationError::ProviderNotAvailable, message));
-                            }
-
-                            actuation_subscription
-                                .actuation_provider
-                                .actuate(actuation_changes)
-                                .await?
-                        }
+                    if is_expired {
+                        let message = format!(
+                            "Permission for vss_ids {:?} expired",
+                            actuation_subscription.vss_ids
+                        );
+                        return Err((ActuationError::PermissionExpired, message));
                     }
+
+                    if !actuation_subscription.actuation_provider.is_available() {
+                        let message = format!("Provider for vss_id {} does not exist", vss_id);
+                        return Err((ActuationError::ProviderNotAvailable, message));
+                    }
+
+                    actuation_subscription
+                        .actuation_provider
+                        .actuate(actuation_changes)
+                        .await?
                 }
                 None => {
-                    let message = format!("actuation provider for vss_id {} not available", vss_id);
+                    let message = format!("Provider for vss_id {} not available", vss_id);
                     return Err((ActuationError::ProviderNotAvailable, message));
                 }
             }
@@ -1834,29 +1813,26 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         match opt_actuation_subscription {
             Some(actuation_subscription) => {
                 let is_expired = actuation_subscription.permissions.expired();
-                match is_expired {
-                    Err(_) => {
-                        let message = format!(
-                            "Permission for vss_ids {:?} expired",
-                            actuation_subscription.vss_ids
-                        );
-                        Err((ActuationError::PermissionExpired, message))
-                    }
-                    Ok(_) => {
-                        if !actuation_subscription.actuation_provider.is_available() {
-                            let message = format!("Provider for vss_id {} does not exist", vss_id);
-                            return Err((ActuationError::ProviderNotAvailable, message));
-                        }
-
-                        actuation_subscription
-                            .actuation_provider
-                            .actuate(vec![ActuationChange {
-                                id: vss_id,
-                                data_value: data_value.clone(),
-                            }])
-                            .await
-                    }
+                if is_expired {
+                    let message = format!(
+                        "Permission for vss_ids {:?} expired",
+                        actuation_subscription.vss_ids
+                    );
+                    return Err((ActuationError::PermissionExpired, message));
                 }
+
+                if !actuation_subscription.actuation_provider.is_available() {
+                    let message = format!("Provider for vss_id {} does not exist", vss_id);
+                    return Err((ActuationError::ProviderNotAvailable, message));
+                }
+
+                actuation_subscription
+                    .actuation_provider
+                    .actuate(vec![ActuationChange {
+                        id: vss_id,
+                        data_value: data_value.clone(),
+                    }])
+                    .await
             }
             None => {
                 let message = format!("Provider for vss_id {} does not exist", vss_id);
