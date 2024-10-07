@@ -48,7 +48,14 @@ message Value {
 
 message SignalID {
   oneof signal {
+    // Numeric identifier to the signal
+    // As of today Databroker assigns arbitrary unique numbers to each registered signal
+    // at startup, meaning that identifiers may change after restarting Databroker.
+    // A mechanism for static identifiers may be introduced in the future.
     int32 id    = 1;
+    // Full VSS-style path to a specific signal, like "Vehicle.Speed"
+    // Wildcards and paths to branches are not supported.
+    // The given path must be known by the Databroker.
     string path = 2;
   }
 }
