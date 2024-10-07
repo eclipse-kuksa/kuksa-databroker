@@ -705,7 +705,7 @@ impl Subscriptions {
             if sub.sender.is_closed() {
                 info!("Subscriber gone: removing subscription");
                 false
-            } else if sub.permissions.expired() {
+            } else if sub.permissions.is_expired() {
                 info!("Permissions of Subscriber expired: removing subscription");
                 false
             } else {
@@ -717,7 +717,7 @@ impl Subscriptions {
             if !sub.actuation_provider.is_available() {
                 info!("Provider gone: removing subscription");
                 false
-            } else if sub.permissions.expired() {
+            } else if sub.permissions.is_expired() {
                 info!("Permissions of Provider expired: removing subscription");
                 false
             } else {
@@ -1634,7 +1634,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .collect();
         if !intersection.is_empty() {
             let message = format!(
-                "actuation providers for the following vss_ids already registered: {:?}",
+                "Providers for the following vss_ids already registered: {:?}",
                 intersection
             );
             return Err((ActuationError::ProviderAlreadyExists, message));
@@ -1734,7 +1734,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                 .find(|subscription| subscription.vss_ids.contains(&vss_id));
             match opt_actuation_subscription {
                 Some(actuation_subscription) => {
-                    let is_expired = actuation_subscription.permissions.expired();
+                    let is_expired = actuation_subscription.permissions.is_expired();
                     if is_expired {
                         let message = format!(
                             "Permission for vss_ids {:?} expired",
@@ -1812,7 +1812,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .find(|subscription| subscription.vss_ids.contains(&vss_id));
         match opt_actuation_subscription {
             Some(actuation_subscription) => {
-                let is_expired = actuation_subscription.permissions.expired();
+                let is_expired = actuation_subscription.permissions.is_expired();
                 if is_expired {
                     let message = format!(
                         "Permission for vss_ids {:?} expired",
