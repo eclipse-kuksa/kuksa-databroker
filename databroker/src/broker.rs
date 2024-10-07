@@ -186,6 +186,7 @@ pub struct EntryUpdate {
 }
 
 impl Entry {
+    #[cfg_attr(feature="otel",tracing::instrument(name="broker_diff", skip(self, update), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn diff(&self, mut update: EntryUpdate) -> EntryUpdate {
         if let Some(datapoint) = &update.datapoint {
             if self.metadata.change_type != ChangeType::Continuous {
@@ -205,6 +206,7 @@ impl Entry {
         update
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_validate", skip(self, update), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn validate(&self, update: &EntryUpdate) -> Result<(), UpdateError> {
         if let Some(datapoint) = &update.datapoint {
             self.validate_value(&datapoint.value)?;
@@ -222,6 +224,7 @@ impl Entry {
         Ok(())
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_validate_allowed_type", skip(self, allowed), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn validate_allowed_type(&self, allowed: &Option<DataValue>) -> Result<(), UpdateError> {
         if let Some(allowed_values) = allowed {
             match (allowed_values, &self.metadata.data_type) {
@@ -249,6 +252,7 @@ impl Entry {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_validate_allowed", skip(self, value), fields(timestamp=chrono::Utc::now().to_string())))]
     fn validate_allowed(&self, value: &DataValue) -> Result<(), UpdateError> {
         // check if allowed value
         if let Some(allowed_values) = &self.metadata.allowed {
@@ -380,6 +384,7 @@ impl Entry {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_validate_value", skip(self, value), fields(timestamp=chrono::Utc::now().to_string())))]
     fn validate_value(&self, value: &DataValue) -> Result<(), UpdateError> {
         // Not available is always valid
         if value == &DataValue::NotAvailable {
@@ -564,10 +569,12 @@ impl Entry {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="apply_lag_after_execute", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn apply_lag_after_execute(&mut self) {
         self.lag_datapoint = self.datapoint.clone();
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_apply", skip(self, update), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn apply(&mut self, update: EntryUpdate) -> HashSet<Field> {
         let mut changed = HashSet::new();
         if let Some(datapoint) = update.datapoint {
@@ -603,10 +610,12 @@ impl Subscriptions {
         self.query_subscriptions.push(subscription)
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name = "broker_add_change_subscription",skip(self, subscription), fields(timestamp=chrono::Utc::now().to_string())))]    
     pub fn add_change_subscription(&mut self, subscription: ChangeSubscription) {
         self.change_subscriptions.push(subscription)
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_notify", skip(self, changed, db)))]
     pub async fn notify(
         &self,
         changed: Option<&HashMap<i32, HashSet<Field>>>,
@@ -652,6 +661,7 @@ impl Subscriptions {
         self.change_subscriptions.clear();
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_cleanup", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn cleanup(&mut self) {
         self.query_subscriptions.retain(|sub| {
             if sub.sender.is_closed() {
@@ -799,6 +809,7 @@ impl ChangeSubscription {
 }
 
 impl QuerySubscription {
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_find_in_db_and_add", skip(self, name, db, input), fields(timestamp=chrono::Utc::now().to_string())))]
     fn find_in_db_and_add(
         &self,
         name: &String,
@@ -827,6 +838,7 @@ impl QuerySubscription {
             }
         }
     }
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_check_if_changes_match", skip(query, changed_origin, db), fields(timestamp=chrono::Utc::now().to_string())))]
     fn check_if_changes_match(
         query: &CompiledQuery,
         changed_origin: Option<&HashMap<i32, HashSet<Field>>>,
@@ -862,6 +874,7 @@ impl QuerySubscription {
         }
         false
     }
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_generate_input_list", skip(self, query, db, input), fields(timestamp=chrono::Utc::now().to_string())))]
     fn generate_input_list(
         &self,
         query: &CompiledQuery,
@@ -877,6 +890,7 @@ impl QuerySubscription {
             }
         }
     }
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_generate_input", skip(self, changed, db), fields(timestamp=chrono::Utc::now().to_string())))]
     fn generate_input(
         &self,
         changed: Option<&HashMap<i32, HashSet<Field>>>,
@@ -893,6 +907,7 @@ impl QuerySubscription {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_query_subscription_notify", skip(self, changed, db), fields(timestamp=chrono::Utc::now().to_string())))]
     async fn notify(
         &self,
         changed: Option<&HashMap<i32, HashSet<Field>>>,
@@ -952,6 +967,7 @@ pub enum EntryReadAccess<'a> {
 }
 
 impl<'a> EntryReadAccess<'a> {
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_datapoint", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn datapoint(&self) -> Result<&Datapoint, ReadError> {
         match self {
             Self::Entry(entry) => Ok(&entry.datapoint),
@@ -966,6 +982,7 @@ impl<'a> EntryReadAccess<'a> {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_metadata", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn metadata(&self) -> &Metadata {
         match self {
             Self::Entry(entry) => &entry.metadata,
@@ -1008,6 +1025,7 @@ impl<'a, 'b> Iterator for EntryReadIterator<'a, 'b> {
 }
 
 impl<'a, 'b> DatabaseReadAccess<'a, 'b> {
+    #[cfg_attr(feature="otel", tracing::instrument(name="get_entry_by_id", skip(self, id), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn get_entry_by_id(&self, id: i32) -> Result<&Entry, ReadError> {
         match self.db.entries.get(&id) {
             Some(entry) => match self.permissions.can_read(&entry.metadata.path) {
@@ -1026,15 +1044,18 @@ impl<'a, 'b> DatabaseReadAccess<'a, 'b> {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_get_metadata_by_id", skip(self, id), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn get_metadata_by_id(&self, id: i32) -> Option<&Metadata> {
         self.db.entries.get(&id).map(|entry| &entry.metadata)
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_get_metadata_by_path", skip(self, path), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn get_metadata_by_path(&self, path: &str) -> Option<&Metadata> {
         let id = self.db.path_to_id.get(path)?;
         self.get_metadata_by_id(*id)
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_iter_entries", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn iter_entries(&self) -> EntryReadIterator {
         EntryReadIterator {
             inner: self.db.entries.values(),
@@ -1055,6 +1076,7 @@ impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_update_entry_lag_to_be_equal", skip(self, path), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn update_entry_lag_to_be_equal(&mut self, path: &str) -> Result<(), UpdateError> {
         match self.db.path_to_id.get(path) {
             Some(id) => match self.db.entries.get_mut(id) {
@@ -1068,6 +1090,7 @@ impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_update", skip(self, id, update), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn update(&mut self, id: i32, update: EntryUpdate) -> Result<HashSet<Field>, UpdateError> {
         match self.db.entries.get_mut(&id) {
             Some(entry) => {
@@ -1212,6 +1235,7 @@ impl Database {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_authorized_read_access", skip(self, permissions), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn authorized_read_access<'a, 'b>(
         &'a self,
         permissions: &'b Permissions,
@@ -1222,6 +1246,7 @@ impl Database {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_authorized_write_access", skip(self, permissions), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn authorized_write_access<'a, 'b>(
         &'a mut self,
         permissions: &'b Permissions,
@@ -1285,6 +1310,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .authorized_read_access(self.permissions))
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name = "broker_get_id_by_path", skip(self, name) fields(timestamp=chrono::Utc::now().to_string())))]
     pub async fn get_id_by_path(&self, name: &str) -> Option<i32> {
         self.broker
             .database
@@ -1315,6 +1341,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .map(|entry| entry.datapoint.clone())
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="get_metadata", skip(self, id), fields(timestamp=chrono::Utc::now().to_string())))]
     pub async fn get_metadata(&self, id: i32) -> Option<Metadata> {
         self.broker
             .database
@@ -1355,6 +1382,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .cloned()
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="broker_for_each_entry", skip(self, f), fields(timestamp=chrono::Utc::now().to_string())))]
     pub async fn for_each_entry(&self, f: impl FnMut(EntryReadAccess)) {
         self.broker
             .database
@@ -1390,6 +1418,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .collect()
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name = "broker_update_entries",skip(self, updates), fields(timestamp=chrono::Utc::now().to_string())))]
     pub async fn update_entries(
         &self,
         updates: impl IntoIterator<Item = (i32, EntryUpdate)>,
@@ -1461,6 +1490,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name = "broker_subscribe", skip(self, valid_entries), fields(timestamp=chrono::Utc::now().to_string())))]
     pub async fn subscribe(
         &self,
         valid_entries: HashMap<i32, HashSet<Field>>,
@@ -1544,6 +1574,7 @@ impl DataBroker {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name = "broker_authorized_access",skip(self, permissions), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn authorized_access<'a, 'b>(
         &'a self,
         permissions: &'b Permissions,

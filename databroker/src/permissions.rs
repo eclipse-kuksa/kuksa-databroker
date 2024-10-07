@@ -186,6 +186,7 @@ impl Permissions {
         Err(PermissionError::Denied)
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="permissions_can_write_actuator_target", skip(self, path), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn can_write_actuator_target(&self, path: &str) -> Result<(), PermissionError> {
         self.expired()?;
 
@@ -195,6 +196,7 @@ impl Permissions {
         Err(PermissionError::Denied)
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="permissions_can_write_datapoint", skip(self, path), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn can_write_datapoint(&self, path: &str) -> Result<(), PermissionError> {
         self.expired()?;
 
@@ -213,6 +215,7 @@ impl Permissions {
         Err(PermissionError::Denied)
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="permissions_expired", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
     #[inline]
     pub fn expired(&self) -> Result<(), PermissionError> {
         if let Some(expires_at) = self.expires_at {
@@ -225,6 +228,7 @@ impl Permissions {
 }
 
 impl PathMatcher {
+    #[cfg_attr(feature="otel", tracing::instrument(name="permissions_is_match", skip(self, path), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn is_match(&self, path: &str) -> bool {
         match self {
             PathMatcher::Nothing => false,
