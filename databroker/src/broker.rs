@@ -1582,41 +1582,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         actuation_provider: Box<dyn ActuationProvider + Send + Sync + 'static>,
     ) -> Result<(), (ActuationError, String)> {
         for vss_id in vss_ids.clone() {
-            let result_entry = self.get_entry_by_id(vss_id).await;
-            match result_entry {
-                Ok(entry) => {
-                    let vss_path = entry.metadata.path;
-                    let result_can_write_actuator =
-                        self.permissions.can_write_actuator_target(&vss_path);
-                    match result_can_write_actuator {
-                        Ok(_) => {}
-                        Err(PermissionError::Denied) => {
-                            let message = format!("Permission denied for vss_path {}", vss_path);
-                            return Err((ActuationError::PermissionDenied, message));
-                        }
-                        Err(PermissionError::Expired) => {
-                            return Err((
-                                ActuationError::PermissionExpired,
-                                "Permission expired".to_string(),
-                            ))
-                        }
-                    }
-                }
-                Err(ReadError::NotFound) => {
-                    let message = format!("Could not resolve vss_path of vss_id {}", vss_id);
-                    return Err((ActuationError::NotFound, message));
-                }
-                Err(ReadError::PermissionDenied) => {
-                    let message = format!("Permission denied for vss_id {}", vss_id);
-                    return Err((ActuationError::PermissionDenied, message));
-                }
-                Err(ReadError::PermissionExpired) => {
-                    return Err((
-                        ActuationError::PermissionExpired,
-                        "Permission expired".to_string(),
-                    ))
-                }
-            }
+            self.can_write_actuator_target(&vss_id).await?;
         }
 
         let provided_vss_ids: Vec<i32> = self
@@ -1686,40 +1652,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
 
         for actuation_change in &actuation_changes {
             let vss_id = actuation_change.id;
-            let result_entry = self.get_entry_by_id(vss_id).await;
-
-            match result_entry {
-                Ok(entry) => {
-                    let vss_path = entry.metadata.path;
-                    let result_can_write_actuator =
-                        self.permissions.can_write_actuator_target(&vss_path);
-                    match result_can_write_actuator {
-                        Ok(_) => {}
-                        Err(PermissionError::Denied) => {
-                            let message = format!("Permission denied for vss_path {}", vss_path);
-                            return Err((ActuationError::PermissionDenied, message));
-                        }
-                        Err(PermissionError::Expired) => {
-                            let message = "Permission expired".to_string();
-                            return Err((ActuationError::PermissionExpired, message));
-                        }
-                    }
-                }
-                Err(ReadError::NotFound) => {
-                    let message = format!("Could not resolve vss_path of vss_id {}", vss_id);
-                    return Err((ActuationError::NotFound, message));
-                }
-                Err(ReadError::PermissionDenied) => {
-                    let message = format!("Permission denied for vss_id {}", vss_id);
-                    return Err((ActuationError::PermissionDenied, message));
-                }
-                Err(ReadError::PermissionExpired) => {
-                    return Err((
-                        ActuationError::PermissionExpired,
-                        "Permission expired".to_string(),
-                    ))
-                }
-            }
+            self.can_write_actuator_target(&vss_id).await?;
         }
 
         let actuation_changes_per_vss_id = &self
@@ -1769,41 +1702,8 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         data_value: &DataValue,
     ) -> Result<(), (ActuationError, String)> {
         let vss_id = *vss_id;
-        let result_entry = self.get_entry_by_id(vss_id).await;
-        match result_entry {
-            Ok(entry) => {
-                let vss_path = entry.metadata.path;
-                let result_can_write_actuator =
-                    self.permissions.can_write_actuator_target(&vss_path);
-                match result_can_write_actuator {
-                    Ok(_) => {}
-                    Err(PermissionError::Denied) => {
-                        let message = format!("Permission denied for vss_path {}", vss_path);
-                        return Err((ActuationError::PermissionDenied, message));
-                    }
-                    Err(PermissionError::Expired) => {
-                        return Err((
-                            ActuationError::PermissionExpired,
-                            "Permission expired".to_string(),
-                        ))
-                    }
-                }
-            }
-            Err(ReadError::NotFound) => {
-                let message = format!("Could not resolve vss_path of vss_id {}", vss_id);
-                return Err((ActuationError::NotFound, message));
-            }
-            Err(ReadError::PermissionDenied) => {
-                let message = format!("Permission denied for vss_id {}", vss_id);
-                return Err((ActuationError::PermissionDenied, message));
-            }
-            Err(ReadError::PermissionExpired) => {
-                return Err((
-                    ActuationError::PermissionExpired,
-                    "Permission expired".to_string(),
-                ))
-            }
-        }
+
+        self.can_write_actuator_target(&vss_id).await?;
 
         let read_subscription_guard = self.broker.subscriptions.read().await;
         let opt_actuation_subscription = &read_subscription_guard
@@ -1838,6 +1738,43 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                 let message = format!("Provider for vss_id {} does not exist", vss_id);
                 Err((ActuationError::ProviderNotAvailable, message))
             }
+        }
+    }
+
+    async fn can_write_actuator_target(
+        &self,
+        vss_id: &i32,
+    ) -> Result<(), (ActuationError, String)> {
+        let result_entry = self.get_entry_by_id(*vss_id).await;
+        match result_entry {
+            Ok(entry) => {
+                let vss_path = entry.metadata.path;
+                let result_can_write_actuator =
+                    self.permissions.can_write_actuator_target(&vss_path);
+                match result_can_write_actuator {
+                    Ok(_) => Ok(()),
+                    Err(PermissionError::Denied) => {
+                        let message = format!("Permission denied for vss_path {}", vss_path);
+                        Err((ActuationError::PermissionDenied, message))
+                    }
+                    Err(PermissionError::Expired) => Err((
+                        ActuationError::PermissionExpired,
+                        "Permission expired".to_string(),
+                    )),
+                }
+            }
+            Err(ReadError::NotFound) => {
+                let message = format!("Could not resolve vss_path of vss_id {}", vss_id);
+                Err((ActuationError::NotFound, message))
+            }
+            Err(ReadError::PermissionDenied) => {
+                let message = format!("Permission denied for vss_id {}", vss_id);
+                Err((ActuationError::PermissionDenied, message))
+            }
+            Err(ReadError::PermissionExpired) => Err((
+                ActuationError::PermissionExpired,
+                "Permission expired".to_string(),
+            )),
         }
     }
 }
