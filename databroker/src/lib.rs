@@ -19,6 +19,8 @@ pub mod permissions;
 pub mod query;
 pub mod types;
 pub mod vss;
+pub mod open_telemetry;
+
 
 #[cfg(feature = "viss")]
 pub mod viss;
@@ -27,6 +29,11 @@ use std::fmt::Write;
 
 use tracing::info;
 use tracing_subscriber::filter::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+
+use open_telemetry::init_trace;
+use opentelemetry::global;
+use opentelemetry::sdk::propagation::TraceContextPropagator;
 
 pub fn init_logging() {
     let mut output = String::from("Init logging from RUST_LOG");
@@ -35,9 +42,23 @@ pub fn init_logging() {
         // If no environment variable set, this is the default
         EnvFilter::new("info")
     });
-    tracing_subscriber::fmt::Subscriber::builder()
-        .with_env_filter(filter)
-        .try_init()
+
+     // Set OpenTelemetry trace propagator
+     global::set_text_map_propagator(TraceContextPropagator::new());
+
+     // Initialize OpenTelemetry tracer
+     let tracer = init_trace().expect("Failed to initialize tracer");
+ 
+     // telemetry layer
+     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+
+     let subscriber = tracing_subscriber::fmt::Subscriber::builder()
+        .with_max_level(tracing::Level::INFO)  // adjust this log level as needed
+        .finish()
+        .with(telemetry);  // Add telemetry layer
+
+    // Set the subscriber as the global default for tracing
+    tracing::subscriber::set_global_default(subscriber)
         .expect("Unable to install global logging subscriber");
 
     info!("{}", output);
