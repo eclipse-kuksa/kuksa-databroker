@@ -21,33 +21,50 @@ import "kuksa/val/v2/types.proto";
 
 service VAL {
   // Get the latest value of a signal
+  // If the signal exist but does not have a valid value
+  // a DataPoint where value is None shall be returned.
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if the requested signal doesn't exist
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied
+  //
   rpc GetValue(GetValueRequest) returns (GetValueResponse);
 
   // Get the latest values of a set of signals.
   // The returned list of data points has the same order as the list of the request.
+  // If a requested signal has no value a DataPoint where value is None will be returned.
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the requested signals doesn't exist.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied for any of the requested signals.
+  //
   rpc GetValues(GetValuesRequest) returns (GetValuesResponse);
 
   // List values of signals matching the request.
   //
   // Returns a list of signal values. Only values of signals that the user
   // is allowed to read are included (everything else is ignored).
+  // If a requested signal has no value a DataPoint where value is None will be returned.
   //
   // Returns (GRPC error code):
-  //   NOT_FOUND if the specified root branch does not exist.
+  //   NOT_FOUND if any of the requested signals doesn't exist.
+  //
+  // TODO: Needs to be redesigned, returning a list with only DataPoints (without names/id)
+  // is not sufficient for an rpc were you may get back a subset of the values you requested.
+  // Like if you request A, B, C and only have access to one of them, then you do not
+  // know which of them that is returned.
   rpc ListValues(ListValuesRequest) returns (ListValuesResponse);
 
   // Subscribe to a set of signals using string path parameters
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the signals are non-existant.
   //   PERMISSION_DENIED if access is denied for any of the signals.
+  //
+  // When subscribing the Broker shall immediately return the value for all
+  // subscribed entries. If no value is available when subscribing a DataPoint
+  // with value None shall be returned.
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
 
   // Subscribe to a set of signals using i32 id parameters
@@ -130,7 +147,7 @@ message GetValuesRequest {
 }
 
 message GetValuesResponse {
-  repeated Datapoint datapoints = 1;
+  repeated Datapoint data_points = 1;
 }
 
 message ListValuesRequest {
@@ -138,7 +155,7 @@ message ListValuesRequest {
 }
 
 message ListValuesResponse {
-  repeated Datapoint datapoints = 1;
+  repeated Datapoint data_points = 1;
 }
 
 message SubscribeRequest {
