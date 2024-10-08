@@ -586,7 +586,10 @@ impl Entry {
             self.actuator_target = actuator_target;
             changed.insert(Field::ActuatorTarget);
         }
-
+        if let Some(metadata_description) = update.description {
+            self.metadata.description = metadata_description;
+            // changed.insert(Field::ActuatorTarget);
+        }
         if let Some(updated_allowed) = update.allowed {
             if updated_allowed != self.metadata.allowed {
                 self.metadata.allowed = updated_allowed;
@@ -738,6 +741,8 @@ impl ChangeSubscription {
                                             }
                                             // fill unit field always
                                             update.unit.clone_from(&entry.metadata.unit);
+                                            update.description = Some(entry.metadata.description.clone());
+
                                             notifications.updates.push(ChangeNotification {
                                                 update,
                                                 fields: notify_fields,
@@ -779,6 +784,7 @@ impl ChangeSubscription {
                                 let mut notify_fields = HashSet::new();
                                 // TODO: Perhaps make path optional
                                 update.path = Some(entry.metadata.path.clone());
+                                update.description = Some(entry.metadata.description.clone());
                                 if fields.contains(&Field::Datapoint) {
                                     update.datapoint = Some(entry.datapoint.clone());
                                     notify_fields.insert(Field::Datapoint);
@@ -1097,7 +1103,7 @@ impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
                 if update.path.is_some()
                     || update.entry_type.is_some()
                     || update.data_type.is_some()
-                    || update.description.is_some()
+                    // || update.description.is_some()
                 {
                     return Err(UpdateError::PermissionDenied);
                 }

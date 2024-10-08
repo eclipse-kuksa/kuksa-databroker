@@ -943,13 +943,24 @@ impl broker::EntryUpdate {
         } else {
             None
         };
+        let metadata_description = if fields.contains(&proto::Field::MetadataDescription) {
+            match &entry.metadata {
+                Some(metadata) => match &metadata.description {
+                   Some(description) => Some(description),
+                   None => None,
+                }
+                None => None,
+            }
+        } else {
+            None
+        };
         Self {
             path: None,
             datapoint,
             actuator_target,
             entry_type: None,
             data_type: None,
-            description: None,
+            description: metadata_description.cloned(),
             allowed: None,
             unit: None,
         }
