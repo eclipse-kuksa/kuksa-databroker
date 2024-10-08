@@ -14,7 +14,9 @@
 use std::{collections::HashMap, pin::Pin};
 
 use crate::{
-    broker::{self, ActuationChange, ActuationProvider, AuthorizedAccess, ReadError, SubscriptionError},
+    broker::{
+        self, ActuationChange, ActuationProvider, AuthorizedAccess, ReadError, SubscriptionError,
+    },
     glob::Matcher,
     permissions::Permissions,
     types::DataValue,
