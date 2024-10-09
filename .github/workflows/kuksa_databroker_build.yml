@@ -130,7 +130,8 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+
     env:
       CARGO_TERM_COLOR: always
     strategy:
@@ -157,7 +158,7 @@ jobs:
       working-directory: ${{github.workspace}}/
       run: |
         cargo install cross cargo-license cargo-cyclonedx
-        pip install --break-system-packages "git+https://github.com/eclipse-kuksa/kuksa-common.git@v1#subdirectory=sbom-tools"
+        pip install "git+https://github.com/eclipse-kuksa/kuksa-common.git@v1#subdirectory=sbom-tools"
     - name: Build
       working-directory: ${{github.workspace}}
       env:
