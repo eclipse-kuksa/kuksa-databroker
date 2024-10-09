@@ -284,21 +284,17 @@ impl proto::val_server::Val for broker::DataBroker {
         request: tonic::Request<proto::ActuateRequest>,
     ) -> Result<tonic::Response<proto::ActuateResponse>, tonic::Status> {
         debug!(?request);
-                debug!(?request);
         let permissions = request
             .extensions()
             .get::<Permissions>()
             .ok_or(tonic::Status::unauthenticated("Unauthenticated"))?
             .clone();
-        debug!(?permissions);
         let broker = self.authorized_access(&permissions);
 
         let actuator_request = request.into_inner();
         let value = actuator_request
             .value
-            .ok_or(tonic::Status::invalid_argument(
-                "No value provided",
-            ))?;
+            .ok_or(tonic::Status::invalid_argument("No value provided"))?;
 
         let signal = actuator_request
             .signal_id
@@ -330,8 +326,6 @@ impl proto::val_server::Val for broker::DataBroker {
                 "SignalID contains neither path or id",
             )),
         }
-            "Invalid Actuator Request provided",
-        ));
     }
 
     // Actuate simultaneously multiple actuators.
