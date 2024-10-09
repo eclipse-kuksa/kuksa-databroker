@@ -284,52 +284,52 @@ impl proto::val_server::Val for broker::DataBroker {
         request: tonic::Request<proto::ActuateRequest>,
     ) -> Result<tonic::Response<proto::ActuateResponse>, tonic::Status> {
         debug!(?request);
-        let permissions = match request.extensions().get::<Permissions>() {
-            Some(permissions) => {
-                debug!(?permissions);
-                permissions.clone()
-            }
-            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
-        };
+                debug!(?request);
+        let permissions = request
+            .extensions()
+            .get::<Permissions>()
+            .ok_or(tonic::Status::unauthenticated("Unauthenticated"))?
+            .clone();
+        debug!(?permissions);
         let broker = self.authorized_access(&permissions);
 
         let actuator_request = request.into_inner();
-        if let Some(value) = actuator_request.value {
-            let opt_signal_id = actuator_request.signal_id.clone();
-            match opt_signal_id {
-                Some(signal_id) => {
-                    match signal_id.signal {
-                        Some(proto::signal_id::Signal::Path(vss_path)) => {
-                            if let Some(id) = broker.get_id_by_path(&vss_path).await {
-                                let result = broker.actuate(&id, &DataValue::from(value)).await;
-                                match result {
-                                    Ok(_) => return Ok(tonic::Response::new(ActuateResponse {})),
-                                    Err(error) => return Err(error.0.to_tonic_status(error.1)),
-                                };
-                            }
-                            return Err(tonic::Status::not_found(format!(
-                                "Invalid vss_path provided {}",
-                                vss_path
-                            )));
-                        }
-                        Some(proto::signal_id::Signal::Id(vss_id)) => {
-                            let result = broker.actuate(&vss_id, &DataValue::from(value)).await;
-                            match result {
-                                Ok(_) => return Ok(tonic::Response::new(ActuateResponse {})),
-                                Err(error) => return Err(error.0.to_tonic_status(error.1)),
-                            };
-                        }
-                        None => {
-                            return Err(tonic::Status::invalid_argument(
-                                "Signal needs to provide Path or Id",
-                            ))
-                        }
-                    };
+        let value = actuator_request
+            .value
+            .ok_or(tonic::Status::invalid_argument(
+                "No value provided",
+            ))?;
+
+        let signal = actuator_request
+            .signal_id
+            .ok_or(tonic::Status::invalid_argument("No signal_id provided"))?
+            .signal;
+
+        match &signal {
+            Some(proto::signal_id::Signal::Path(path)) => {
+                let id = broker
+                    .get_id_by_path(path)
+                    .await
+                    .ok_or(tonic::Status::not_found(format!(
+                        "Invalid path in signal_id provided {}",
+                        path
+                    )))?;
+
+                match broker.actuate(&id, &DataValue::from(value)).await {
+                    Ok(()) => Ok(tonic::Response::new(ActuateResponse {})),
+                    Err(error) => Err(error.0.to_tonic_status(error.1)),
                 }
-                None => return Err(tonic::Status::invalid_argument("No Signal_Id provided")),
-            };
-        };
-        return Err(tonic::Status::invalid_argument(
+            }
+            Some(proto::signal_id::Signal::Id(id)) => {
+                match broker.actuate(id, &DataValue::from(value)).await {
+                    Ok(()) => Ok(tonic::Response::new(ActuateResponse {})),
+                    Err(error) => Err(error.0.to_tonic_status(error.1)),
+                }
+            }
+            None => Err(tonic::Status::invalid_argument(
+                "SignalID contains neither path or id",
+            )),
+        }
             "Invalid Actuator Request provided",
         ));
     }
