@@ -165,7 +165,9 @@ impl Permissions {
     }
 
     pub fn can_read(&self, path: &str) -> Result<(), PermissionError> {
-        self.expired()?;
+        if self.is_expired() {
+            return Err(PermissionError::Expired);
+        }
 
         if self.read.is_match(path) {
             return Ok(());
@@ -187,7 +189,9 @@ impl Permissions {
     }
 
     pub fn can_write_actuator_target(&self, path: &str) -> Result<(), PermissionError> {
-        self.expired()?;
+        if self.is_expired() {
+            return Err(PermissionError::Expired);
+        }
 
         if self.actuate.is_match(path) {
             return Ok(());
@@ -196,7 +200,9 @@ impl Permissions {
     }
 
     pub fn can_write_datapoint(&self, path: &str) -> Result<(), PermissionError> {
-        self.expired()?;
+        if self.is_expired() {
+            return Err(PermissionError::Expired);
+        }
 
         if self.provide.is_match(path) {
             return Ok(());
@@ -205,7 +211,9 @@ impl Permissions {
     }
 
     pub fn can_create(&self, path: &str) -> Result<(), PermissionError> {
-        self.expired()?;
+        if self.is_expired() {
+            return Err(PermissionError::Expired);
+        }
 
         if self.create.is_match(path) {
             return Ok(());
@@ -214,13 +222,13 @@ impl Permissions {
     }
 
     #[inline]
-    pub fn expired(&self) -> Result<(), PermissionError> {
+    pub fn is_expired(&self) -> bool {
         if let Some(expires_at) = self.expires_at {
             if expires_at < SystemTime::now() {
-                return Err(PermissionError::Expired);
+                return true;
             }
         }
-        Ok(())
+        false
     }
 }
 
