@@ -143,9 +143,19 @@ message Datapoint {
   }
 }
 
+message Allowed {
+  oneof values {
+    StringArray string_values = 1;
+    Int32Array int32_values   = 3;
+    Int64Array int64_values   = 4;
+    Uint32Array uint32_values = 5;
+    Uint64Array uint64_values = 6;
+    FloatArray float_values   = 7;
+    DoubleArray double_values = 8;
+  }
+}
+
 message Metadata {
-  // Id to be used in "get" and "subscribe" requests. Ids stay valid during
-  // one power cycle, only.
   int32 id               = 1;
   EntryType entry_type   = 2;
   string name            = 4;
@@ -153,6 +163,7 @@ message Metadata {
   ChangeType change_type = 6;  // CONTINUOUS or STATIC or ON_CHANGE
   string description     = 7;
 
+  Allowed allowed = 10;
   // int32             min_update_hz       = 10; // Only for CONTINUOUS
   // int32             max_update_hz       = 11; // Only for CONTINUOUS
 };
