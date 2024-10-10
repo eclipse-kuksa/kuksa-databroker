@@ -96,6 +96,10 @@ jobs:
           ~/.cache/pip/
           target-*/
         key: databroker-cli-release-${{ matrix.platform.name }}-${{ hashFiles('**/Cargo.lock') }}
+    - uses: actions/setup-python@v5
+      # Needed for pip
+      with:
+          python-version: '3.12'
     - name: Install build prerequisites
       working-directory: ${{github.workspace}}/
       run: |
