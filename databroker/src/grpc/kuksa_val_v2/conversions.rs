@@ -391,7 +391,7 @@ impl broker::UpdateError {
             ),
             broker::UpdateError::OutOfBounds => tonic::Status::new(
                 tonic::Code::OutOfRange,
-                format!("Index out of bounds (id: {})", id),
+                format!("Value out of bounds (id: {})", id),
             ),
             broker::UpdateError::UnsupportedType => tonic::Status::new(
                 tonic::Code::Unimplemented,

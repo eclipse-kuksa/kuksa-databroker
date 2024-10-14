@@ -203,6 +203,10 @@ impl From<DataType> for types::DataType {
     }
 }
 
+/// Try to extract an array matching the given DataType.
+/// Will success if the value is None or a an array of matching type
+/// Will fail if the value is a "single" value, i.e. not an array
+/// This method is useful for instance when extracting the "allowed" field
 fn try_from_json_array(
     array: Option<Vec<serde_json::Value>>,
     data_type: &types::DataType,
@@ -251,6 +255,11 @@ fn try_from_json_array(
     }
 }
 
+/// Try to extract a value matching the given DataType.
+/// Will success if the value is None or a a value of matching type
+/// Will fail if the value does not match the given type,
+/// for example if a single value is given for an array type or vice versa
+/// This method is useful for instance when extracting the "default" value
 fn try_from_json_value(
     value: Option<serde_json::Value>,
     data_type: &types::DataType,
@@ -350,6 +359,44 @@ fn try_from_json_value(
     }
 }
 
+/// Try to extract a single value matching the given DataType,
+/// i.e. if an array type is given it will try to find a single value of the base type
+/// For example Int32 if the type is Int32 or Int32Array
+/// Will success if the value is of matching base type
+/// Will fail otherwise
+/// This method is useful for instance when extracting the "min"/"max" field
+fn try_from_json_single_value(
+    value: Option<serde_json::Value>,
+    data_type: &types::DataType,
+) -> Result<Option<types::DataValue>, Error> {
+    match data_type {
+        types::DataType::StringArray => try_from_json_value(value, &types::DataType::String),
+        types::DataType::BoolArray => try_from_json_value(value, &types::DataType::Bool),
+        types::DataType::Int8Array => try_from_json_value(value, &types::DataType::Int8),
+        types::DataType::Int16Array => try_from_json_value(value, &types::DataType::Int16),
+        types::DataType::Int32Array => try_from_json_value(value, &types::DataType::Int32),
+        types::DataType::Int64Array => try_from_json_value(value, &types::DataType::Int64),
+        types::DataType::Uint8Array => try_from_json_value(value, &types::DataType::Uint8),
+        types::DataType::Uint16Array => try_from_json_value(value, &types::DataType::Uint16),
+        types::DataType::Uint32Array => try_from_json_value(value, &types::DataType::Uint32),
+        types::DataType::Uint64Array => try_from_json_value(value, &types::DataType::Uint64),
+        types::DataType::FloatArray => try_from_json_value(value, &types::DataType::Float),
+        types::DataType::DoubleArray => try_from_json_value(value, &types::DataType::Double),
+        types::DataType::String
+        | types::DataType::Bool
+        | types::DataType::Int8
+        | types::DataType::Int16
+        | types::DataType::Int32
+        | types::DataType::Int64
+        | types::DataType::Uint8
+        | types::DataType::Uint16
+        | types::DataType::Uint32
+        | types::DataType::Uint64
+        | types::DataType::Float
+        | types::DataType::Double => try_from_json_value(value, data_type),
+    }
+}
+
 fn flatten_vss_tree(root: RootEntry) -> Result<BTreeMap<String, DataEntry>, Error> {
     let mut entries = BTreeMap::new();
 
@@ -396,8 +443,8 @@ fn add_entry(
                     description: entry.description,
                     comment: entry.comment,
                     unit: entry.unit,
-                    min: try_from_json_value(entry.min, &data_type)?,
-                    max: try_from_json_value(entry.max, &data_type)?,
+                    min: try_from_json_single_value(entry.min, &data_type)?,
+                    max: try_from_json_single_value(entry.max, &data_type)?,
                     allowed: try_from_json_array(entry.allowed, &data_type)?,
                     default: None, // isn't used by actuators
                     data_type,
@@ -421,8 +468,8 @@ fn add_entry(
                     description: entry.description,
                     comment: entry.comment,
                     unit: entry.unit,
-                    min: try_from_json_value(entry.min, &data_type)?,
-                    max: try_from_json_value(entry.max, &data_type)?,
+                    min: try_from_json_single_value(entry.min, &data_type)?,
+                    max: try_from_json_single_value(entry.max, &data_type)?,
                     allowed: try_from_json_array(entry.allowed, &data_type)?,
                     default: try_from_json_value(entry.default, &data_type)?,
                     change_type: determine_change_type(
@@ -450,8 +497,8 @@ fn add_entry(
                     description: entry.description,
                     comment: entry.comment,
                     unit: entry.unit,
-                    min: try_from_json_value(entry.min, &data_type)?,
-                    max: try_from_json_value(entry.max, &data_type)?,
+                    min: try_from_json_single_value(entry.min, &data_type)?,
+                    max: try_from_json_single_value(entry.max, &data_type)?,
                     allowed: try_from_json_array(entry.allowed, &data_type)?,
                     change_type: determine_change_type(entry.change_type, types::EntryType::Sensor),
                     default: None, // isn't used by sensors

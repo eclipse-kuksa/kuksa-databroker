@@ -79,6 +79,9 @@ pub struct Metadata {
     pub entry_type: EntryType,
     pub change_type: ChangeType,
     pub description: String,
+    // Min and Max are typically never arrays
+    pub min: Option<types::DataValue>,
+    pub max: Option<types::DataValue>,
     pub allowed: Option<types::DataValue>,
     pub unit: Option<String>,
 }
@@ -217,6 +220,8 @@ pub struct EntryUpdate {
     // order to be able to convey "update it to None" which would
     // mean setting it to `Some(None)`.
     pub allowed: Option<Option<types::DataValue>>,
+    pub min: Option<Option<types::DataValue>>,
+    pub max: Option<Option<types::DataValue>>,
     pub unit: Option<String>,
 }
 
@@ -257,26 +262,43 @@ impl Entry {
         Ok(())
     }
 
+    /**
+     * DataType is VSS type, where we have also smaller type based on 8/16 bits
+     * That we do not have for DataValue
+     */
     pub fn validate_allowed_type(&self, allowed: &Option<DataValue>) -> Result<(), UpdateError> {
         if let Some(allowed_values) = allowed {
+            //debug!("Checking {:?} {:?}", allowed_values, &self.metadata.data_type);
             match (allowed_values, &self.metadata.data_type) {
                 (DataValue::BoolArray(_allowed_values), DataType::Bool) => Ok(()),
                 (DataValue::StringArray(_allowed_values), DataType::String) => Ok(()),
+                (DataValue::Int32Array(_allowed_values), DataType::Int8) => Ok(()),
+                (DataValue::Int32Array(_allowed_values), DataType::Int16) => Ok(()),
                 (DataValue::Int32Array(_allowed_values), DataType::Int32) => Ok(()),
                 (DataValue::Int64Array(_allowed_values), DataType::Int64) => Ok(()),
+                (DataValue::Uint32Array(_allowed_values), DataType::Uint8) => Ok(()),
+                (DataValue::Uint32Array(_allowed_values), DataType::Uint16) => Ok(()),
                 (DataValue::Uint32Array(_allowed_values), DataType::Uint32) => Ok(()),
                 (DataValue::Uint64Array(_allowed_values), DataType::Uint64) => Ok(()),
                 (DataValue::FloatArray(_allowed_values), DataType::Float) => Ok(()),
                 (DataValue::DoubleArray(_allowed_values), DataType::Double) => Ok(()),
                 (DataValue::BoolArray(_allowed_values), DataType::BoolArray) => Ok(()),
                 (DataValue::StringArray(_allowed_values), DataType::StringArray) => Ok(()),
+                (DataValue::Int32Array(_allowed_values), DataType::Int8Array) => Ok(()),
+                (DataValue::Int32Array(_allowed_values), DataType::Int16Array) => Ok(()),
                 (DataValue::Int32Array(_allowed_values), DataType::Int32Array) => Ok(()),
                 (DataValue::Int64Array(_allowed_values), DataType::Int64Array) => Ok(()),
+                (DataValue::Uint32Array(_allowed_values), DataType::Uint8Array) => Ok(()),
+                (DataValue::Uint32Array(_allowed_values), DataType::Uint16Array) => Ok(()),
                 (DataValue::Uint32Array(_allowed_values), DataType::Uint32Array) => Ok(()),
                 (DataValue::Uint64Array(_allowed_values), DataType::Uint64Array) => Ok(()),
                 (DataValue::FloatArray(_allowed_values), DataType::FloatArray) => Ok(()),
                 (DataValue::DoubleArray(_allowed_values), DataType::DoubleArray) => Ok(()),
-                _ => Err(UpdateError::WrongType {}),
+                _ => {
+                    debug!("Unexpected combination - VSS datatype is {:?}, but list of allowed value use {:?}",
+                        &self.metadata.data_type, allowed_values);
+                    Err(UpdateError::WrongType {})
+                }
             }
         } else {
             // it is allowed to set allowed to None
@@ -419,6 +441,20 @@ impl Entry {
         // Not available is always valid
         if value == &DataValue::NotAvailable {
             return Ok(());
+        }
+
+        // Validate Min/Max
+        if let Some(min) = &self.metadata.min {
+            match value.greater_than_equal(min) {
+                Ok(true) => {}
+                _ => return Err(UpdateError::OutOfBounds),
+            };
+        }
+        if let Some(max) = &self.metadata.max {
+            match value.less_than_equal(max) {
+                Ok(true) => {}
+                _ => return Err(UpdateError::OutOfBounds),
+            };
         }
 
         // Validate value
@@ -1175,6 +1211,8 @@ impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
         change_type: ChangeType,
         entry_type: EntryType,
         description: String,
+        min: Option<types::DataValue>,
+        max: Option<types::DataValue>,
         allowed: Option<types::DataValue>,
         datapoint: Option<Datapoint>,
         unit: Option<String>,
@@ -1207,6 +1245,8 @@ impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
                 entry_type,
                 description,
                 allowed,
+                min,
+                max,
                 unit,
             },
             datapoint: match datapoint.clone() {
@@ -1301,6 +1341,8 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         change_type: ChangeType,
         entry_type: EntryType,
         description: String,
+        min: Option<types::DataValue>,
+        max: Option<types::DataValue>,
         allowed: Option<types::DataValue>,
         unit: Option<String>,
     ) -> Result<i32, RegistrationError> {
@@ -1315,6 +1357,8 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                 change_type,
                 entry_type,
                 description,
+                min,
+                max,
                 allowed,
                 None,
                 unit,
@@ -1859,6 +1903,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::BoolArray(Vec::from([true]))),
                 Some("kg".to_string()),
             )
@@ -1891,6 +1937,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 2".to_owned(),
+                None, // min
+                None, // max
                 None,
                 Some("km".to_string()),
             )
@@ -1920,6 +1968,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1 (modified)".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1941,6 +1991,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test signal 3".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::Int32Array(Vec::from([1, 2, 3, 4]))),
                 None,
             )
@@ -1965,6 +2017,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1978,6 +2032,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Actuator,
                 "Test datapoint 2".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2021,6 +2077,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2053,6 +2111,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2075,6 +2135,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2126,6 +2188,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::Int32Array(vec![100])),
                 None,
             )
@@ -2147,6 +2211,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: Some(Some(DataValue::Int32Array(vec![100]))),
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2169,6 +2235,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: Some(Some(DataValue::BoolArray(vec![true]))),
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2191,6 +2259,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: Some(None),
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2214,6 +2284,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2246,6 +2318,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2285,6 +2359,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2329,6 +2405,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2387,6 +2465,8 @@ mod tests {
                         data_type: None,
                         description: None,
                         allowed: None,
+                        min: None,
+                        max: None,
                         unit: None,
                     },
                 )])
@@ -2431,6 +2511,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2470,6 +2552,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2506,6 +2590,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1 (new description)".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2529,6 +2615,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2571,6 +2659,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2584,6 +2674,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 2".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2627,6 +2719,8 @@ mod tests {
                             data_type: None,
                             description: None,
                             allowed: None,
+                            min: None,
+                            max: None,
                             unit: None,
                         },
                     ),
@@ -2644,6 +2738,8 @@ mod tests {
                             data_type: None,
                             description: None,
                             allowed: None,
+                            min: None,
+                            max: None,
                             unit: None,
                         },
                     ),
@@ -2685,6 +2781,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2707,6 +2805,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2750,6 +2850,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2777,6 +2879,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2825,6 +2929,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::StringArray(vec![
                     String::from("yes"),
                     String::from("no"),
@@ -2857,6 +2963,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2914,6 +3022,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2969,6 +3079,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2993,6 +3105,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -3015,6 +3129,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -3044,6 +3160,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -3079,6 +3197,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -3101,6 +3221,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -3130,6 +3252,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -3168,6 +3292,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -3190,6 +3316,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -3233,6 +3361,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -3277,6 +3407,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -3327,6 +3459,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test signal".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -3339,6 +3473,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test signal".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -3370,6 +3506,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test signal 3".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::Int32Array(Vec::from([1, 2, 3, 4]))),
                 None,
             )
@@ -3384,6 +3522,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::BoolArray(Vec::from([true]))),
                 None,
             )
