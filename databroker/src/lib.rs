@@ -29,12 +29,16 @@ use std::fmt::Write;
 
 use tracing::info;
 use tracing_subscriber::filter::EnvFilter;
-use tracing_subscriber::layer::SubscriberExt;
 
-use open_telemetry::init_trace;
-use opentelemetry::global;
-use opentelemetry::sdk::propagation::TraceContextPropagator;
+#[cfg(feature="otel")]
+use {
+tracing_subscriber::layer::SubscriberExt,
+open_telemetry::init_trace,
+opentelemetry::global,
+opentelemetry::sdk::propagation::TraceContextPropagator,
+};
 
+#[cfg(not(feature="otel"))]
 pub fn init_logging() {
     let mut output = String::from("Init logging from RUST_LOG");
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|err| {
@@ -42,6 +46,17 @@ pub fn init_logging() {
         // If no environment variable set, this is the default
         EnvFilter::new("info")
     });
+    tracing_subscriber::fmt::Subscriber::builder()
+        .with_env_filter(filter)
+        .try_init()
+        .expect("Unable to install global logging subscriber");
+
+    info!("{}", output);
+}
+
+#[cfg(feature="otel")]
+pub fn init_logging() {
+    let output = String::from("Init logging from RUST_LOG");
 
      // Set OpenTelemetry trace propagator
      global::set_text_map_propagator(TraceContextPropagator::new());

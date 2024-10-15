@@ -1,8 +1,12 @@
-use opentelemetry::{KeyValue, runtime};
-use opentelemetry::sdk::{Resource, trace};
-use opentelemetry::trace::TraceError;
-use opentelemetry_otlp::WithExportConfig;
+#[cfg(feature="otel")]
+use {
+ opentelemetry::{KeyValue, runtime},
+ opentelemetry::sdk::{Resource, trace},
+ opentelemetry::trace::TraceError,
+ opentelemetry_otlp::WithExportConfig,
+};
 
+#[cfg(feature="otel")]
 pub fn init_trace() -> Result<trace::Tracer, TraceError> {
     opentelemetry_otlp::new_pipeline()
         .tracing()
