@@ -977,6 +977,7 @@ impl broker::EntryUpdate {
             None
         };
         Self {
+            id: None,
             path: None,
             datapoint,
             actuator_target,
