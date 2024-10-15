@@ -26,6 +26,17 @@ use tokio_stream::StreamExt;
 use tonic::{Response, Status, Streaming};
 use tracing::{debug, info};
 
+#[cfg(feature="otel")]
+use {
+     tracing_opentelemetry::OpenTelemetrySpanExt,
+     tonic::metadata::KeyAndValueRef,
+     opentelemetry::global,
+};
+
+
+
+
+
 use crate::broker;
 use crate::broker::ReadError;
 use crate::broker::SubscriptionError;
@@ -260,10 +271,15 @@ impl proto::val_server::Val for broker::DataBroker {
         request: tonic::Request<proto::SetRequest>,
     ) -> Result<tonic::Response<proto::SetResponse>, tonic::Status> {
         debug!(?request);
-
+        
+        #[cfg(feature="otel")]
         let request = (||{
             let (trace_id, request) = read_incoming_trace_id(request);
-            tracing::Span::current().record("trace_id", &trace_id);
+            let metadata = request.metadata();
+            let cx = global::get_text_map_propagator(|propagator| {
+            propagator.extract(&MetadataMapExtractor(&metadata))
+        });
+            tracing::Span::current().record("trace_id", &trace_id).set_parent(cx);
             request
         })();
        
@@ -899,7 +915,31 @@ fn combine_view_and_fields(
     combined
 }
 
+// Metadata extractor for gRPC
+#[cfg(feature="otel")]
+struct MetadataMapExtractor<'a>(&'a tonic::metadata::MetadataMap);
 
+#[cfg(feature="otel")]
+impl<'a> opentelemetry::propagation::Extractor for MetadataMapExtractor<'a> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|val| val.to_str().ok())
+    }
+
+     /// Collect all the keys from the HeaderMap.
+     fn keys(&self) -> Vec<&str> {
+        self.0.iter()
+            .filter_map(|kv| {
+                if let KeyAndValueRef::Ascii(key, _) = kv {
+                    Some(key.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+}
+
+#[cfg(feature="otel")]
 #[cfg_attr(feature="otel", tracing::instrument(name="val_read_incoming_trace_id", skip(request), fields(timestamp=chrono::Utc::now().to_string())))]
 fn read_incoming_trace_id(request: tonic::Request<proto::SetRequest>) -> (String, tonic::Request<proto::SetRequest>){
     let mut trace_id: String = String::from(""); 
