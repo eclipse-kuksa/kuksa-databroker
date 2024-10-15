@@ -158,6 +158,7 @@ impl Viss for Server {
                 let update = value
                     .try_into_type(&metadata.data_type)
                     .map(|actuator_target| broker::EntryUpdate {
+                        id: None,
                         path: None,
                         datapoint: None,
                         actuator_target: Some(Some(broker::Datapoint {

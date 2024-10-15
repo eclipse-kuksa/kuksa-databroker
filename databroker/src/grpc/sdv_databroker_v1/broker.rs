@@ -122,6 +122,7 @@ impl proto::broker_server::Broker for broker::DataBroker {
                                 ids.push((
                                     metadata.id,
                                     broker::EntryUpdate {
+                                        id: Some(metadata.id),
                                         path: None,
                                         datapoint: None,
                                         actuator_target: Some(Some(broker::Datapoint::from(
