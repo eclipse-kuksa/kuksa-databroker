@@ -46,7 +46,7 @@ pub enum ActuationError {
     TransmissionFailure,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum UpdateError {
     NotFound,
     WrongType,

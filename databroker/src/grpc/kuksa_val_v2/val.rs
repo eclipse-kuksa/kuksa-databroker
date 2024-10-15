@@ -22,6 +22,9 @@ use crate::{
     types::{DataType, DataValue},
 };
 
+#[cfg(test)]
+use crate::broker::UpdateError;
+
 use databroker_proto::kuksa::val::v2::{
     self as proto,
     open_provider_stream_request::Action::{
@@ -1131,7 +1134,7 @@ mod tests {
         name: &str,
         value: i32,
         timestamp: std::time::SystemTime,
-    ) -> i32 {
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
         let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
         let entry_id = authorized_access
             .add_entry(
@@ -1140,15 +1143,15 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Some Description That Does Not Matter".to_owned(),
-                None, // min
-                None, // max
+                Some(broker::types::DataValue::Int32(-500)), // min
+                Some(broker::types::DataValue::Int32(1000)), // max
                 None,
                 None,
             )
             .await
             .unwrap();
 
-        let _ = authorized_access
+        match authorized_access
             .update_entries([(
                 entry_id,
                 broker::EntryUpdate {
@@ -1169,9 +1172,69 @@ mod tests {
                     unit: None,
                 },
             )])
-            .await;
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
 
-        entry_id
+    #[tokio::test]
+    async fn test_update_entries_min_exceeded() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32(&broker, "test.datapoint1", -501, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_equal() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32(&broker, "test.datapoint1", -500, timestamp).await {
+            Err(_) => {
+                panic!("Success expected")
+            }
+            _ => (),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_exceeded() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32(&broker, "test.datapoint1", 1001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_equal() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32(&broker, "test.datapoint1", 1000, timestamp).await {
+            Err(_) => {
+                panic!("Success expected")
+            }
+            _ => (),
+        }
     }
 
     #[tokio::test]
@@ -1180,7 +1243,9 @@ mod tests {
 
         let timestamp = std::time::SystemTime::now();
 
-        let entry_id = helper_add_int32(&broker, "test.datapoint1", -64, timestamp).await;
+        let entry_id = helper_add_int32(&broker, "test.datapoint1", -64, timestamp)
+            .await
+            .expect("Shall succeed");
 
         let request = proto::GetValueRequest {
             signal_id: Some(proto::SignalId {
@@ -1226,7 +1291,9 @@ mod tests {
 
         let timestamp = std::time::SystemTime::now();
 
-        let _entry_id = helper_add_int32(&broker, "test.datapoint1", -64, timestamp).await;
+        let _entry_id = helper_add_int32(&broker, "test.datapoint1", -64, timestamp)
+            .await
+            .expect("Shall succeed");
 
         let request = proto::GetValueRequest {
             signal_id: Some(proto::SignalId {
@@ -1274,7 +1341,9 @@ mod tests {
 
         let timestamp = std::time::SystemTime::now();
 
-        let entry_id = helper_add_int32(&broker, "test.datapoint1", -64, timestamp).await;
+        let entry_id = helper_add_int32(&broker, "test.datapoint1", -64, timestamp)
+            .await
+            .expect("Shall succeed");
 
         let request = proto::GetValueRequest {
             signal_id: Some(proto::SignalId {
@@ -1523,12 +1592,16 @@ mod tests {
 
         let mut entry_id = -1;
         if config.first_exist {
-            entry_id = helper_add_int32(&broker, SIGNAL1, -64, timestamp).await;
+            entry_id = helper_add_int32(&broker, SIGNAL1, -64, timestamp)
+                .await
+                .expect("Shall succeed");
         }
 
         let mut entry_id2 = -1;
         if config.second_exist {
-            entry_id2 = helper_add_int32(&broker, SIGNAL2, -13, timestamp).await;
+            entry_id2 = helper_add_int32(&broker, SIGNAL2, -13, timestamp)
+                .await
+                .expect("Shall succeed");
         }
 
         let mut permission_builder = permissions::PermissionBuilder::new();
