@@ -791,6 +791,7 @@ impl ChangeSubscription {
                                             #[cfg(feature = "otel")] // This block will only compile if the "otel" feature is enabled
                                             {
                                             let mut metadata = MetadataMap::new();
+                                            //  @TODO: Speak to Kuksa team regarding MetadataMap in proto file
                                             let mut injector = MetadataMapInjector(&mut metadata);
                                             opentelemetry::global::get_text_map_propagator(|propagator| {
                                                 propagator.inject_context(&current_span.context(), &mut injector);
