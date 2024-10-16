@@ -184,13 +184,6 @@ impl proto::val_server::Val for broker::DataBroker {
         }))
     }
 
-    async fn list_values(
-        &self,
-        _request: tonic::Request<proto::ListValuesRequest>,
-    ) -> Result<tonic::Response<proto::ListValuesResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented("Unimplemented"))
-    }
-
     type SubscribeStream = Pin<
         Box<
             dyn Stream<Item = Result<proto::SubscribeResponse, tonic::Status>>

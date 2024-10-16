@@ -42,21 +42,6 @@ service VAL {
   //
   rpc GetValues(GetValuesRequest) returns (GetValuesResponse);
 
-  // List values of signals matching the request.
-  //
-  // Returns a list of signal values. Only values of signals that the user
-  // is allowed to read are included (everything else is ignored).
-  // If a requested signal has no value a DataPoint where value is None will be returned.
-  //
-  // Returns (GRPC error code):
-  //   NOT_FOUND if any of the requested signals doesn't exist.
-  //
-  // TODO: Needs to be redesigned, returning a list with only DataPoints (without names/id)
-  // is not sufficient for an rpc were you may get back a subset of the values you requested.
-  // Like if you request A, B, C and only have access to one of them, then you do not
-  // know which of them that is returned.
-  rpc ListValues(ListValuesRequest) returns (ListValuesResponse);
-
   // Subscribe to a set of signals using string path parameters
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the signals are non-existant.
@@ -147,14 +132,6 @@ message GetValuesRequest {
 }
 
 message GetValuesResponse {
-  repeated Datapoint data_points = 1;
-}
-
-message ListValuesRequest {
-  repeated SignalID signal_ids = 1;
-}
-
-message ListValuesResponse {
   repeated Datapoint data_points = 1;
 }
 
