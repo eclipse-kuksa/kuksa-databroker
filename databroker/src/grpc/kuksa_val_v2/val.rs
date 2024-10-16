@@ -19,7 +19,7 @@ use crate::{
     },
     glob::Matcher,
     permissions::Permissions,
-    types::{DataType, DataValue},
+    types::DataValue,
 };
 
 #[cfg(test)]
@@ -35,7 +35,7 @@ use databroker_proto::kuksa::val::v2::{
 
 use kuksa::proto::v2::{
     signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ListMetadataResponse,
-    Metadata, ProvideActuationResponse,
+    ProvideActuationResponse,
 };
 use std::collections::HashSet;
 use tokio::{select, sync::mpsc};
@@ -447,200 +447,7 @@ impl proto::val_server::Val for broker::DataBroker {
                     .for_each_entry(|entry| {
                         let entry_metadata = &entry.metadata();
                         if matcher.is_match(&entry_metadata.glob_path) {
-                            let mut metadata = Metadata {
-                                id: entry_metadata.id,
-                                data_type: proto::DataType::from(entry_metadata.data_type.clone())
-                                    as i32,
-                                entry_type: proto::EntryType::from(
-                                    entry_metadata.entry_type.clone(),
-                                ) as i32,
-                                description: Some(entry_metadata.description.clone()),
-                                comment: None,
-                                deprecation: None,
-                                unit: entry_metadata.unit.clone(),
-
-                                // We add value_restriction after
-                                value_restriction: None,
-                            };
-                            // Add value restriction here
-                            match entry.metadata().data_type {
-                                DataType::String | DataType::StringArray => {
-                                    let allowed = match entry.metadata().allowed.as_ref() {
-                                        Some(broker::DataValue::StringArray(vec)) => vec.clone(),
-                                        _ => Vec::new(),
-                                    };
-
-                                    if !allowed.is_empty() {
-                                        metadata.value_restriction =
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::String(
-                                                        proto::ValueRestrictionString {
-                                                            allowed_values: allowed,
-                                                        },
-                                                    ),
-                                                ),
-                                            });
-                                    };
-                                }
-                                DataType::Int8
-                                | DataType::Int16
-                                | DataType::Int32
-                                | DataType::Int64
-                                | DataType::Int8Array
-                                | DataType::Int16Array
-                                | DataType::Int32Array
-                                | DataType::Int64Array => {
-                                    let min_value = match entry.metadata().min {
-                                        Some(DataValue::Int32(value)) => Some(i64::from(value)),
-                                        Some(DataValue::Int64(value)) => Some(value),
-                                        // Assumption here that we already have checked types
-                                        // so wither Int64 or None
-                                        _ => None,
-                                    };
-                                    let max_value = match entry.metadata().max {
-                                        Some(DataValue::Int32(value)) => Some(i64::from(value)),
-                                        Some(DataValue::Int64(value)) => Some(value),
-                                        // Assumption here that we already have checked types
-                                        // so wither Int64 or None
-                                        _ => None,
-                                    };
-                                    let allowed = match entry.metadata().allowed.as_ref() {
-                                        Some(allowed) => match allowed {
-                                            broker::DataValue::Int32Array(vec) => {
-                                                vec.iter().cloned().map(i64::from).collect()
-                                            }
-                                            broker::DataValue::Int64Array(vec) => vec.to_vec(),
-                                            _ => Vec::new(),
-                                        },
-                                        _ => Vec::new(),
-                                    };
-
-                                    if min_value.is_some()
-                                        | max_value.is_some()
-                                        | !allowed.is_empty()
-                                    {
-                                        metadata.value_restriction =
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::Signed(
-                                                        proto::ValueRestrictionInt {
-                                                            allowed_values: allowed,
-                                                            min: min_value,
-                                                            max: max_value,
-                                                        },
-                                                    ),
-                                                ),
-                                            });
-                                    };
-                                }
-                                DataType::Uint8
-                                | DataType::Uint16
-                                | DataType::Uint32
-                                | DataType::Uint64
-                                | DataType::Uint8Array
-                                | DataType::Uint16Array
-                                | DataType::Uint32Array
-                                | DataType::Uint64Array => {
-                                    let min_value = match entry.metadata().min {
-                                        Some(DataValue::Uint32(value)) => Some(u64::from(value)),
-                                        Some(DataValue::Uint64(value)) => Some(value),
-                                        // Assumption here that we already have checked types
-                                        // so wither Int64 or None
-                                        _ => None,
-                                    };
-                                    let max_value = match entry.metadata().max {
-                                        Some(DataValue::Uint32(value)) => Some(u64::from(value)),
-                                        Some(DataValue::Uint64(value)) => Some(value),
-                                        // Assumption here that we already have checked types
-                                        // so wither Int64 or None
-                                        _ => None,
-                                    };
-                                    let allowed = match entry.metadata().allowed.as_ref() {
-                                        Some(allowed) => match allowed {
-                                            broker::DataValue::Uint32Array(vec) => {
-                                                vec.iter().cloned().map(u64::from).collect()
-                                            }
-                                            broker::DataValue::Uint64Array(vec) => vec.to_vec(),
-                                            _ => Vec::new(),
-                                        },
-                                        _ => Vec::new(),
-                                    };
-
-                                    if min_value.is_some()
-                                        | max_value.is_some()
-                                        | !allowed.is_empty()
-                                    {
-                                        metadata.value_restriction =
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::Unsigned(
-                                                        proto::ValueRestrictionUint {
-                                                            allowed_values: allowed,
-                                                            min: min_value,
-                                                            max: max_value,
-                                                        },
-                                                    ),
-                                                ),
-                                            });
-                                    };
-                                }
-                                DataType::Float
-                                | DataType::Double
-                                | DataType::FloatArray
-                                | DataType::DoubleArray => {
-                                    let min_value = match entry.metadata().min {
-                                        Some(DataValue::Float(value)) => Some(f64::from(value)),
-                                        Some(DataValue::Double(value)) => Some(value),
-                                        // Assumption here that we already have checked types
-                                        // so wither Int64 or None
-                                        _ => None,
-                                    };
-                                    let max_value = match entry.metadata().max {
-                                        Some(DataValue::Float(value)) => Some(f64::from(value)),
-                                        Some(DataValue::Double(value)) => Some(value),
-                                        // Assumption here that we already have checked types
-                                        // so wither Int64 or None
-                                        _ => None,
-                                    };
-                                    let allowed = match entry.metadata().allowed.as_ref() {
-                                        Some(allowed) => match allowed {
-                                            broker::DataValue::FloatArray(vec) => {
-                                                vec.iter().cloned().map(f64::from).collect()
-                                            }
-                                            broker::DataValue::DoubleArray(vec) => vec.to_vec(),
-                                            _ => Vec::new(),
-                                        },
-                                        _ => Vec::new(),
-                                    };
-
-                                    if min_value.is_some()
-                                        | max_value.is_some()
-                                        | !allowed.is_empty()
-                                    {
-                                        metadata.value_restriction =
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::FloatingPoint(
-                                                        proto::ValueRestrictionFloat {
-                                                            allowed_values: allowed,
-                                                            min: min_value,
-                                                            max: max_value,
-                                                        },
-                                                    ),
-                                                ),
-                                            });
-                                    };
-                                }
-
-                                _ => {
-                                    debug!(
-                                        "Datatype {:?} not yet handled",
-                                        entry.metadata().data_type
-                                    );
-                                }
-                            };
-                            metadata_response.push(metadata);
+                            metadata_response.push(proto::Metadata::from(*entry_metadata));
                         }
                     })
                     .await;
