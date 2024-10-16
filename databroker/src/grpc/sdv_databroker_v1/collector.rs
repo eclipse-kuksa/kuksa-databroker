@@ -60,6 +60,8 @@ impl proto::collector_server::Collector for broker::DataBroker {
                         data_type: None,
                         description: None,
                         allowed: None,
+                        max: None,
+                        min: None,
                         unit: None,
                     },
                 )
@@ -129,6 +131,8 @@ impl proto::collector_server::Collector for broker::DataBroker {
                                                         data_type: None,
                                                         description: None,
                                                         allowed: None,
+                                                        max: None,
+                                                        min: None,
                                                         unit: None,
                                                     }
                                                 )
@@ -207,6 +211,8 @@ impl proto::collector_server::Collector for broker::DataBroker {
                             broker::ChangeType::from(&change_type),
                             broker::types::EntryType::Sensor,
                             metadata.description,
+                            None, // min
+                            None, // max
                             None,
                             None,
                         )

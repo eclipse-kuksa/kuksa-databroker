@@ -202,6 +202,8 @@ impl DataBrokerWorld {
                         change_type,
                         entry_type,
                         "N/A".to_string(),
+                        None, // min
+                        None, // max
                         None,
                         None,
                     )

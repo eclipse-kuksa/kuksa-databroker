@@ -233,158 +233,21 @@ impl DataValue {
         }
     }
 
+    pub fn greater_than_equal(&self, other: &DataValue) -> Result<bool, CastError> {
+        match self.greater_than(other) {
+            Ok(true) => Ok(true),
+            _ => self.equals(other),
+        }
+    }
+
     pub fn less_than(&self, other: &DataValue) -> Result<bool, CastError> {
-        match (&self, other) {
-            (DataValue::Int32(value), DataValue::Int32(other_value)) => Ok(value < other_value),
-            (DataValue::Int32(value), DataValue::Int64(other_value)) => {
-                Ok(i64::from(*value) < *other_value)
-            }
-            (DataValue::Int32(value), DataValue::Uint32(other_value)) => {
-                Ok(i64::from(*value) < i64::from(*other_value))
-            }
-            (DataValue::Int32(value), DataValue::Uint64(other_value)) => {
-                if *value < 0 {
-                    Ok(true) // Negative value must be less than unsigned
-                } else {
-                    match u64::try_from(*value) {
-                        Ok(value) => Ok(value < *other_value),
-                        Err(_) => Err(CastError {}),
-                    }
-                }
-            }
-            (DataValue::Int32(value), DataValue::Float(other_value)) => {
-                Ok(f64::from(*value) < f64::from(*other_value))
-            }
-            (DataValue::Int32(value), DataValue::Double(other_value)) => {
-                Ok(f64::from(*value) < *other_value)
-            }
+        other.greater_than(self)
+    }
 
-            (DataValue::Int64(value), DataValue::Int32(other_value)) => {
-                Ok(*value < i64::from(*other_value))
-            }
-            (DataValue::Int64(value), DataValue::Int64(other_value)) => Ok(value < other_value),
-            (DataValue::Int64(value), DataValue::Uint32(other_value)) => {
-                Ok(*value < i64::from(*other_value))
-            }
-            (DataValue::Int64(value), DataValue::Uint64(other_value)) => {
-                if *value < 0 {
-                    Ok(true) // Negative value must be less than unsigned
-                } else {
-                    match u64::try_from(*value) {
-                        Ok(value) => Ok(value < *other_value),
-                        Err(_) => Err(CastError {}),
-                    }
-                }
-            }
-            (DataValue::Int64(value), DataValue::Float(other_value)) => match i32::try_from(*value)
-            {
-                Ok(value) => Ok(f64::from(value) < f64::from(*other_value)),
-                Err(_) => Err(CastError {}),
-            },
-            (DataValue::Int64(value), DataValue::Double(other_value)) => {
-                match i32::try_from(*value) {
-                    Ok(value) => Ok(f64::from(value) < *other_value),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-
-            (DataValue::Uint32(value), DataValue::Int32(other_value)) => {
-                Ok(i64::from(*value) < i64::from(*other_value))
-            }
-            (DataValue::Uint32(value), DataValue::Int64(other_value)) => {
-                Ok(i64::from(*value) < *other_value)
-            }
-            (DataValue::Uint32(value), DataValue::Uint32(other_value)) => Ok(value < other_value),
-            (DataValue::Uint32(value), DataValue::Uint64(other_value)) => {
-                Ok(u64::from(*value) < *other_value)
-            }
-            (DataValue::Uint32(value), DataValue::Float(other_value)) => {
-                Ok(f64::from(*value) < f64::from(*other_value))
-            }
-            (DataValue::Uint32(value), DataValue::Double(other_value)) => {
-                Ok(f64::from(*value) < *other_value)
-            }
-            (DataValue::Uint64(value), DataValue::Int32(other_value)) => {
-                if *other_value < 0 {
-                    Ok(false) // Unsigned cannot be less than a negative value
-                } else {
-                    match u64::try_from(*other_value) {
-                        Ok(other_value) => Ok(*value < other_value),
-                        Err(_) => Err(CastError {}),
-                    }
-                }
-            }
-            (DataValue::Uint64(value), DataValue::Int64(other_value)) => {
-                if *other_value < 0 {
-                    Ok(false) // Unsigned cannot be less than a negative value
-                } else {
-                    match u64::try_from(*other_value) {
-                        Ok(other_value) => Ok(*value < other_value),
-                        Err(_) => Err(CastError {}),
-                    }
-                }
-            }
-            (DataValue::Uint64(value), DataValue::Uint32(other_value)) => {
-                Ok(*value < u64::from(*other_value))
-            }
-            (DataValue::Uint64(value), DataValue::Uint64(other_value)) => Ok(value < other_value),
-            (DataValue::Uint64(value), DataValue::Float(other_value)) => {
-                match u32::try_from(*value) {
-                    Ok(value) => Ok(f64::from(value) < f64::from(*other_value)),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Uint64(value), DataValue::Double(other_value)) => {
-                match u32::try_from(*value) {
-                    Ok(value) => Ok(f64::from(value) < *other_value),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Float(value), DataValue::Int32(other_value)) => {
-                Ok(f64::from(*value) < f64::from(*other_value))
-            }
-            (DataValue::Float(value), DataValue::Int64(other_value)) => {
-                match i32::try_from(*other_value) {
-                    Ok(other_value) => Ok(f64::from(*value) < f64::from(other_value)),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Float(value), DataValue::Uint32(other_value)) => {
-                Ok(f64::from(*value) < f64::from(*other_value))
-            }
-            (DataValue::Float(value), DataValue::Uint64(other_value)) => {
-                match u32::try_from(*other_value) {
-                    Ok(other_value) => Ok(f64::from(*value) < f64::from(other_value)),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Float(value), DataValue::Float(other_value)) => Ok(value < other_value),
-            (DataValue::Float(value), DataValue::Double(other_value)) => {
-                Ok(f64::from(*value) < *other_value)
-            }
-            (DataValue::Double(value), DataValue::Int32(other_value)) => {
-                Ok(*value < f64::from(*other_value))
-            }
-            (DataValue::Double(value), DataValue::Int64(other_value)) => {
-                match i32::try_from(*other_value) {
-                    Ok(other_value) => Ok(*value < f64::from(other_value)),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Double(value), DataValue::Uint32(other_value)) => {
-                Ok(*value < f64::from(*other_value))
-            }
-            (DataValue::Double(value), DataValue::Uint64(other_value)) => {
-                match u32::try_from(*other_value) {
-                    Ok(other_value) => Ok(*value < f64::from(other_value)),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Double(value), DataValue::Float(other_value)) => {
-                Ok(*value < f64::from(*other_value))
-            }
-            (DataValue::Double(value), DataValue::Double(other_value)) => Ok(value < other_value),
-            _ => Err(CastError {}),
+    pub fn less_than_equal(&self, other: &DataValue) -> Result<bool, CastError> {
+        match self.less_than(other) {
+            Ok(true) => Ok(true),
+            _ => self.equals(other),
         }
     }
 
