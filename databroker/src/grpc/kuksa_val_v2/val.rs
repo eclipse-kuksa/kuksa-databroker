@@ -849,7 +849,12 @@ impl proto::val_server::Val for broker::DataBroker {
         &self,
         _request: tonic::Request<proto::GetServerInfoRequest>,
     ) -> Result<tonic::Response<proto::GetServerInfoResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented("Unimplemented"))
+        let server_info = proto::GetServerInfoResponse {
+            name: "databroker".to_owned(),
+            version: self.get_version().to_owned(),
+            commit_hash: self.get_commit_sha().to_owned(),
+        };
+        Ok(tonic::Response::new(server_info))
     }
 }
 
@@ -2696,6 +2701,29 @@ mod tests {
                     .expect("result_response should be Some");
 
                 assert!(result_response.is_ok())
+            }
+            Err(_) => {
+                panic!("Should not happen")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_server_info() {
+        let version = "1.1.1";
+        let commit_hash = "3a3c332f5427f2db7a0b8582262c9f5089036c23";
+        let broker = DataBroker::new(version, commit_hash);
+
+        let request = tonic::Request::new(proto::GetServerInfoRequest {});
+
+        match proto::val_server::Val::get_server_info(&broker, request)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(response) => {
+                assert_eq!(response.name, "databroker");
+                assert_eq!(response.version, version);
+                assert_eq!(response.commit_hash, commit_hash);
             }
             Err(_) => {
                 panic!("Should not happen")

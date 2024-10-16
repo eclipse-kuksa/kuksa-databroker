@@ -159,6 +159,7 @@ pub struct DataBroker {
     database: Arc<RwLock<Database>>,
     subscriptions: Arc<RwLock<Subscriptions>>,
     version: String,
+    commit_sha: String,
     shutdown_trigger: broadcast::Sender<()>,
 }
 
@@ -1780,13 +1781,14 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
 }
 
 impl DataBroker {
-    pub fn new(version: impl Into<String>) -> Self {
+    pub fn new(version: impl Into<String>, commit_sha: impl Into<String>) -> Self {
         let (shutdown_trigger, _) = broadcast::channel::<()>(1);
 
         DataBroker {
             database: Default::default(),
             subscriptions: Default::default(),
             version: version.into(),
+            commit_sha: commit_sha.into(),
             shutdown_trigger,
         }
     }
@@ -1832,11 +1834,15 @@ impl DataBroker {
     pub fn get_version(&self) -> &str {
         &self.version
     }
+
+    pub fn get_commit_sha(&self) -> &str {
+        &self.commit_sha
+    }
 }
 
 impl Default for DataBroker {
     fn default() -> Self {
-        Self::new("")
+        Self::new("", "")
     }
 }
 
@@ -1846,6 +1852,15 @@ mod tests {
 
     use super::*;
     use tokio_stream::StreamExt;
+
+    #[tokio::test]
+    async fn test_databroker_version_and_commit_sha() {
+        let version = "1.1.1";
+        let commit_sha = "3a3c332f5427f2db7a0b8582262c9f5089036c23";
+        let databroker = DataBroker::new(version, commit_sha);
+        assert_eq!(databroker.get_version(), version);
+        assert_eq!(databroker.get_commit_sha(), commit_sha);
+    }
 
     #[tokio::test]
     async fn test_register_datapoint() {
