@@ -856,7 +856,12 @@ impl proto::val_server::Val for broker::DataBroker {
         &self,
         _request: tonic::Request<proto::GetServerInfoRequest>,
     ) -> Result<tonic::Response<proto::GetServerInfoResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented("Unimplemented"))
+        let server_info = proto::GetServerInfoResponse {
+            name: "databroker".to_owned(),
+            version: self.get_version().to_owned(),
+            commit_hash: self.get_commit_sha().to_owned(),
+        };
+        Ok(tonic::Response::new(server_info))
     }
 }
 
