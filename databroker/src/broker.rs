@@ -268,7 +268,6 @@ impl Entry {
      */
     pub fn validate_allowed_type(&self, allowed: &Option<DataValue>) -> Result<(), UpdateError> {
         if let Some(allowed_values) = allowed {
-            //debug!("Checking {:?} {:?}", allowed_values, &self.metadata.data_type);
             match (allowed_values, &self.metadata.data_type) {
                 (DataValue::BoolArray(_allowed_values), DataType::Bool) => Ok(()),
                 (DataValue::StringArray(_allowed_values), DataType::String) => Ok(()),
@@ -437,24 +436,51 @@ impl Entry {
         }
     }
 
+    /// Returns true if min/max conditions is violated
+    /// value is supposed to be of the base type, like Int32 for an Int32Array
+    fn validate_value_min_max_violated(&self, value: &DataValue) -> bool {
+        // Validate Min/Max
+        if let Some(min) = &self.metadata.min {
+            debug!("Checking min, comparing value {:?} and {:?}", value, min);
+            match value.greater_than_equal(min) {
+                Ok(true) => {}
+                _ => return true,
+            };
+        }
+        if let Some(max) = &self.metadata.max {
+            debug!("Checking max, comparing value {:?} and {:?}", value, max);
+            match value.less_than_equal(max) {
+                Ok(true) => {}
+                _ => return true,
+            };
+        }
+        false
+    }
+
     fn validate_value(&self, value: &DataValue) -> Result<(), UpdateError> {
         // Not available is always valid
         if value == &DataValue::NotAvailable {
             return Ok(());
         }
 
-        // Validate Min/Max
-        if let Some(min) = &self.metadata.min {
-            match value.greater_than_equal(min) {
-                Ok(true) => {}
-                _ => return Err(UpdateError::OutOfBounds),
-            };
-        }
-        if let Some(max) = &self.metadata.max {
-            match value.less_than_equal(max) {
-                Ok(true) => {}
-                _ => return Err(UpdateError::OutOfBounds),
-            };
+        // For numeric non-arrays check min/max
+        // For arrays we check later on value
+        match self.metadata.data_type {
+            DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::Uint8
+            | DataType::Uint16
+            | DataType::Uint32
+            | DataType::Uint64
+            | DataType::Float
+            | DataType::Double => {
+                if self.validate_value_min_max_violated(value) {
+                    return Err(UpdateError::OutOfBounds);
+                }
+            }
+            _ => {}
         }
 
         // Validate value
@@ -533,7 +559,11 @@ impl Entry {
                     let mut out_of_bounds = false;
                     for value in array {
                         match i8::try_from(*value) {
-                            Ok(_) => {}
+                            Ok(_) => {
+                                if self.validate_value_min_max_violated(&DataValue::Int32(*value)) {
+                                    out_of_bounds = true;
+                                }
+                            }
                             Err(_) => {
                                 out_of_bounds = true;
                                 break;
@@ -553,7 +583,11 @@ impl Entry {
                     let mut out_of_bounds = false;
                     for value in array {
                         match i16::try_from(*value) {
-                            Ok(_) => {}
+                            Ok(_) => {
+                                if self.validate_value_min_max_violated(&DataValue::Int32(*value)) {
+                                    out_of_bounds = true;
+                                }
+                            }
                             Err(_) => {
                                 out_of_bounds = true;
                                 break;
@@ -569,11 +603,35 @@ impl Entry {
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Int32Array => match value {
-                DataValue::Int32Array(_) => Ok(()),
+                DataValue::Int32Array(array) => {
+                    let mut out_of_bounds = false;
+                    for value in array {
+                        if self.validate_value_min_max_violated(&DataValue::Int32(*value)) {
+                            out_of_bounds = true;
+                        }
+                    }
+                    if out_of_bounds {
+                        Err(UpdateError::OutOfBounds)
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Int64Array => match value {
-                DataValue::Int64Array(_) => Ok(()),
+                DataValue::Int64Array(array) => {
+                    let mut out_of_bounds = false;
+                    for value in array {
+                        if self.validate_value_min_max_violated(&DataValue::Int64(*value)) {
+                            out_of_bounds = true;
+                        }
+                    }
+                    if out_of_bounds {
+                        Err(UpdateError::OutOfBounds)
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint8Array => match &value {
@@ -581,7 +639,12 @@ impl Entry {
                     let mut out_of_bounds = false;
                     for value in array {
                         match u8::try_from(*value) {
-                            Ok(_) => {}
+                            Ok(_) => {
+                                if self.validate_value_min_max_violated(&DataValue::Uint32(*value))
+                                {
+                                    out_of_bounds = true;
+                                }
+                            }
                             Err(_) => {
                                 out_of_bounds = true;
                                 break;
@@ -601,7 +664,12 @@ impl Entry {
                     let mut out_of_bounds = false;
                     for value in array {
                         match u16::try_from(*value) {
-                            Ok(_) => {}
+                            Ok(_) => {
+                                if self.validate_value_min_max_violated(&DataValue::Uint32(*value))
+                                {
+                                    out_of_bounds = true;
+                                }
+                            }
                             Err(_) => {
                                 out_of_bounds = true;
                                 break;
@@ -617,19 +685,67 @@ impl Entry {
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint32Array => match value {
-                DataValue::Uint32Array(_) => Ok(()),
+                DataValue::Uint32Array(array) => {
+                    let mut out_of_bounds = false;
+                    for value in array {
+                        if self.validate_value_min_max_violated(&DataValue::Uint32(*value)) {
+                            out_of_bounds = true;
+                        }
+                    }
+                    if out_of_bounds {
+                        Err(UpdateError::OutOfBounds)
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint64Array => match value {
-                DataValue::Uint64Array(_) => Ok(()),
+                DataValue::Uint64Array(array) => {
+                    let mut out_of_bounds = false;
+                    for value in array {
+                        if self.validate_value_min_max_violated(&DataValue::Uint64(*value)) {
+                            out_of_bounds = true;
+                        }
+                    }
+                    if out_of_bounds {
+                        Err(UpdateError::OutOfBounds)
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::FloatArray => match value {
-                DataValue::FloatArray(_) => Ok(()),
+                DataValue::FloatArray(array) => {
+                    let mut out_of_bounds = false;
+                    for value in array {
+                        if self.validate_value_min_max_violated(&DataValue::Float(*value)) {
+                            out_of_bounds = true;
+                        }
+                    }
+                    if out_of_bounds {
+                        Err(UpdateError::OutOfBounds)
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::DoubleArray => match value {
-                DataValue::DoubleArray(_) => Ok(()),
+                DataValue::DoubleArray(array) => {
+                    let mut out_of_bounds = false;
+                    for value in array {
+                        if self.validate_value_min_max_violated(&DataValue::Double(*value)) {
+                            out_of_bounds = true;
+                        }
+                    }
+                    if out_of_bounds {
+                        Err(UpdateError::OutOfBounds)
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(UpdateError::WrongType),
             },
         }

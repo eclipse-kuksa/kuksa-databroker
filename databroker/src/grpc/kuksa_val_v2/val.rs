@@ -1128,6 +1128,182 @@ mod tests {
         PublishValuesRequest, SignalId, Value,
     };
 
+    // Helper for adding an int8 signal and adding value
+    async fn helper_add_int8(
+        broker: &DataBroker,
+        name: &str,
+        value: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                broker::DataType::Int8,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(broker::types::DataValue::Int32(-5)), // min
+                Some(broker::types::DataValue::Int32(10)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                broker::EntryUpdate {
+                    path: None,
+                    datapoint: Some(broker::Datapoint {
+                        //ts: std::time::SystemTime::now(),
+                        ts: timestamp,
+                        source_ts: None,
+                        value: broker::types::DataValue::Int32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_int8() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int8(&broker, "test.datapoint1", -6, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int8(&broker, "test.datapoint2", -5, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_int8(&broker, "test.datapoint3", 11, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int8(&broker, "test.datapoint4", 10, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an int8 signal and adding value
+    async fn helper_add_int16(
+        broker: &DataBroker,
+        name: &str,
+        value: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                broker::DataType::Int16,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(broker::types::DataValue::Int32(-5)), // min
+                Some(broker::types::DataValue::Int32(10)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                broker::EntryUpdate {
+                    path: None,
+                    datapoint: Some(broker::Datapoint {
+                        //ts: std::time::SystemTime::now(),
+                        ts: timestamp,
+                        source_ts: None,
+                        value: broker::types::DataValue::Int32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_int16() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int16(&broker, "test.datapoint1", -6, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int16(&broker, "test.datapoint2", -5, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_int16(&broker, "test.datapoint3", 11, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int16(&broker, "test.datapoint4", 10, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
     // Helper for adding an int32 signal and adding value
     async fn helper_add_int32(
         broker: &DataBroker,
@@ -1200,11 +1376,11 @@ mod tests {
 
         let timestamp = std::time::SystemTime::now();
 
-        match helper_add_int32(&broker, "test.datapoint1", -500, timestamp).await {
-            Err(_) => {
-                panic!("Success expected")
-            }
-            _ => (),
+        if helper_add_int32(&broker, "test.datapoint1", -500, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
         }
     }
 
@@ -1229,11 +1405,421 @@ mod tests {
 
         let timestamp = std::time::SystemTime::now();
 
-        match helper_add_int32(&broker, "test.datapoint1", 1000, timestamp).await {
-            Err(_) => {
-                panic!("Success expected")
+        if helper_add_int32(&broker, "test.datapoint1", 1000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    /// Helper for adding an int64 signal and adding value
+    async fn helper_add_int64(
+        broker: &DataBroker,
+        name: &str,
+        value: i64,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                broker::DataType::Int64,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(broker::types::DataValue::Int64(-500000)), // min
+                Some(broker::types::DataValue::Int64(10000000)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                broker::EntryUpdate {
+                    path: None,
+                    datapoint: Some(broker::Datapoint {
+                        //ts: std::time::SystemTime::now(),
+                        ts: timestamp,
+                        source_ts: None,
+                        value: broker::types::DataValue::Int64(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_int64() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int64(&broker, "test.datapoint1", -500001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
             }
-            _ => (),
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int64(&broker, "test.datapoint2", -500000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_int64(&broker, "test.datapoint3", 10000001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int64(&broker, "test.datapoint4", 10000000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    /// Helper for adding an uint8 signal and adding value
+    async fn helper_add_uint8(
+        broker: &DataBroker,
+        name: &str,
+        value: u32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                broker::DataType::Uint8,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(broker::types::DataValue::Uint32(3)), // min
+                Some(broker::types::DataValue::Uint32(26)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                broker::EntryUpdate {
+                    path: None,
+                    datapoint: Some(broker::Datapoint {
+                        //ts: std::time::SystemTime::now(),
+                        ts: timestamp,
+                        source_ts: None,
+                        value: broker::types::DataValue::Uint32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_uint8() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_uint8(&broker, "test.datapoint1", 2, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_uint8(&broker, "test.datapoint2", 3, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_uint8(&broker, "test.datapoint3", 27, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_uint8(&broker, "test.datapoint4", 26, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an int32 signal and adding value
+    async fn helper_add_int32array(
+        broker: &DataBroker,
+        name: &str,
+        value1: i32,
+        value2: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                broker::DataType::Int32Array,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(broker::types::DataValue::Int32(-500)), // min
+                Some(broker::types::DataValue::Int32(1000)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                broker::EntryUpdate {
+                    path: None,
+                    datapoint: Some(broker::Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: broker::types::DataValue::Int32Array(Vec::from([value1, value2])),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_exceeded_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        // First item out of bound
+        match helper_add_int32array(&broker, "test.datapoint1", -501, -500, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+        // Second item out of bound
+        match helper_add_int32array(&broker, "test.datapoint2", -500, -501, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_equal_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        if helper_add_int32array(&broker, "test.datapoint1", -500, -500, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_exceeded_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32array(&broker, "test.datapoint1", 1001, 1000, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+        match helper_add_int32array(&broker, "test.datapoint2", 100, 1001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_equal_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        if helper_add_int32array(&broker, "test.datapoint1", 1000, 1000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an double array signal and adding value
+    async fn helper_add_doublearray(
+        broker: &DataBroker,
+        name: &str,
+        value1: f64,
+        value2: f64,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                broker::DataType::DoubleArray,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(broker::types::DataValue::Double(-500.2)), // min
+                Some(broker::types::DataValue::Double(1000.2)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                broker::EntryUpdate {
+                    path: None,
+                    datapoint: Some(broker::Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: broker::types::DataValue::DoubleArray(Vec::from([value1, value2])),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_doublearray() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        // First item out of bound
+        match helper_add_doublearray(&broker, "test.datapoint1", -500.3, -500.0, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+        // Second item out of bound
+        match helper_add_doublearray(&broker, "test.datapoint2", -500.0, -500.3, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        // Both on min
+        if helper_add_doublearray(&broker, "test.datapoint3", -500.2, -500.2, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        // First tto large
+        match helper_add_doublearray(&broker, "test.datapoint4", 1000.3, 1000.0, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        // Second too large
+        match helper_add_doublearray(&broker, "test.datapoint5", 1000.0, 1000.3, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        // Both on max
+        if helper_add_doublearray(&broker, "test.datapoint6", 1000.2, 1000.2, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
         }
     }
 
