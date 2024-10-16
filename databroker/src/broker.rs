@@ -132,6 +132,7 @@ pub struct QueryField {
 
 #[derive(Debug)]
 pub struct ChangeNotification {
+    pub id: i32,
     pub update: EntryUpdate,
     pub fields: HashSet<Field>,
 }
@@ -200,8 +201,6 @@ pub struct NotificationError {}
 
 #[derive(Debug, Clone, Default)]
 pub struct EntryUpdate {
-    pub id: Option<i32>,
-
     pub path: Option<String>,
 
     pub datapoint: Option<Datapoint>,
@@ -759,7 +758,6 @@ impl ChangeSubscription {
                                             let mut update = EntryUpdate::default();
                                             let mut notify_fields = HashSet::new();
                                             // TODO: Perhaps make path optional
-                                            update.id = Some(entry.metadata.id);
                                             update.path = Some(entry.metadata.path.clone());
                                             if changed_fields.contains(&Field::Datapoint)
                                                 && fields.contains(&Field::Datapoint)
@@ -777,6 +775,7 @@ impl ChangeSubscription {
                                             // fill unit field always
                                             update.unit.clone_from(&entry.metadata.unit);
                                             notifications.updates.push(ChangeNotification {
+                                                id: *id,
                                                 update,
                                                 fields: notify_fields,
                                             });
@@ -816,7 +815,6 @@ impl ChangeSubscription {
                                 let mut update = EntryUpdate::default();
                                 let mut notify_fields = HashSet::new();
                                 // TODO: Perhaps make path optional
-                                update.id = Some(entry.metadata.id);
                                 update.path = Some(entry.metadata.path.clone());
                                 if fields.contains(&Field::Datapoint) {
                                     update.datapoint = Some(entry.datapoint.clone());
@@ -827,6 +825,7 @@ impl ChangeSubscription {
                                     notify_fields.insert(Field::ActuatorTarget);
                                 }
                                 notifications.updates.push(ChangeNotification {
+                                    id: *id,
                                     update,
                                     fields: notify_fields,
                                 });
@@ -2014,7 +2013,6 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
-                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: time1,
@@ -2047,7 +2045,6 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
-                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: time1,
@@ -2070,7 +2067,6 @@ mod tests {
             .update_entries([(
                 id2,
                 EntryUpdate {
-                    id: Some(id2),
                     path: None,
                     datapoint: None,
                     actuator_target: Some(Some(Datapoint {
@@ -2143,7 +2139,6 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
-                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: SystemTime::now(),
@@ -2170,7 +2165,6 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
-                    id: Some(id1),
                     path: None,
                     datapoint: None,
                     actuator_target: None,
@@ -2193,7 +2187,6 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
-                    id: Some(id1),
                     path: None,
                     datapoint: None,
                     actuator_target: None,
@@ -2213,7 +2206,6 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
-                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: time1,
@@ -2285,7 +2277,6 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
-                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: SystemTime::now(),
@@ -2388,7 +2379,6 @@ mod tests {
                 .update_entries([(
                     id1,
                     EntryUpdate {
-                        id: Some(id1),
                         path: None,
                         datapoint: Some(Datapoint {
                             ts: SystemTime::now(),
@@ -2472,7 +2462,6 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
-                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: SystemTime::now(),
@@ -2532,7 +2521,6 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
-                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: SystemTime::now(),
@@ -2631,7 +2619,6 @@ mod tests {
                     (
                         id1,
                         EntryUpdate {
-                            id: Some(id1),
                             path: None,
                             datapoint: Some(Datapoint {
                                 ts: SystemTime::now(),
@@ -2649,7 +2636,6 @@ mod tests {
                     (
                         id2,
                         EntryUpdate {
-                            id: Some(id2),
                             path: None,
                             datapoint: Some(Datapoint {
                                 ts: SystemTime::now(),
@@ -2713,7 +2699,6 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
-                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2779,7 +2764,6 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
-                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2860,7 +2844,6 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
-                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2917,7 +2900,6 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
-                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -2973,7 +2955,6 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
-                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -3026,7 +3007,6 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
-                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -3056,7 +3036,6 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
-                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -3114,7 +3093,6 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
-                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -3144,7 +3122,6 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
-                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -3205,7 +3182,6 @@ mod tests {
             .update_entries([(
                 id,
                 EntryUpdate {
-                    id: Some(id),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts,
@@ -3293,7 +3269,6 @@ mod tests {
             .update_entries([(
                 id1,
                 EntryUpdate {
-                    id: Some(id1),
                     path: None,
                     datapoint: Some(Datapoint {
                         ts: SystemTime::now(),

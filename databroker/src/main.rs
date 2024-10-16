@@ -71,7 +71,6 @@ async fn add_kuksa_attribute(
             let ids = [(
                 id,
                 broker::EntryUpdate {
-                    id: Some(id),
                     datapoint: Some(broker::Datapoint {
                         ts: std::time::SystemTime::now(),
                         source_ts: None,
@@ -134,7 +133,6 @@ async fn read_metadata_file<'a, 'b>(
                     let ids = [(
                         id,
                         broker::EntryUpdate {
-                            id: Some(id),
                             datapoint: Some(broker::Datapoint {
                                 ts: std::time::SystemTime::now(),
                                 source_ts: None,

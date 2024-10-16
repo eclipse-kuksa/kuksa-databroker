@@ -683,7 +683,6 @@ impl proto::val_server::Val for broker::DataBroker {
                 Err(err) => return Err(err),
             },
             broker::EntryUpdate {
-                id: None,
                 path: None,
                 datapoint: Some(broker::Datapoint::from(&request.data_point.unwrap())),
                 actuator_target: None,
@@ -990,7 +989,6 @@ async fn publish_values(
             (
                 *id,
                 broker::EntryUpdate {
-                    id: Some(*id),
                     path: None,
                     datapoint: Some(broker::Datapoint::from(datapoint)),
                     actuator_target: None,
@@ -1097,13 +1095,7 @@ fn convert_to_proto_stream_id(
                 None => None,
             };
             if let Some(dp) = update_datapoint {
-                entries.insert(
-                    update
-                        .update
-                        .id
-                        .expect("Something wrong with update id of subscriptions!"),
-                    dp,
-                );
+                entries.insert(update.id, dp);
             }
         }
         let response = proto::SubscribeByIdResponse { entries };
@@ -1149,7 +1141,6 @@ mod tests {
             .update_entries([(
                 entry_id,
                 broker::EntryUpdate {
-                    id: Some(entry_id),
                     path: None,
                     datapoint: Some(broker::Datapoint {
                         //ts: std::time::SystemTime::now(),

@@ -53,7 +53,6 @@ impl proto::collector_server::Collector for broker::DataBroker {
                 (
                     *id,
                     broker::EntryUpdate {
-                        id: Some(*id),
                         path: None,
                         datapoint: Some(broker::Datapoint::from(datapoint)),
                         actuator_target: None,
@@ -123,7 +122,6 @@ impl proto::collector_server::Collector for broker::DataBroker {
                                                 (
                                                     *id,
                                                     broker::EntryUpdate {
-                                                        id: Some(*id),
                                                         path: None,
                                                         datapoint: Some(broker::Datapoint::from(datapoint)),
                                                         actuator_target: None,
