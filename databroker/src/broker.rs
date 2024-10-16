@@ -31,6 +31,13 @@ use crate::query::{CompiledQuery, ExecutionInput};
 use crate::types::ExecutionInputImplData;
 use tracing::{debug, info, warn};
 
+#[cfg(feature="otel")]
+use {
+tonic::{metadata::MetadataMap, metadata::MetadataValue, metadata::MetadataKey, metadata::KeyAndValueRef},
+opentelemetry,
+tracing_opentelemetry::OpenTelemetrySpanExt,
+};
+
 use crate::glob;
 
 #[derive(Debug)]
@@ -695,6 +702,40 @@ impl Subscriptions {
     }
 }
 
+
+#[cfg(feature="otel")]
+struct MetadataMapInjector<'a>(&'a mut MetadataMap);
+
+#[cfg(feature="otel")]
+impl<'a> opentelemetry::propagation::Injector for MetadataMapInjector<'a> {
+    fn set(&mut self, key: &str, value: String) {
+        if let Ok(metadata_key) = MetadataKey::from_bytes(key.as_bytes()) {
+            let metadata_value = MetadataValue::try_from(value.as_str()).unwrap();
+            self.0.insert(metadata_key, metadata_value);  // Insert key and value into metadata
+        }
+    }
+}
+
+#[cfg(feature="otel")]
+fn metadatamap_to_string(metadata: &MetadataMap) -> String {
+    let mut result = String::new();
+
+    for entry in metadata.iter() {
+        match entry {
+            // Handle ASCII metadata
+            KeyAndValueRef::Ascii(key, value) => {
+                // `.to_str()` returns a `Result<&str, ToStrError>`, so we need to handle it
+                let value_str = value.to_str().unwrap_or("<invalid UTF-8>");
+                result.push_str(&format!("{}: {}\n", key, value_str));
+            }
+
+            // Handle binary metadata separately
+            _ => (),
+        }
+    }
+    result
+}
+
 impl ChangeSubscription {
     #[cfg_attr(feature="otel", tracing::instrument(name="broker_ChangeSubscription_notify", skip(self, changed, db)))]
     async fn notify(
@@ -703,6 +744,10 @@ impl ChangeSubscription {
         db: &Database,
     ) -> Result<(), NotificationError> {
         let db_read = db.authorized_read_access(&self.permissions);
+
+        #[cfg(feature="otel")]
+        let current_span =   tracing::Span::current();
+
         match changed {
             Some(changed) => {
                 let mut matches = false;
@@ -743,7 +788,17 @@ impl ChangeSubscription {
                                             // fill unit field always
                                             update.unit.clone_from(&entry.metadata.unit);
                                             update.description = Some(entry.metadata.description.clone());
+                                            #[cfg(feature = "otel")] // This block will only compile if the "otel" feature is enabled
+                                            {
+                                            let mut metadata = MetadataMap::new();
+                                            let mut injector = MetadataMapInjector(&mut metadata);
+                                            opentelemetry::global::get_text_map_propagator(|propagator| {
+                                                propagator.inject_context(&current_span.context(), &mut injector);
+                                            });
+                                            let description = metadatamap_to_string(&metadata);
 
+                                            update.description = Some(description);
+                                            }
                                             notifications.updates.push(ChangeNotification {
                                                 update,
                                                 fields: notify_fields,
