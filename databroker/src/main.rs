@@ -111,7 +111,8 @@ async fn read_metadata_file<'a, 'b>(
     let path = filename.trim();
     info!("Populating metadata from file '{}'", path);
     let metadata_file = std::fs::OpenOptions::new().read(true).open(filename)?;
-    let entries = vss::parse_vss_from_reader(&metadata_file)?;
+    let buffered = std::io::BufReader::new(metadata_file);
+    let entries = vss::parse_vss_from_reader(buffered)?;
 
     for (path, entry) in entries {
         debug!("Adding VSS datapoint type {}", path);
