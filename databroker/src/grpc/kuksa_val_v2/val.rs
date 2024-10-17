@@ -2714,4 +2714,27 @@ mod tests {
             }
         }
     }
+
+    #[tokio::test]
+    async fn test_get_server_info() {
+        let version = "1.1.1";
+        let commit_hash = "3a3c332f5427f2db7a0b8582262c9f5089036c23";
+        let broker = DataBroker::new(version, commit_hash);
+
+        let request = tonic::Request::new(proto::GetServerInfoRequest {});
+
+        match proto::val_server::Val::get_server_info(&broker, request)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(response) => {
+                assert_eq!(response.name, "databroker");
+                assert_eq!(response.version, version);
+                assert_eq!(response.commit_hash, commit_hash);
+            }
+            Err(_) => {
+                panic!("Should not happen")
+            }
+        }
+    }
 }
