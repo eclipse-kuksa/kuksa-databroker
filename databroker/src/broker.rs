@@ -132,6 +132,7 @@ pub struct QueryField {
 
 #[derive(Debug)]
 pub struct ChangeNotification {
+    pub id: i32,
     pub update: EntryUpdate,
     pub fields: HashSet<Field>,
 }
@@ -775,6 +776,7 @@ impl ChangeSubscription {
                                             // fill unit field always
                                             update.unit.clone_from(&entry.metadata.unit);
                                             notifications.updates.push(ChangeNotification {
+                                                id: *id,
                                                 update,
                                                 fields: notify_fields,
                                             });
@@ -824,6 +826,7 @@ impl ChangeSubscription {
                                     notify_fields.insert(Field::ActuatorTarget);
                                 }
                                 notifications.updates.push(ChangeNotification {
+                                    id: *id,
                                     update,
                                     fields: notify_fields,
                                 });
