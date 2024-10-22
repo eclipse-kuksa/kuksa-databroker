@@ -42,6 +42,10 @@ x<sup>2</sup> Relies on the non-standard `attribute` values which doesn't work w
 
 For a more detailed view of the supported JSON-schemas [click here](https://github.com/eclipse/kuksa.val/blob/master/kuksa-val-server/include/VSSRequestJsonSchema.hpp)
 
+### sdv.databroker.v1 in KUKSA Databroker
+
+To enable the legacy `sdv.databroker.v1` API you must start Databroker with the `--enable-databroker-v1` argument.
+
 ### VISSv2 in KUKSA Databroker
 
 KUKSA databroker aims to provide a standards compliant implementation of VISSv2 (using the websocket transport).
@@ -59,6 +63,9 @@ The `enable-viss` flag must be provided at startup in order to enable the VISSv2
 ```shell
 $ databroker --enable-viss
 ```
+
+The arguments `--viss-address` and `--viss-port` can be used if you want to use a different address or port than default for VISS.
+If not specified, the address `127.0.0.1` will be used unless otherwise specified with `--address`, and the port 8090 will be used.
 
 Using kuksa-client, the VISSv2 interface of databroker is available using the `ws` protocol in the uri, i.e.:
 
