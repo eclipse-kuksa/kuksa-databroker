@@ -173,6 +173,7 @@ async fn read_metadata_file<'a, 'b>(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let version = option_env!("CARGO_PKG_VERSION").unwrap_or_default();
+    let commit_sha = option_env!("VERGEN_GIT_SHA").unwrap_or_default();
 
     let about = format!(
         concat!(
@@ -332,7 +333,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("port should be a number");
     let addr = std::net::SocketAddr::new(ip_addr, *port);
 
-    let broker = broker::DataBroker::new(version);
+    let broker = broker::DataBroker::new(version, commit_sha);
     let database = broker.authorized_access(&permissions::ALLOW_ALL);
 
     add_kuksa_attribute(
