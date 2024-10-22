@@ -43,6 +43,10 @@ Options:
       --insecure                Allow insecure connections
       --tls-cert <FILE>         TLS certificate file (.pem)
       --tls-private-key <FILE>  TLS private key file (.key)
+      --enable-databroker-v1    Enable sdv.databroker.v1 (GRPC) service
+      --enable-viss             Enable VISSv2 (websocket) service
+      --viss-address <IP>       Bind address for VISS server, if argument is not provided, the value of --address is used [env: KUKSA_DATABROKER_VISS_ADDR=]
+      --viss-port <PORT>        VISS port [env: KUKSA_DATABROKER_VISS_PORT=] [default: 8090]
   -h, --help                    Print help
   -V, --version                 Print version
 ```
