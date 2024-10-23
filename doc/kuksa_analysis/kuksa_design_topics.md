@@ -47,27 +47,42 @@
 - [Extend and split service definition for V3?](#extend-and-split-service-definition-for-v3)
 - [COVESA topics](#covesa-topics)
 
-# Data availability/persistence according to lifecycle of Client, Databroker and Provider 
-1. The data broker either ...
-   * Stores last set values during its own lifecycle,
-   * ? stores values during the system's power cycle (i.e., "persists" values over own restarts, or
-   * store values over system's power cycles.
+# Data availability/persistence according to lifecycle of Client, Databroker and Provider
+    Status: 🔴
+    Current decisions:
+      1. Databroker stores last signal values during its own lifecycle.
+      2. It is not possible to reset values.
+      3. Signal Consumer and Provider are not aware of each other.
+    Description:
+      1. The data broker either ...
+         * Stores last set values during its own lifecycle,
+         * ? stores values during the system's power cycle (i.e., "persists" values over own restarts, or
+         * store values over system's power cycles.
 
-2. How to "reset" values availability if its provider got inactive (without reseting the value)?
-   * -> Client's job (e.g. using timestamp)?
-   * -> Broker's job (e.g. using timestamp + minimal update cycle)?
+      2. How to "reset" values availability if its provider got inactive (without reseting the value)?
+         * -> Client's job (e.g. using timestamp)?
+         * -> Broker's job (e.g. using timestamp + minimal update cycle)?
 
-3. Provider and client aliveness
-   * If there is no active client subscription should the provider stop sending values to Databroker?
-   * If there is no active provider setting values while client subscription? Should Databroker or Client be aware of it?
+      3. Provider and client aliveness
+         * If there is no active client subscription should the provider stop sending values to Databroker?
+         * If there is no active provider setting values while client subscription? Should Databroker or Client be aware of it?
 
 # Wildcard support
-* Should `Get` and `Subscribe` calls support Wildcard request?
-* Do we want it only for `GetMetadata`?
+    Status: 🟢
+    Current decisions:
+      Only `ListMetadata` support wildcard due to complex error handling in the implementation and usability.
+    Description:
+    * Should `Get` and `Subscribe` calls support Wildcard request?
+    * Do we want it only for `GetMetadata`?
 
 Reference -> [Wildcard](../wildcard_matching.md)
 
 # Registration of Datapoints
+    Status: 🟢
+    Current decisions:
+      Provider can register and claim only actuators.
+      An actuator can only by claimed by a Provider.
+    Description:
 Do we need a method for providers to register data points at runtime? **Implemented in old API?**:
 
 Its purpose would be:
@@ -82,6 +97,9 @@ In case of a registration method the central instance would either have to
 
 
 # Availability of Datapoints
+    Status: 🔴
+    Current decisions:
+    Description:
 1. The system must be capable of individually checking the availability of each data point on a specific instance of the data broker. This means verifying whether there is an active provider instance installed on the system where the data broker instance is running, which is capable of supplying the data point during the current update cycle.
 
 2. It shall be possible to determine the availability of the actual value of each data point separately on a certain instance of the data broker.
@@ -89,6 +107,10 @@ This represents the information if the provider of that data point is up and run
 
 
 # Lifecycle of components
+    Status: 🟢
+    Current decisions: Kuksa.val.v2 API as well as Databroker implementation does not depend on any certain order of starting for components.
+      Important point -> Signal Consumer and Provider should implement a retry policy in case connection get lots.
+    Description:
 The proper function of the overall system of components "around" the data broker, i.e., applications, providers, and the broker itself, shall not depend on a certain order of starting the components. This means:
 1.	Any clients of the data broker (applications, providers) shall not assume the availability of the data broker service when they startup.
 2.	Any clients of the data broker (applications, providers) shall not assume the permanent availability of the data broker service during their runtime.
@@ -97,7 +119,10 @@ The proper function of the overall system of components "around" the data broker
 Explanation: Any component of the system can come and go - components could stop working due to a crash (what should not but will happen) or because of an update (which is a regular use case). Furthermore, components could reside on different execution environments which need restarts at different points of time. This shall not result in stopping and restarting the overall system. Instead, each and every component shall react in an appropriate way on changing availability of its dependencies.
 
 # Path requests
-The data broker shall support at least those metadata elements as defined by the VSS rule set. Data points/nodes are (primarily) identified ("addressed") by their name/path which is a string.
+    Status: 🟢
+    Current decisions: Databroker fully supports VSS
+    Description:
+The Databroker shall support at least those metadata elements as defined by the VSS rule set. Data points/nodes are (primarily) identified ("addressed") by their name/path which is a string.
 VSS arranges nodes in a tree structure, separating elements via a single dot ("."). This shall be supported but must not be a mandatory requirement.
 ```console
   Vehicle.Speed;
@@ -106,6 +131,10 @@ VSS arranges nodes in a tree structure, separating elements via a single dot (".
 ```
 
 # Errors
+    Status: 🟢
+    Current decisions: Kuksa.val.v2 API as well as Databroker implementation is consistent and it is aligned by all service calls
+      returning [gRPC Error](https://grpc.github.io/grpc/core/md_doc_statuscodes.html).
+    Description:
 Error response returned by **all gRPC service calls** must be a aligned with [gRPC Error](https://grpc.github.io/grpc/core/md_doc_statuscodes.html).
 ```protobuf
 message Status {
@@ -121,7 +150,7 @@ message Status {
   // common set of message types for APIs to use.
   repeated google.protobuf.Any details = 3;
 }
-``` 
+```
 Field `details` of type `Any` will be a serialized message as `bytes` containing an internal Databroker [Error](https://github.com/eclipse-kuksa/kuksa-databroker/blob/main/proto/kuksa/val/v1/types.proto#L246):
 ```protobuf
 message Error {
@@ -132,30 +161,45 @@ message Error {
 ```
 
 # Setting Values
-1. Attributes: 
+    Status: 🟢
+    Current decisions:
+    Description:
+1. Attributes:
    * It shall not be possible to set attribute values, except once at startup time by its respective responsible provider.
-2. Sensors: 
+2. Sensors:
    * There shall be only one client able to set the current sensor value during each arbitrary span of time.
 3. Actuators:
-   * ? Actuator data points have a current and a target value. The current value represents the actual state of the actuator, whereas the target value represents a state desired by that client, who most recently set that target value. 
+   * ? Actuator data points have a current and a target value. The current value represents the actual state of the actuator, whereas the target value represents a state desired by that client, who most recently set that target value.
    * Only one client shall be able to set the current actuator value during each arbitrary span of time. This client is the provider of the data point.
    * Multiple client may be able to set the target value of an actuator.
-   * Only the current provider client shall react on setting a new target value. It is expected that the provider tries to bring the current state of an actuator into the state requested by the target value. If this is not possible (for some reason), the provider is responsible to reset the state of the target value to that of the current value of the same data point. 
+   * Only the current provider client shall react on setting a new target value. It is expected that the provider tries to bring the current state of an actuator into the state requested by the target value. If this is not possible (for some reason), the provider is responsible to reset the state of the target value to that of the current value of the same data point.
      -> This actually not a requirement to the data broker, but to the overall "usage concept" around the broker.
    *? If no (active) provider is available for an actuator data point, its current and target value shall be "unavailable". A set request to a target value shall be "ignored" and the resulting target and current value shall stay as "unavailable".
 
 # Atomic operatoins
+    Status: 🟢
+    Current decisions: Kuksa.val.v2 API as well as Databroker implementation supports atomic operations handling sequentially request and responses for all the service methods.
+    Description:
 All data point values set by a single request must be updated in an atomic manner. This means:
 1. Set requests must be handled strongly sequentially in the order of reception.
 
 2. Responses to get requests and notifications on behalf of active subscriptions must represent the state of data points in-between finished set requests, i.e., a single set request (updating multiple data points) must not be interfered with get requests or update notifications.
 
 # Update notifications
+    Status: 🟢
+    Current decisions: Databroker implementation will only receive datapoints when their values changed.
+    Description:
 1. Update notifications for active subscriptions of multiple data points shall always contain the state of all data points of the subscription even if just one value has changed.
-   
+
 2. If this behavior is not wanted by a client, it must subscribe data points separately.
 
 # Access rights
+    Status: 🟢
+    Current decisions:
+      1. Many Providers can update a sensor at same time, just the last value will remain on Databroker database.
+      2. Many Signal Consumers can change the value of an actuator, but only a Provider will forward its value to the Vehicle Network.
+      3. New actuators values will be forwarded from Signal Consumer to Databroker to Provider to Vehicle Network, but Databroker will not be responsible for resetting any value on its Database, just fire and forget.
+    Description:
 1.	Sensor (-like) data points: Its value shall be set be a single provider only (at least at a time)
 
 2.	Actuator (-like) data points: Multiple clients may set its (target) value, a single client may act on its last set (target) value and "reset" it. Only a single client must set its current value (if there is a distinguishing).
@@ -163,7 +207,9 @@ Hint: This does not necessarily need to ensured via the "API design" - it could 
 
 
 # VSS signals - Users vs providers
-
+    Status: 🟢/🟡
+    Current decisions: New Databroker API kuksa.val.v2 will only have one service which will be used as entry point for Signal Consumer and Provider, it does not mean that it can not change in the future.
+    Description:
 The Vehicle Signals Specification (VSS) and Vehicle Information Service Specification (VISS) describes the standardized signals available (or not) in a vehicle. Both standards also describe how users interact with these signals.
 
 * They can read and subscribe to [actuators, sensors](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/actuatorssensor_actuator/) and [attributes](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/attributes/).
@@ -192,7 +238,25 @@ When designing the databroker API, the method kuksa.val uses for providing signa
 With this in mind, databroker chose to make a clear distinction between signal providers and signal users. It doesn't use this terminology though. It does this by splitting the interface into two separate services, which are customized for their different requirements / use cases. It doesn't need to be implemented in this way in order to achieve the same design goal, though.
 
 # Enable "easy to use" user facing API
+    Status: 🟢
+    Current decisions:
+      With the new design of kuksa.val.v2 this use case get solved by just "fire and forget" new actuator values.
+      Use case:
+        The user wants to lock a door and know when it's done / whether it worked.
+        1. User calls `subscribe(Vehicle.Door.Locked)`
+        2. User calls `actuate(Vehicle.Door.Locked, true)`
+        3. Provider receives the request and starts forwards the request to the Vehicle Network.
+        4. Provider at some point in time receives a new value for Vehicle.Door.Locked signal from the Vehicle Network.
+        5. Provider publishes the new value to Databroker.
+        6. User receives a new changed value for Vehicle.Door.Locked and concludes that the door has now been locked.
 
+      Note: User should define its own timeout for each application in case the actuate value expected is not received.
+
+      Or if there are no providers.
+        1. User calls `subscribe(Vehicle.Door.Locked)`
+        2. User calls `actuate(Vehicle.Door.Locked, true)`
+        3. Databroker returns an error when no available provider has claimed the actuator signal.
+    Description:
 This is meant to illustrate what type of user APIs that can be created depending on what the provider API looks like (assuming we have one).
 
 Use case:
@@ -256,6 +320,9 @@ The actuator provider is better suited to know of reasonable timeouts etc in com
 
 
 # Performance / runtime footprint
+    Status: 🟢
+    Current decisions: A detailed performance report will be provided after release of kuksa.val.v2. So far kuksa.val.v2 shows better performance than kuksa.val.v1 and sdv.databroker.v1
+    Description:
 Providers, especially of sensor data, are often setting values in rapid succession over long periods of time. Using unary GRPC calls for `Set` operations, is less efficient in terms of throughput when compared to GRPC streams. It's also more CPU intensive.
 
 The current design of `kuksa.val.v1` only provides unary call to set values. This represents a pure regression when compared to the databroker API.
@@ -290,6 +357,9 @@ What's needed:
 * Introduce a streaming (GRPC) interface for providing sensor data.
 
 # Throttling-mode when system is overloaded.
+    Status: 🔴
+    Current decisions:
+    Description:
 Is it worth to consider some throttling mode to be activated by the user in case system or any component is overloaded?
 Throttling modes to think about:
   * Rate Limiting
@@ -297,11 +367,16 @@ Throttling modes to think about:
   * CPU Throttling
 
 # Considerations regarding shared and zero-copy memory approaches
+    Status: 🔴
+    Current decisions:
+    Description:
 Pros:
 Cons:
 
 # Provider control and provider capabilities
-
+    Status: 🔴
+    Current decisions:
+    Description:
 Open questions:
 
 Should the "change type" of a sensor (i.e. CONTINUOUS vs ON_CHANGE) be decided by providers
@@ -311,7 +386,9 @@ subscribing to a sensor of type CONTINUOUS. That would be an argument for provid
 information as part of the VSS metadata, so that it doesn't vary between vehicles.
 
 # Control the rate of updates
-
+    Status: 🔴
+    Current decisions:
+    Description:
 Users of (continuous) sensor data can have different preferences with regard to how often
 they would like to receive updates. E.g. Vehicle.Speed is updated 100 times per second, but
 a consumer would only need it 1 time per second. This would introduce unnecessary processing
@@ -344,7 +421,9 @@ which would be used if a consumer only requests a momentary value (and doesn't s
 
 
 # Differentiate between different providers of the same VSS data
-
+    Status: 🔴
+    Current decisions:
+    Description:
 Different sensors can provide data that is mapped to the same VSS signal / entry.
 This data can be of different resolution and / or quality. For example, an accelerometer
 can be used to infer the current speed of a vehicle, but a speedometer would probably
@@ -380,7 +459,9 @@ Optionally needed:
 
 
 # Data Aliveness/Availability
-
+    Status: 🔴
+    Current decisions:
+    Description:
 The VSS signals / datapoints that are accessed through databroker can have a value and a
 timestamp. If they have never been set, they will have neither.
 
@@ -424,6 +505,9 @@ once set they should be valid indefinitely.
 
 
 # Missing features from `sdv.databroker.v1` in `kuksa.val.v1`
+    Status: 🟢
+    Current decisions: New API kuksa.val.v2 will cover and combine feature from both APIs.
+    Description:
 Sort list: What features would be lost if removing sdv.databroker.v1 today
  * Registration of new datapoints
  * SQL queries
@@ -432,7 +516,10 @@ Sort list: What features would be lost if removing sdv.databroker.v1 today
 
 
 # Exploring a design of a bidirectional streaming API
-
+    Status: 🟢
+    Current decisions: New bidirectional streaming service method was added to `kuksa.val.v2`
+      SensorCommand (start/stop) should be implemented at some point.🟡
+    Description:
 This represent one way to design an interface that would enable most of the improvements
 listed above and provide a clear path forward for introducing them.
 
@@ -442,7 +529,7 @@ listed above and provide a clear path forward for introducing them.
 In this design, a single bidirection stream is used to provide everything needed by
 providers:
 `rpc Provide(stream ProviderRequest) returns (stream ProviderResponse);`
- 
+
 This combines the control channel and the data channel into one. An alternative
 would be to split it into two bidirectional streams, one for control and the other
 for data. I'm not sure which makes the most sense.
@@ -554,7 +641,9 @@ It also showcases that it's possible to wrap this GRPC interface in a simple lib
 ```
 
 # message Datapoint
-
+    Status: 🟢
+    Current decisions: Alternative 1 was selected for development since `value` it is easy to access and in Protobuf could be `None`, meaning signal exists but does not have a value at the moment.
+    Description:
 Suggestion -> https://github.com/boschglobal/kuksa-databroker/pull/4#discussion_r1766459917
 
 Discussion -> https://github.com/eclipse-kuksa/kuksa-databroker/pull/33#discussion_r1776993874
@@ -574,7 +663,7 @@ cons : no possible value status/state
 ```proto
 message Datapoint {
   google.protobuf.Timestamp timestamp = 1;
- 
+
   oneof value_state {
     State state = 2;
     Value value = 3;
@@ -595,51 +684,61 @@ enum State {
 pros : easy to understand
 
 cons : "more difficult to implement" depend on programming language
- 
+
 ### Alternative 3
 ```proto
 message Datapoint {
     google.protobuf.Timestamp timestamp = 1;
-     
+
     Status status = 2;
     Value value   = 3;
 }
- 
+
 enum Status {
-    STATUS_UNSPECIFIED = 0;  
+    STATUS_UNSPECIFIED = 0;
     STATUS_OK = 1;
     STATUS_VALUE_NOT_AVAILBLE = 2;
 }
-``` 
- 
+```
+
 pros : easy to understand and access
 
 cons : Difficult to keep consistency between `status` and `value` values.
 
 # Split subscribe method due to performance reasons
- 
+    Status: 🟢
+    Current decisions: Implemented
+    Description:
   Before:
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse); -> Signal_ID (path, id)
- 
- 
+
+
   Now:
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse); -> strings path
- 
+
   rpc SubscribeId(SubscribeRequestId) returns (stream SubscribeResponseId); -> int32 path -> faster
- 
- 
+
+
 message SubscribeByIdResponse {
   map<int32, Datapoint> entries = 1;
   //map<int32, Notification> entries = 1; // add to discussion PR
 }
 
 # Service VAL better naming
- 
- 
+    Status: 🔴
+    Current decisions:
+    Description:
+
 # Extend and split service definition for V3?
+    Status: 🔴
+    Current decisions:
+    Description:
 * split up signal service (consumer, provider)
- 
+
 * split services (signals -> VAL, metadata -> server_info, health_check -> metrics, num providers, vss_validation, ...)
 
 
 # COVESA topics
+    Status: 🔴
+    Current decisions:
+    Description:
