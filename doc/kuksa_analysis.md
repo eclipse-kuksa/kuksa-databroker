@@ -8,7 +8,7 @@ This documentation provides a comprehensive analysis of the KUKSA project, detai
 
 ### [3. Use Cases](./kuksa_analysis/kuksa_use_cases.md)
 
-### [4. API Definition](../proto/kuksa/val/v1/val.proto)
+### [4. API Definition](../proto/kuksa/val/v2/val.proto)
 
 
 ##### Documentation
