@@ -438,25 +438,25 @@ impl Entry {
         }
     }
 
-    /// Returns true if min/max conditions is violated
-    /// value is supposed to be of the base type, like Int32 for an Int32Array
-    fn validate_value_min_max_violated(&self, value: &DataValue) -> bool {
+    /// Checks if value fulfils min/max condition
+    /// Returns OutOfBounds if not fulfilled
+    fn validate_value_min_max(&self, value: &DataValue) -> Result<(), UpdateError> {
         // Validate Min/Max
         if let Some(min) = &self.metadata.min {
             debug!("Checking min, comparing value {:?} and {:?}", value, min);
             match value.greater_than_equal(min) {
                 Ok(true) => {}
-                _ => return true,
+                _ => return Err(UpdateError::OutOfBounds),
             };
         }
         if let Some(max) = &self.metadata.max {
             debug!("Checking max, comparing value {:?} and {:?}", value, max);
             match value.less_than_equal(max) {
                 Ok(true) => {}
-                _ => return true,
+                _ => return Err(UpdateError::OutOfBounds),
             };
         }
-        false
+        Ok(())
     }
 
     fn validate_value(&self, value: &DataValue) -> Result<(), UpdateError> {
@@ -477,11 +477,10 @@ impl Entry {
             | DataType::Uint32
             | DataType::Uint64
             | DataType::Float
-            | DataType::Double => {
-                if self.validate_value_min_max_violated(value) {
-                    return Err(UpdateError::OutOfBounds);
-                }
-            }
+            | DataType::Double => match self.validate_value_min_max(value) {
+                Ok(_) => {}
+                Err(err) => return Err(err),
+            },
             _ => {}
         }
 
@@ -558,195 +557,137 @@ impl Entry {
             },
             DataType::Int8Array => match &value {
                 DataValue::Int32Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
                         match i8::try_from(*value) {
-                            Ok(_) => {
-                                if self.validate_value_min_max_violated(&DataValue::Int32(*value)) {
-                                    out_of_bounds = true;
-                                }
-                            }
-                            Err(_) => {
-                                out_of_bounds = true;
-                                break;
-                            }
+                            Ok(_) => match self.validate_value_min_max(&DataValue::Int32(*value)) {
+                                Ok(_) => {}
+                                Err(err) => return Err(err),
+                            },
+                            Err(_) => return Err(UpdateError::OutOfBounds),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Int16Array => match &value {
                 DataValue::Int32Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
                         match i16::try_from(*value) {
-                            Ok(_) => {
-                                if self.validate_value_min_max_violated(&DataValue::Int32(*value)) {
-                                    out_of_bounds = true;
-                                }
-                            }
-                            Err(_) => {
-                                out_of_bounds = true;
-                                break;
-                            }
+                            Ok(_) => match self.validate_value_min_max(&DataValue::Int32(*value)) {
+                                Ok(_) => {}
+                                Err(err) => return Err(err),
+                            },
+                            Err(_) => return Err(UpdateError::OutOfBounds),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Int32Array => match value {
                 DataValue::Int32Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
-                        if self.validate_value_min_max_violated(&DataValue::Int32(*value)) {
-                            out_of_bounds = true;
+                        match self.validate_value_min_max(&DataValue::Int32(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Int64Array => match value {
                 DataValue::Int64Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
-                        if self.validate_value_min_max_violated(&DataValue::Int64(*value)) {
-                            out_of_bounds = true;
+                        match self.validate_value_min_max(&DataValue::Int64(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint8Array => match &value {
                 DataValue::Uint32Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
                         match u8::try_from(*value) {
                             Ok(_) => {
-                                if self.validate_value_min_max_violated(&DataValue::Uint32(*value))
-                                {
-                                    out_of_bounds = true;
+                                match self.validate_value_min_max(&DataValue::Uint32(*value)) {
+                                    Ok(_) => {}
+                                    Err(err) => return Err(err),
                                 }
                             }
-                            Err(_) => {
-                                out_of_bounds = true;
-                                break;
-                            }
+                            Err(_) => return Err(UpdateError::OutOfBounds),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint16Array => match &value {
                 DataValue::Uint32Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
                         match u16::try_from(*value) {
                             Ok(_) => {
-                                if self.validate_value_min_max_violated(&DataValue::Uint32(*value))
-                                {
-                                    out_of_bounds = true;
+                                match self.validate_value_min_max(&DataValue::Uint32(*value)) {
+                                    Ok(_) => {}
+                                    Err(err) => return Err(err),
                                 }
                             }
-                            Err(_) => {
-                                out_of_bounds = true;
-                                break;
-                            }
+                            Err(_) => return Err(UpdateError::OutOfBounds),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint32Array => match value {
                 DataValue::Uint32Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
-                        if self.validate_value_min_max_violated(&DataValue::Uint32(*value)) {
-                            out_of_bounds = true;
+                        match self.validate_value_min_max(&DataValue::Uint32(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint64Array => match value {
                 DataValue::Uint64Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
-                        if self.validate_value_min_max_violated(&DataValue::Uint64(*value)) {
-                            out_of_bounds = true;
+                        match self.validate_value_min_max(&DataValue::Uint64(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::FloatArray => match value {
                 DataValue::FloatArray(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
-                        if self.validate_value_min_max_violated(&DataValue::Float(*value)) {
-                            out_of_bounds = true;
+                        match self.validate_value_min_max(&DataValue::Float(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::DoubleArray => match value {
                 DataValue::DoubleArray(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
-                        if self.validate_value_min_max_violated(&DataValue::Double(*value)) {
-                            out_of_bounds = true;
+                        match self.validate_value_min_max(&DataValue::Double(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
@@ -2010,7 +1951,8 @@ impl Default for DataBroker {
 }
 
 #[cfg(test)]
-mod tests {
+/// Public test module to allow other files to reuse helper functions
+pub mod tests {
     use crate::permissions;
 
     use super::*;
@@ -2437,6 +2379,696 @@ mod tests {
             Err(ReadError::PermissionDenied | ReadError::PermissionExpired) => {
                 panic!("expected to have access to data point 1");
             }
+        }
+    }
+
+    // Helper for adding an int8 signal and adding value
+    async fn helper_add_int8(
+        broker: &DataBroker,
+        name: &str,
+        value: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Int8,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Int32(-5)), // min
+                Some(types::DataValue::Int32(10)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Int32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_int8() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int8(&broker, "test.datapoint1", -6, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int8(&broker, "test.datapoint2", -5, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_int8(&broker, "test.datapoint3", 11, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int8(&broker, "test.datapoint4", 10, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an int8 signal and adding value
+    async fn helper_add_int16(
+        broker: &DataBroker,
+        name: &str,
+        value: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Int16,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Int32(-5)), // min
+                Some(types::DataValue::Int32(10)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Int32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_int16() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int16(&broker, "test.datapoint1", -6, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int16(&broker, "test.datapoint2", -5, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_int16(&broker, "test.datapoint3", 11, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int16(&broker, "test.datapoint4", 10, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an int32 signal and adding value
+    pub async fn helper_add_int32(
+        broker: &DataBroker,
+        name: &str,
+        value: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Int32,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Int32(-500)), // min
+                Some(types::DataValue::Int32(1000)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Int32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_exceeded() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32(&broker, "test.datapoint1", -501, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_equal() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        if helper_add_int32(&broker, "test.datapoint1", -500, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_exceeded() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32(&broker, "test.datapoint1", 1001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_equal() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        if helper_add_int32(&broker, "test.datapoint1", 1000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    /// Helper for adding an int64 signal and adding value
+    async fn helper_add_int64(
+        broker: &DataBroker,
+        name: &str,
+        value: i64,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Int64,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Int64(-500000)),  // min
+                Some(types::DataValue::Int64(10000000)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Int64(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_int64() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int64(&broker, "test.datapoint1", -500001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int64(&broker, "test.datapoint2", -500000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_int64(&broker, "test.datapoint3", 10000001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int64(&broker, "test.datapoint4", 10000000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    /// Helper for adding an uint8 signal and adding value
+    async fn helper_add_uint8(
+        broker: &DataBroker,
+        name: &str,
+        value: u32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Uint8,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Uint32(3)),  // min
+                Some(types::DataValue::Uint32(26)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Uint32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_uint8() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_uint8(&broker, "test.datapoint1", 2, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_uint8(&broker, "test.datapoint2", 3, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_uint8(&broker, "test.datapoint3", 27, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_uint8(&broker, "test.datapoint4", 26, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an int32 signal and adding value
+    async fn helper_add_int32array(
+        broker: &DataBroker,
+        name: &str,
+        value1: i32,
+        value2: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Int32Array,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Int32(-500)), // min
+                Some(types::DataValue::Int32(1000)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Int32Array(Vec::from([value1, value2])),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_exceeded_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        // First item out of bound
+        match helper_add_int32array(&broker, "test.datapoint1", -501, -500, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+        // Second item out of bound
+        match helper_add_int32array(&broker, "test.datapoint2", -500, -501, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_equal_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        if helper_add_int32array(&broker, "test.datapoint1", -500, -500, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_exceeded_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32array(&broker, "test.datapoint1", 1001, 1000, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+        match helper_add_int32array(&broker, "test.datapoint2", 100, 1001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_equal_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        if helper_add_int32array(&broker, "test.datapoint1", 1000, 1000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an double array signal and adding value
+    async fn helper_add_doublearray(
+        broker: &DataBroker,
+        name: &str,
+        value1: f64,
+        value2: f64,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::DoubleArray,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Double(-500.2)), // min
+                Some(types::DataValue::Double(1000.2)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::DoubleArray(Vec::from([value1, value2])),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_doublearray() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        // First item out of bound
+        match helper_add_doublearray(&broker, "test.datapoint1", -500.3, -500.0, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+        // Second item out of bound
+        match helper_add_doublearray(&broker, "test.datapoint2", -500.0, -500.3, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        // Both on min
+        if helper_add_doublearray(&broker, "test.datapoint3", -500.2, -500.2, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        // First tto large
+        match helper_add_doublearray(&broker, "test.datapoint4", 1000.3, 1000.0, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        // Second too large
+        match helper_add_doublearray(&broker, "test.datapoint5", 1000.0, 1000.3, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        // Both on max
+        if helper_add_doublearray(&broker, "test.datapoint6", 1000.2, 1000.2, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
         }
     }
 
