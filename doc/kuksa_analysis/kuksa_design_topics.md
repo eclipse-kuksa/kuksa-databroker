@@ -212,7 +212,7 @@ Hint: This does not necessarily need to ensured via the "API design" - it could 
     Description:
 The Vehicle Signals Specification (VSS) and Vehicle Information Service Specification (VISS) describes the standardized signals available (or not) in a vehicle. Both standards also describe how users interact with these signals.
 
-* They can read and subscribe to [actuators, sensors](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/actuatorssensor_actuator/) and [attributes](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/attributes/).
+* They can read and subscribe to [actuators, sensors](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/sensor_actuator/) and [attributes](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/attributes/).
 * They can set [actuators](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/sensor_actuator/).) (and only actuators).
   For VISSv2 specifically, see ([read](https://w3c.github.io/automotive/spec/VISSv2_Core.html#read), [subscribe](https://w3c.github.io/automotive/spec/VISSv2_Core.html#subscribe)), [update](https://w3c.github.io/automotive/spec/VISSv2_Core.html#update))).
 
