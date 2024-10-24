@@ -38,9 +38,9 @@
 **Priority:** High
 
 **Preconditions:**
+ * Signal Consumer and Provider contain a valid authentication token to connect and perform calls to Databroker.
  * Provider can read from Vehicle Network.
- * Signal Consumer contains a valid authentication token to connect and perform calls to Databroker.
- * Provider should have published some signal values to Databroker before calling GetValues.
+ * Provider can publish signal values to Databroker.
 
 **Special requirements:**
 
@@ -48,16 +48,14 @@
 * Singal Consumer should get exactly all signal values requested.
 
 **Postconditions:**
-* Signal Consumer receives a vector with all signals requested in same order as requested.
+* Signal Consumer receives a list with all signals requested in same order as requested.
 
 **Sequence diagram:**
 ![Signal Consumer](../diagrams/consumer_get_values.svg)
 
 **Basic Flow:**
-1.  Provider opens bidirectional stream and sends a claim actuators request.
-2.  Databroker stores the claim request.
-3.  Provider starts publishing at a high frequency sensor and actuator values as soon as received from Vehicle network.
-4.  Signal Consumer calls GetValues with signal paths.
+1.  Provider opens bidirectional stream and starts publishing sensor and actuator values at the cycle time received from Vehicle network.
+4.  Signal Consumer calls GetValues with signal paths/ids.
 5.  Databroker sends the response with signal values back to the Signal Consumer.
 9.	Use case finishes.
 
@@ -68,7 +66,7 @@
 
     Status: 🟢
 
-    Description: Signal Consumer subscribes to all sensor and actuator values by ids. It gets notifications when values changed.
+    Description: Signal Consumer subscribes to all sensor and actuator values by ids and gets notifications when values changed.
 
 **Primary Actor:** Signal Consumer
 
@@ -77,9 +75,9 @@
 **Priority**: High
 
 **Preconditions:**
- * Signal Consumer contains a valid authentication token to connect and perform calls to databroker.
+ * Signal Consumer and Provider contain a valid authentication token to connect and perform calls to Databroker.
  * Provider can read from Vehicle Network.
- * Provider constantly publishes new signal values.
+ * Provider can constantly publish signal values to Databroker at a high frequency.
 
 **Special requirements:**
  * The use case must meet a high frequency notification rate.
@@ -96,16 +94,14 @@
 ![Signal Consumer Subscribes](../diagrams/consumer_subscribes.svg)
 
 **Basic Flow:**
-1.  Provider opens bidirectional stream and sends a claim actuators request.
-2.  Databroker stores the claim request.
-3.  Provider start publishing at high frequency sensor and actuator values received from Vehicle network.
-4.  Signal Consumer calls list metadata to get all signals ids:
-5.  Signal Consumer subscribes to all the sensor and actuator values by their ids.
-6.  Databroker sends the current values stream back to the Signal Consumer.
-7.  Databroker receives from Provider the new signal values and update its database.
-8.  Databroker sends the changed values stream back to the Signal Consumer.
-8.	Signal Consumer closes subscription to Databroker.
-9.	Use case finishes.
+1.  Provider opens bidirectional stream and starts publishing sensor and actuator values at the cycle time received from Vehicle network.
+2.  Signal Consumer calls list metadata to get all signals ids:
+3.  Signal Consumer subscribes to all the sensor and actuator values by their ids.
+4.  Databroker sends the current values stream back to the Signal Consumer.
+5.  Databroker receives from Provider the new signal values and update its database.
+6.  Databroker sends the changed values stream back to the Signal Consumer.
+7.	Signal Consumer closes subscription to Databroker.
+8.	Use case finishes.
 
 **Exceptions:**
 
@@ -124,32 +120,31 @@
 **Priority:** High
 
 **Preconditions:**
- * Signal Consumer contains a valid authentication token to connect and perform calls to databroker.
+ * Signal Consumer and Provider contain a valid authentication token to connect and perform calls to Databroker.
+ * Provider can write to Vehicle Network.
+ * No other Provider has claimed the ownership of the actuator to be actuated.
 
 **Special requirements:**
 
 **Assumptions:**
- * Databroker send ACK response back to Signal Consumer as soon as the request was forwarded by Provider to Vehicle Network.
- * It does not necessarily mean that the actuator succesfully updated its value to the desired new value.
+ * It does not necessarily mean that the actuator successfully updated its value to the desired new value. The entire chain is only responsible for forwarding the actuation request from Signal Consumer to the Vehicle Network.
 
 **Postconditions:**
+ * Provider forward an ack of receipt back to the Databroker immediately after the actuation request is forwarded.
  * Signal Consumer receives a response which indicates the operation was successfully forwarded.
- * Provider can read and write from Vehicle Network.
 
 **Sequence diagram:**
 ![Signal Consumer Actuate](../diagrams/consumer_actuate.svg)
 
 **Basic Flow:**
-1.  Provider opens bidirectional stream and sends a claim actuators request.
+1.  Provider opens bidirectional stream and sends a request to claim ownership of specific actuators.
 2.  Databroker stores the claim request.
-3.  Provider start publishing at high frequency sensor and actuator values received from Vehicle network.
-4.  Signal Consumer calls actuate with new actuator value.
-5.  Databroker forwards the request to the corresponding provider.
-6.  Provider sends the actuation request to the Vehicle Network.
-7.  Provider sends ack response back to Databroker.
-8.  Databroker sends ack response back to the Signal Consumer.
-9.	Use case finishes.
-
+3.  Signal Consumer calls actuate with new actuator value.
+4.  Databroker forwards the request to the corresponding provider.
+5.  Provider receives the request and sends ack response back to Databroker.
+6.  Databroker sends ack response back to the Signal Consumer.
+7.  Provider sends the actuation request to the Vehicle Network.
+8.	Use case finishes.
 
 **Exceptions:**
 
@@ -168,29 +163,33 @@
 **Priority:** High
 
 **Preconditions:**
- * Signal Consumer contains a valid authentication token to connect and perform calls to databroker.
+ * Signal Consumer and Providers contain a valid authentication token to connect and perform calls to Databroker.
+ * Providers can write to Vehicle Network.
+ * No other Provider has claimed the ownership of the actuator to be actuated.
 
 **Special requirements:**
 
 **Assumptions:**
 
 **Postconditions:**
- * Signal Consumer receives a response which indicates the operation was successfully forwarded.
- * Provider can read and write from Vehicle Network.
+ * Providers forward an ack of receipt back to the Databroker immediately after the actuation request is forwarded.
+ * Signal Consumer receives a response which indicates the operations were successfully forwarded.
 
 **Sequence diagram:**
 ![Signal Consumer Actuate](../diagrams/consumer_actuate_multiple_providers.svg)
 
 **Basic Flow:**
-1.  Provider opens bidirectional stream and sends a claim actuators request.
-2.  Databroker stores the claim request.
-3.  Provider start publishing at high frequency sensor and actuator values received from Vehicle network.
-4.  Signal Consumer calls actuate with new actuator value.
-5.  Databroker forwards the request to the corresponding provider.
-6.  Provider sends the actuation request to the Vehicle Network.
-7.  Provider sends ack response back to Databroker.
+1.  Door Provider opens bidirectional stream and sends a ownership claim request of the Door actuator.
+2.  Window Provider opens bidirectional stream and sends a ownership claim request of the Window actuator.
+3.  Databroker stores the claims requests.
+4.  Signal Consumer calls actuate with new Door and Window values.
+5.  Databroker forwards the actuation request to the corresponding provider.
+6.  Door Provider receives the Door actuation request and sends ack response back to Databroker.
+7.  Window Provider receives the Window actuation request and sends ack response back to Databroker.
 8.  Databroker sends ack response back to the Signal Consumer.
-9.	Use case finishes.
+9.  Door Provider sends the Door actuation request to the Vehicle Network.
+10. Window Provider sends the Window actuation request to the Vehicle Network.
+11.	Use case finishes.
 
 **Exceptions:**
 
@@ -203,7 +202,7 @@
 
 **Primary Actor:** Signal Consumer, Provider
 
-**Secondary Actors:** Databroker, Vehicle Network
+**Secondary Actors:** Databroker
 
 **Priority:** High
 
@@ -234,7 +233,7 @@
 
 **Primary Actor:** Signal Consumer, Provider
 
-**Secondary Actors:** Databroker, Vehicle Network
+**Secondary Actors:** Databroker
 
 **Priority:** High
 
@@ -262,7 +261,7 @@
 
     Status: 🟢
 
-    Description: Provider publishes signals values to Databroker at a high frequency.
+    Description: Provider publishes signals values to Databroker at a high frequency according to the cycle time from the Vehicle Network.
 
 **Primary Actor:** Provider
 
@@ -271,13 +270,12 @@
 **Priority:** High
 
 **Preconditions:**
-* Provider can stablish a connection to the Vehicle Network.
+* Provider can read from Vehicle Network.
 
 **Special requirements:**
 * Provider publishes signal values to Databroker atomically.
 
 **Assumptions:**
-* There is an instance of Databroker up and running.
 * Provider has a list of valid signals with their ids(int32) that are present on Databroker.
 
 **Postconditions:**
@@ -287,11 +285,9 @@
 ![Provider publish signals](../diagrams/provider_publish.svg)
 
 **Basic Flow:**
-1.  Provider opens bidirectional stream and sends a claim actuators request.
-2.  Databroker stores the claim request.
-3.  Provider start publishing at high frequency sensor and actuator values (by their ids(int32)) received from Vehicle network.
-6.  Databroker send publish response back to provider.
-9.	Use case finishes.
+1.  Provider start publishing at high frequency sensor and actuator values (by their ids(int32)) received from Vehicle network.
+2.  Databroker send publish response back to provider.
+3.	Use case finishes.
 
 **Alternative Flows:**
 
@@ -302,7 +298,7 @@
 
     Status: 🟢
 
-    Description: Provider receives a actuator request to change a actuator value on the Vehicle Network.
+    Description: Provider receives an actuator request to change an actuator value on the Vehicle Network.
 
 **Primary Actor:** Provider
 
