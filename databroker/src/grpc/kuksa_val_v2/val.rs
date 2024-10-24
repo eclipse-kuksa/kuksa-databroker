@@ -32,7 +32,7 @@ use databroker_proto::kuksa::val::v2::{
 
 use kuksa::proto::v2::{
     signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ListMetadataResponse,
-    Metadata, ProvideActuationResponse,
+    ProvideActuationResponse,
 };
 use std::collections::HashSet;
 use tokio::{select, sync::mpsc};
@@ -487,125 +487,7 @@ impl proto::val_server::Val for broker::DataBroker {
                     .for_each_entry(|entry| {
                         let entry_metadata = &entry.metadata();
                         if matcher.is_match(&entry_metadata.glob_path) {
-                            metadata_response.push(Metadata {
-                                id: entry_metadata.id,
-                                data_type: proto::DataType::from(entry_metadata.data_type.clone())
-                                    as i32,
-                                entry_type: proto::EntryType::from(
-                                    entry_metadata.entry_type.clone(),
-                                ) as i32,
-                                description: Some(entry_metadata.description.clone()),
-                                comment: None,
-                                deprecation: None,
-                                unit: entry_metadata.unit.clone(),
-                                value_restriction: match entry.metadata().allowed.as_ref() {
-                                    Some(allowed) => match allowed {
-                                        broker::DataValue::StringArray(vec) => {
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::String(
-                                                        proto::ValueRestrictionString {
-                                                            allowed_values: vec.clone(),
-                                                        },
-                                                    ),
-                                                ),
-                                            })
-                                        }
-                                        broker::DataValue::Int32Array(vec) => {
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::Signed(
-                                                        proto::ValueRestrictionInt {
-                                                            allowed_values: vec
-                                                                .iter()
-                                                                .cloned()
-                                                                .map(i64::from)
-                                                                .collect(),
-                                                            min: None, // TODO: Implement
-                                                            max: None, // TODO: Implement
-                                                        },
-                                                    ),
-                                                ),
-                                            })
-                                        }
-                                        broker::DataValue::Int64Array(vec) => {
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::Signed(
-                                                        proto::ValueRestrictionInt {
-                                                            allowed_values: vec.clone(),
-                                                            min: None, // TODO: Implement
-                                                            max: None, // TODO: Implement
-                                                        },
-                                                    ),
-                                                ),
-                                            })
-                                        }
-                                        broker::DataValue::Uint32Array(vec) => {
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::Unsigned(
-                                                        proto::ValueRestrictionUint {
-                                                            allowed_values: vec
-                                                                .iter()
-                                                                .cloned()
-                                                                .map(u64::from)
-                                                                .collect(),
-                                                            min: None, // TODO: Implement
-                                                            max: None, // TODO: Implement
-                                                        },
-                                                    ),
-                                                ),
-                                            })
-                                        }
-                                        broker::DataValue::Uint64Array(vec) => {
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::Unsigned(
-                                                        proto::ValueRestrictionUint {
-                                                            allowed_values: vec.clone(),
-                                                            min: None, // TODO: Implement
-                                                            max: None, // TODO: Implement
-                                                        },
-                                                    ),
-                                                ),
-                                            })
-                                        }
-                                        broker::DataValue::FloatArray(vec) => {
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::FloatingPoint(
-                                                        proto::ValueRestrictionFloat {
-                                                            allowed_values: vec
-                                                                .iter()
-                                                                .cloned()
-                                                                .map(f64::from)
-                                                                .collect(),
-                                                            min: None, // TODO: Implement
-                                                            max: None, // TODO: Implement
-                                                        },
-                                                    ),
-                                                ),
-                                            })
-                                        }
-                                        broker::DataValue::DoubleArray(vec) => {
-                                            Some(proto::ValueRestriction {
-                                                r#type: Some(
-                                                    proto::value_restriction::Type::FloatingPoint(
-                                                        proto::ValueRestrictionFloat {
-                                                            allowed_values: vec.clone(),
-                                                            min: None, // TODO: Implement
-                                                            max: None, // TODO: Implement
-                                                        },
-                                                    ),
-                                                ),
-                                            })
-                                        }
-                                        _ => None,
-                                    },
-                                    None => None,
-                                },
-                            })
+                            metadata_response.push(proto::Metadata::from(*entry_metadata));
                         }
                     })
                     .await;
@@ -683,6 +565,8 @@ impl proto::val_server::Val for broker::DataBroker {
                 data_type: None,
                 description: None,
                 allowed: None,
+                max: None,
+                min: None,
                 unit: None,
             },
         );
@@ -994,6 +878,8 @@ async fn publish_values(
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )
@@ -1114,58 +1000,15 @@ mod tests {
         PublishValuesRequest, SignalId, Value,
     };
 
-    // Helper for adding an int32 signal and adding value
-    async fn helper_add_int32(
-        broker: &DataBroker,
-        name: &str,
-        value: i32,
-        timestamp: std::time::SystemTime,
-    ) -> i32 {
-        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
-        let entry_id = authorized_access
-            .add_entry(
-                name.to_owned(),
-                broker::DataType::Int32,
-                broker::ChangeType::OnChange,
-                broker::EntryType::Sensor,
-                "Some Description That Does Not Matter".to_owned(),
-                None,
-                None,
-            )
-            .await
-            .unwrap();
-
-        let _ = authorized_access
-            .update_entries([(
-                entry_id,
-                broker::EntryUpdate {
-                    path: None,
-                    datapoint: Some(broker::Datapoint {
-                        //ts: std::time::SystemTime::now(),
-                        ts: timestamp,
-                        source_ts: None,
-                        value: broker::types::DataValue::Int32(value),
-                    }),
-                    actuator_target: None,
-                    entry_type: None,
-                    data_type: None,
-                    description: None,
-                    allowed: None,
-                    unit: None,
-                },
-            )])
-            .await;
-
-        entry_id
-    }
-
     #[tokio::test]
     async fn test_get_value_id_ok() {
         let broker = DataBroker::default();
 
         let timestamp = std::time::SystemTime::now();
 
-        let entry_id = helper_add_int32(&broker, "test.datapoint1", -64, timestamp).await;
+        let entry_id = broker::tests::helper_add_int32(&broker, "test.datapoint1", -64, timestamp)
+            .await
+            .expect("Shall succeed");
 
         let request = proto::GetValueRequest {
             signal_id: Some(proto::SignalId {
@@ -1211,7 +1054,9 @@ mod tests {
 
         let timestamp = std::time::SystemTime::now();
 
-        let _entry_id = helper_add_int32(&broker, "test.datapoint1", -64, timestamp).await;
+        let _entry_id = broker::tests::helper_add_int32(&broker, "test.datapoint1", -64, timestamp)
+            .await
+            .expect("Shall succeed");
 
         let request = proto::GetValueRequest {
             signal_id: Some(proto::SignalId {
@@ -1259,7 +1104,9 @@ mod tests {
 
         let timestamp = std::time::SystemTime::now();
 
-        let entry_id = helper_add_int32(&broker, "test.datapoint1", -64, timestamp).await;
+        let entry_id = broker::tests::helper_add_int32(&broker, "test.datapoint1", -64, timestamp)
+            .await
+            .expect("Shall succeed");
 
         let request = proto::GetValueRequest {
             signal_id: Some(proto::SignalId {
@@ -1294,6 +1141,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Some Description hat Does Not Matter".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1506,12 +1355,16 @@ mod tests {
 
         let mut entry_id = -1;
         if config.first_exist {
-            entry_id = helper_add_int32(&broker, SIGNAL1, -64, timestamp).await;
+            entry_id = broker::tests::helper_add_int32(&broker, SIGNAL1, -64, timestamp)
+                .await
+                .expect("Shall succeed");
         }
 
         let mut entry_id2 = -1;
         if config.second_exist {
-            entry_id2 = helper_add_int32(&broker, SIGNAL2, -13, timestamp).await;
+            entry_id2 = broker::tests::helper_add_int32(&broker, SIGNAL2, -13, timestamp)
+                .await
+                .expect("Shall succeed");
         }
 
         let mut permission_builder = permissions::PermissionBuilder::new();
@@ -1798,6 +1651,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1853,6 +1708,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1892,6 +1749,66 @@ mod tests {
                 // Handle the error from the publish_value function
                 assert_eq!(status.code(), tonic::Code::NotFound);
                 assert_eq!(status.message(), "Path not found");
+            }
+        }
+    }
+
+    #[tokio::test]
+    /// For kuksa_val_v2 we only have a single test to test min/max violations
+    /// More detailed test cases for different cases/datatypes in broker.rs
+    async fn test_publish_value_min_max_not_fulfilled() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let entry_id = authorized_access
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                broker::DataType::Uint8,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                Some(broker::types::DataValue::Uint32(3)), // min
+                Some(broker::types::DataValue::Uint32(26)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let request = proto::PublishValueRequest {
+            signal_id: Some(proto::SignalId {
+                signal: Some(proto::signal_id::Signal::Id(entry_id)),
+            }),
+            data_point: {
+                let timestamp = Some(std::time::SystemTime::now().into());
+
+                let value = proto::Value {
+                    typed_value: Some(proto::value::TypedValue::Uint32(27)),
+                };
+
+                Some(proto::Datapoint {
+                    timestamp,
+                    value: Some(value),
+                })
+            },
+        };
+
+        // Manually insert permissions
+        let mut publish_value_request = tonic::Request::new(request);
+        publish_value_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match broker.publish_value(publish_value_request).await {
+            Ok(_) => {
+                // Handle the successful response
+                panic!("Should not happen!");
+            }
+            Err(status) => {
+                // Handle the error from the publish_value function
+                assert_eq!(status.code(), tonic::Code::OutOfRange);
+                // As of the today the first added datapoint get value 0 by default.
+                assert_eq!(status.message(), "Value out of bounds (id: 0)");
             }
         }
     }
@@ -2008,6 +1925,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Some Description that Does Not Matter".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2152,6 +2071,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Some Description that Does Not Matter".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2262,6 +2183,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2347,6 +2270,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_list_metadata_min_max() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                broker::DataType::Int32,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                Some(broker::types::DataValue::Int32(-7)), // min
+                Some(broker::types::DataValue::Int32(19)), // max
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let mut data_req = tonic::Request::new(proto::ListMetadataRequest {
+            root: "test.datapoint1".to_owned(),
+            filter: "".to_owned(),
+        });
+
+        // Manually insert permissions
+        data_req
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::list_metadata(&broker, data_req)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(list_response) => {
+                let entries_size = list_response.metadata.len();
+                assert_eq!(entries_size, 1);
+
+                let value_restriction = Some(proto::ValueRestriction {
+                    r#type: Some(proto::value_restriction::Type::Signed(
+                        proto::ValueRestrictionInt {
+                            allowed_values: Vec::new(),
+                            min: Some(-7),
+                            max: Some(19),
+                        },
+                    )),
+                });
+                assert_eq!(
+                    list_response.metadata.first().unwrap().value_restriction,
+                    value_restriction
+                )
+            }
+            Err(_status) => panic!("failed to execute get request"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_list_metadata_using_wildcard() {
         let broker = DataBroker::default();
         let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
@@ -2358,6 +2337,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2371,6 +2352,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test branch datapoint 2".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2430,6 +2413,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2527,6 +2512,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Actuator,
                 "Some funny description".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2568,6 +2555,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Actuator,
                 "Some funny description".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2621,6 +2610,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Actuator,
                 "Some funny description".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2673,6 +2664,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Actuator,
                 "Some funny description".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2686,6 +2679,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Actuator,
                 "Some funny description".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2755,6 +2750,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Actuator,
                 "Some funny description".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2768,6 +2765,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Actuator,
                 "Some funny description".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2880,6 +2879,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Actuator,
                 "Some funny description".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )

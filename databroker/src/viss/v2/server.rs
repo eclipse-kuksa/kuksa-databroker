@@ -168,6 +168,8 @@ impl Viss for Server {
                         entry_type: None,
                         data_type: None,
                         description: None,
+                        min: None,
+                        max: None,
                         allowed: None,
                         unit: None,
                     })

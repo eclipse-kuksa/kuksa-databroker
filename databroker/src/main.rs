@@ -64,6 +64,8 @@ async fn add_kuksa_attribute(
             description,
             None,
             None,
+            None,
+            None,
         )
         .await
     {
@@ -82,6 +84,8 @@ async fn add_kuksa_attribute(
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )];
@@ -115,7 +119,7 @@ async fn read_metadata_file<'a, 'b>(
     let entries = vss::parse_vss_from_reader(buffered)?;
 
     for (path, entry) in entries {
-        debug!("Adding VSS datapoint type {}", path);
+        debug!("Adding VSS datapoint {}", path);
 
         match database
             .add_entry(
@@ -124,6 +128,8 @@ async fn read_metadata_file<'a, 'b>(
                 entry.change_type,
                 entry.entry_type,
                 entry.description,
+                entry.min,
+                entry.max,
                 entry.allowed,
                 entry.unit,
             )
@@ -145,6 +151,8 @@ async fn read_metadata_file<'a, 'b>(
                             data_type: None,
                             description: None,
                             allowed: None,
+                            min: None,
+                            max: None,
                             unit: None,
                         },
                     )];
