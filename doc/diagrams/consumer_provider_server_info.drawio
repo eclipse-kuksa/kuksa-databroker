@@ -1,0 +1,75 @@
+<mxfile host="65bd71144e">
+    <diagram name="Seite-1" id="DjCrLJOEe4nHxTjUXNSd">
+        <mxGraphModel dx="962" dy="526" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="sU0O0qOnpkfrYUOIyIDh-27" value=":DataBroker" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;rounded=1;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="40" width="100" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-10" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" parent="sU0O0qOnpkfrYUOIyIDh-27" vertex="1">
+                    <mxGeometry x="44" y="81" width="10" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="sU0O0qOnpkfrYUOIyIDh-33" value=":Signal Consumer" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;rounded=1;" parent="1" vertex="1">
+                    <mxGeometry y="40" width="100" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-4" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" parent="sU0O0qOnpkfrYUOIyIDh-33" vertex="1">
+                    <mxGeometry x="45" y="81" width="10" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-14" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="405" y="161" as="sourcePoint"/>
+                        <mxPoint x="49.700000000000045" y="161" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-15" value="GetServerInfoResponse(name, version, commit_hash)" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;" parent="56O69Gt65AHP2GdqeosO-14" connectable="0" vertex="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-9" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-12" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" target="56O69Gt65AHP2GdqeosO-10" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="55" y="120.99999999999989" as="sourcePoint"/>
+                        <mxPoint x="400" y="121" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-13" value="GetServerInfo(GetServerInfoRequest)" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;" parent="56O69Gt65AHP2GdqeosO-12" connectable="0" vertex="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-9" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="w6CGbLWzSCbSTN-eGXN6-1" value=":Provider" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;rounded=1;" parent="1" vertex="1">
+                    <mxGeometry x="680" y="40" width="100" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="w6CGbLWzSCbSTN-eGXN6-2" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" parent="w6CGbLWzSCbSTN-eGXN6-1" vertex="1">
+                    <mxGeometry x="45" y="161" width="10" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="w6CGbLWzSCbSTN-eGXN6-3" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" target="w6CGbLWzSCbSTN-eGXN6-5" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="729.5" y="201" as="sourcePoint"/>
+                        <mxPoint x="409.5" y="201" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="w6CGbLWzSCbSTN-eGXN6-4" value="GetServerInfo(GetServerInfoRequest)" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;" parent="w6CGbLWzSCbSTN-eGXN6-3" connectable="0" vertex="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-9" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="w6CGbLWzSCbSTN-eGXN6-5" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" parent="1" vertex="1">
+                    <mxGeometry x="405" y="201" width="10" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="w6CGbLWzSCbSTN-eGXN6-6" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" target="w6CGbLWzSCbSTN-eGXN6-2" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="409.5" y="241" as="sourcePoint"/>
+                        <mxPoint x="720" y="241" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="w6CGbLWzSCbSTN-eGXN6-7" value="GetServerInfoResponse(name, version, commit_hash)" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;" parent="w6CGbLWzSCbSTN-eGXN6-6" connectable="0" vertex="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-9" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
