@@ -456,11 +456,11 @@ impl broker::UpdateError {
                 format!("Wrong type provided (id: {})", id),
             ),
             broker::UpdateError::OutOfBounds => tonic::Status::new(
-                tonic::Code::OutOfRange,
+                tonic::Code::InvalidArgument,
                 format!("Value out of bounds (id: {})", id),
             ),
             broker::UpdateError::UnsupportedType => tonic::Status::new(
-                tonic::Code::Unimplemented,
+                tonic::Code::InvalidArgument,
                 format!("Unsupported type (id: {})", id),
             ),
             broker::UpdateError::PermissionDenied => tonic::Status::new(
@@ -610,7 +610,7 @@ impl broker::ActuationError {
         match self {
             broker::ActuationError::NotFound => tonic::Status::not_found(message),
             broker::ActuationError::WrongType => tonic::Status::invalid_argument(message),
-            broker::ActuationError::OutOfBounds => tonic::Status::out_of_range(message),
+            broker::ActuationError::OutOfBounds => tonic::Status::invalid_argument(message),
             broker::ActuationError::UnsupportedType => tonic::Status::invalid_argument(message),
             broker::ActuationError::PermissionDenied => tonic::Status::permission_denied(message),
             broker::ActuationError::PermissionExpired => tonic::Status::unauthenticated(message),
