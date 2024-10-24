@@ -53,27 +53,28 @@
       1. Databroker stores last signal values during its own lifecycle.
       2. It is not possible to reset values.
       3. Signal Consumer and Provider are not aware of each other.
+
     Description:
-      1. The data broker either ...
-         * Stores last set values during its own lifecycle,
-         * ? stores values during the system's power cycle (i.e., "persists" values over own restarts, or
-         * store values over system's power cycles.
+   1. The data broker either ...
+      * Stores last set values during its own lifecycle,
+      * ? stores values during the system's power cycle (i.e., "persists" values over own restarts, or
+      * store values over system's power cycles.
 
-      2. How to "reset" values availability if its provider got inactive (without reseting the value)?
-         * -> Client's job (e.g. using timestamp)?
-         * -> Broker's job (e.g. using timestamp + minimal update cycle)?
+   2. How to "reset" values availability if its provider got inactive (without reseting the value)?
+      * -> Client's job (e.g. using timestamp)?
+      * -> Broker's job (e.g. using timestamp + minimal update cycle)?
 
-      3. Provider and client aliveness
-         * If there is no active client subscription should the provider stop sending values to Databroker?
-         * If there is no active provider setting values while client subscription? Should Databroker or Client be aware of it?
+   3. Provider and client aliveness
+      * If there is no active client subscription should the provider stop sending values to Databroker?
+      * If there is no active provider setting values while client subscription? Should Databroker or Client be aware of it?
 
 # Wildcard support
     Status: 🟢
     Current decisions:
       Only `ListMetadata` support wildcard due to complex error handling in the implementation and usability.
     Description:
-    * Should `Get` and `Subscribe` calls support Wildcard request?
-    * Do we want it only for `GetMetadata`?
+ * Should `Get` and `Subscribe` calls support Wildcard request?
+ * Do we want it only for `GetMetadata`?
 
 Reference -> [Wildcard](../wildcard_matching.md)
 
