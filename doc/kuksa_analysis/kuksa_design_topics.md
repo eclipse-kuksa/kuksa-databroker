@@ -619,26 +619,6 @@ message ProviderResponse {
 
 ```
 
-The full `.proto` specification for this proposal can be found [here](https://github.com/boschglobal/kuksa.val/blob/feature/provider_api/kuksa_databroker/proto/sdv/databroker/v1/provider.proto).
-
-In the same branch there is a working prototype of a [client](https://github.com/boschglobal/kuksa.val/blob/feature/provider_api/python/provider/provider.py) and [server](https://github.com/boschglobal/kuksa.val/blob/feature/provider_api/python/provider/provider_endpoint.py) showcasing its usage.
-
-This includes:
-* Rate control
-* Sending Start / Stop instruction to the provider
-* Availability detection of providers
-* Availability detection of server
-
-It also showcases that it's possible to wrap this GRPC interface in a simple library for users, i.e.
-```python
-    provider = Provider()
-    provider.start()
-    for speed in read_current_speed():
-        provider.set("Vehicle.Speed", speed)
-
-    provider.stop()
-
-```
 
 # message Datapoint
     Status: 🟢
