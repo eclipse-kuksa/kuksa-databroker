@@ -2381,6 +2381,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_actuate_out_of_range() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.Cabin.Infotainment.Navigation.Volume".to_owned(),
+                broker::DataType::Uint8,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                Some(broker::types::DataValue::Uint32(0)), // min
+                Some(broker::types::DataValue::Uint32(100)), // max
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let vss_id = authorized_access
+            .get_id_by_path("Vehicle.Cabin.Infotainment.Navigation.Volume")
+            .await
+            .expect(
+                "Resolving the id of Vehicle.Cabin.Infotainment.Navigation.Volume should succeed",
+            );
+        let vss_ids = vec![vss_id];
+
+        let (sender, _) = mpsc::channel(10);
+        let actuation_provider = Provider { sender };
+        authorized_access
+            .provide_actuation(vss_ids, Box::new(actuation_provider))
+            .await
+            .expect("Registering a new Actuation Provider should succeed");
+
+        let mut request = tonic::Request::new(ActuateRequest {
+            signal_id: Some(SignalId {
+                signal: Some(proto::signal_id::Signal::Path(
+                    "Vehicle.Cabin.Infotainment.Navigation.Volume".to_string(),
+                )),
+            }),
+            value: Some(Value {
+                typed_value: Some(proto::value::TypedValue::Uint32(200)),
+            }),
+        });
+
+        request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        let result_response = proto::val_server::Val::actuate(&broker, request).await;
+        assert!(result_response.is_err());
+        assert_eq!(
+            result_response.unwrap_err().code(),
+            tonic::Code::InvalidArgument
+        )
+    }
+
+    #[tokio::test]
     async fn test_actuate_signal_not_found() {
         let broker = DataBroker::default();
 
@@ -2500,6 +2558,129 @@ mod tests {
 
         let result_response = receiver.recv().await.expect("Option should be Some");
         result_response.expect("Result should be Ok");
+    }
+
+    #[tokio::test]
+    async fn test_batch_actuate_out_of_range() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.ABS.IsEnabled".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None, // min
+                None, // max
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint 'Vehicle.ADAS.ABS.IsEnabled' should succeed");
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.CruiseControl.IsActive".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None, // min
+                None, // max
+                None,
+                None,
+            )
+            .await
+            .expect("Register 'Vehicle.ADAS.CruiseControl.IsActive' datapoint should succeed");
+
+        authorized_access
+            .add_entry(
+                "Vehicle.Cabin.Infotainment.Navigation.Volume".to_owned(),
+                broker::DataType::Uint8,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                Some(broker::types::DataValue::Uint32(0)), // min
+                Some(broker::types::DataValue::Uint32(100)), // max
+                None,
+                None,
+            )
+            .await
+            .expect(
+                "Register datapoint 'Vehicle.Cabin.Infotainment.Navigation.Volume' should succeed",
+            );
+
+        let vss_id_abs = authorized_access
+            .get_id_by_path("Vehicle.ADAS.ABS.IsEnabled")
+            .await
+            .expect("Resolving the id of Vehicle.ADAS.ABS.IsEnabled should succeed");
+        let vss_id_cruise_control = authorized_access
+            .get_id_by_path("Vehicle.ADAS.CruiseControl.IsActive")
+            .await
+            .expect("Resolving the id of Vehicle.ADAS.CruiseControl.IsActive should succeed");
+        let vss_id_navigation_volume = authorized_access
+            .get_id_by_path("Vehicle.Cabin.Infotainment.Navigation.Volume")
+            .await
+            .expect(
+                "Resolving the id of Vehicle.Cabin.Infotainment.Navigation.Volume should succeed",
+            );
+
+        let vss_ids = vec![vss_id_abs, vss_id_cruise_control, vss_id_navigation_volume];
+
+        let (sender, _receiver) = mpsc::channel(10);
+        let actuation_provider = Provider { sender };
+        authorized_access
+            .provide_actuation(vss_ids, Box::new(actuation_provider))
+            .await
+            .expect("Registering a new Actuation Provider should succeed");
+
+        let mut request = tonic::Request::new(BatchActuateRequest {
+            actuate_requests: vec![
+                ActuateRequest {
+                    signal_id: Some(SignalId {
+                        signal: Some(proto::signal_id::Signal::Path(
+                            "Vehicle.ADAS.ABS.IsEnabled".to_string(),
+                        )),
+                    }),
+                    value: Some(Value {
+                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                    }),
+                },
+                ActuateRequest {
+                    signal_id: Some(SignalId {
+                        signal: Some(proto::signal_id::Signal::Path(
+                            "Vehicle.ADAS.CruiseControl.IsActive".to_string(),
+                        )),
+                    }),
+                    value: Some(Value {
+                        typed_value: Some(proto::value::TypedValue::Bool(true)),
+                    }),
+                },
+                ActuateRequest {
+                    signal_id: Some(SignalId {
+                        signal: Some(proto::signal_id::Signal::Path(
+                            "Vehicle.Cabin.Infotainment.Navigation.Volume".to_string(),
+                        )),
+                    }),
+                    value: Some(Value {
+                        typed_value: Some(proto::value::TypedValue::Uint32(200)),
+                    }),
+                },
+            ],
+        });
+
+        request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        let result_response = proto::val_server::Val::batch_actuate(&broker, request).await;
+        assert!(result_response.is_err());
+        assert_eq!(
+            result_response.unwrap_err().code(),
+            tonic::Code::InvalidArgument
+        )
     }
 
     #[tokio::test]

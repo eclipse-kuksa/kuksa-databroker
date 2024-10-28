@@ -11,7 +11,7 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, fmt};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataType {
@@ -39,6 +39,37 @@ pub enum DataType {
     Uint64Array,
     FloatArray,
     DoubleArray,
+}
+
+impl fmt::Display for DataType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DataType::String => write!(f, "String"),
+            DataType::Bool => write!(f, "Bool"),
+            DataType::Int8 => write!(f, "Int8"),
+            DataType::Int16 => write!(f, "Int16"),
+            DataType::Int32 => write!(f, "Int32"),
+            DataType::Int64 => write!(f, "Int64"),
+            DataType::Uint8 => write!(f, "Uint8"),
+            DataType::Uint16 => write!(f, "Uint16"),
+            DataType::Uint32 => write!(f, "Uint32"),
+            DataType::Uint64 => write!(f, "Uint64"),
+            DataType::Float => write!(f, "Float"),
+            DataType::Double => write!(f, "Double"),
+            DataType::StringArray => write!(f, "StringArray"),
+            DataType::BoolArray => write!(f, "BoolArray"),
+            DataType::Int8Array => write!(f, "Int8Array"),
+            DataType::Int16Array => write!(f, "Int16Array"),
+            DataType::Int32Array => write!(f, "Int32Array"),
+            DataType::Int64Array => write!(f, "Int64Array"),
+            DataType::Uint8Array => write!(f, "Uint8Array"),
+            DataType::Uint16Array => write!(f, "Uint16Array"),
+            DataType::Uint32Array => write!(f, "Uint32Array"),
+            DataType::Uint64Array => write!(f, "Uint64Array"),
+            DataType::FloatArray => write!(f, "FloatArray"),
+            DataType::DoubleArray => write!(f, "DoubleArray"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +109,29 @@ pub enum DataValue {
 
 #[derive(Debug)]
 pub struct CastError {}
+impl fmt::Display for DataValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DataValue::NotAvailable => write!(f, "Not Available"),
+            DataValue::Bool(value) => write!(f, "{}", value),
+            DataValue::String(value) => write!(f, "{}", value),
+            DataValue::Int32(value) => write!(f, "{}", value),
+            DataValue::Int64(value) => write!(f, "{}", value),
+            DataValue::Uint32(value) => write!(f, "{}", value),
+            DataValue::Uint64(value) => write!(f, "{}", value),
+            DataValue::Float(value) => write!(f, "{}", value),
+            DataValue::Double(value) => write!(f, "{}", value),
+            DataValue::BoolArray(values) => write!(f, "{:?}", values),
+            DataValue::StringArray(values) => write!(f, "{:?}", values),
+            DataValue::Int32Array(values) => write!(f, "{:?}", values),
+            DataValue::Int64Array(values) => write!(f, "{:?}", values),
+            DataValue::Uint32Array(values) => write!(f, "{:?}", values),
+            DataValue::Uint64Array(values) => write!(f, "{:?}", values),
+            DataValue::FloatArray(values) => write!(f, "{:?}", values),
+            DataValue::DoubleArray(values) => write!(f, "{:?}", values),
+        }
+    }
+}
 
 impl DataValue {
     pub fn greater_than(&self, other: &DataValue) -> Result<bool, CastError> {

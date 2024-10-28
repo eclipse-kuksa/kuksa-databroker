@@ -1758,6 +1758,8 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         for actuation_change in &actuation_changes {
             let vss_id = actuation_change.id;
             self.can_write_actuator_target(&vss_id).await?;
+            self.validate_actuator_value(&vss_id, &actuation_change.data_value)
+                .await?;
         }
 
         let actuation_changes_per_vss_id = &self
@@ -1809,6 +1811,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         let vss_id = *vss_id;
 
         self.can_write_actuator_target(&vss_id).await?;
+        self.validate_actuator_value(&vss_id, data_value).await?;
 
         let read_subscription_guard = self.broker.subscriptions.read().await;
         let opt_actuation_subscription = &read_subscription_guard
@@ -1863,6 +1866,72 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                         Err((ActuationError::PermissionDenied, message))
                     }
                     Err(PermissionError::Expired) => Err((
+                        ActuationError::PermissionExpired,
+                        "Permission expired".to_string(),
+                    )),
+                }
+            }
+            Err(ReadError::NotFound) => {
+                let message = format!("Could not resolve vss_path of vss_id {}", vss_id);
+                Err((ActuationError::NotFound, message))
+            }
+            Err(ReadError::PermissionDenied) => {
+                let message = format!("Permission denied for vss_id {}", vss_id);
+                Err((ActuationError::PermissionDenied, message))
+            }
+            Err(ReadError::PermissionExpired) => Err((
+                ActuationError::PermissionExpired,
+                "Permission expired".to_string(),
+            )),
+        }
+    }
+
+    async fn validate_actuator_value(
+        &self,
+        vss_id: &i32,
+        data_value: &DataValue,
+    ) -> Result<(), (ActuationError, String)> {
+        let result_entry = self.get_entry_by_id(*vss_id).await;
+        match result_entry {
+            Ok(entry) => {
+                let validation = entry.validate_value(data_value);
+                let vss_path = entry.metadata.path;
+                match validation {
+                    Ok(_) => Ok(()),
+                    Err(UpdateError::OutOfBounds) => {
+                        let message = format!(
+                            "Out of bounds value provided for {}: {} | Expected range [min: {}, max: {}]",
+                            vss_path,
+                            data_value,
+                            entry.metadata.min.map_or("None".to_string(), |value| value.to_string()),
+                            entry.metadata.max.map_or("None".to_string(), |value| value.to_string()),
+                        );
+                        Err((ActuationError::OutOfBounds, message))
+                    }
+                    Err(UpdateError::UnsupportedType) => {
+                        let message = format!(
+                            "Unsupported type for vss_path {}. Expected type: {}",
+                            vss_path, entry.metadata.data_type
+                        );
+                        Err((ActuationError::UnsupportedType, message))
+                    }
+                    Err(UpdateError::WrongType) => {
+                        let message = format!(
+                            "Wrong type for vss_path {}. Expected type: {}",
+                            vss_path, entry.metadata.data_type
+                        );
+                        Err((ActuationError::WrongType, message))
+                    }
+                    // Redundant errors in case UpdateError includes new errors in the future
+                    Err(UpdateError::NotFound) => {
+                        let message = format!("Could not resolve vss_path {}", vss_path);
+                        Err((ActuationError::NotFound, message))
+                    }
+                    Err(UpdateError::PermissionDenied) => {
+                        let message = format!("Permission denied for vss_path {}", vss_path);
+                        Err((ActuationError::PermissionDenied, message))
+                    }
+                    Err(UpdateError::PermissionExpired) => Err((
                         ActuationError::PermissionExpired,
                         "Permission expired".to_string(),
                     )),
