@@ -7,6 +7,7 @@ This file contains an overview what the KUKSA Server and databroker each support
 | VISS V1                  |      -       |        -         |
 | VISS V2                  |     x/-      |       x/-        |
 | gRPC (kuksa)             |      x       |        -         |
+| gRPC (kuksa.val.v2)      |      -       |        x         |
 | gRPC (kuksa.val.v1)      |      -       |        x         |
 | gRPC (sdv.databroker.v1) |      -       |        x         |
 

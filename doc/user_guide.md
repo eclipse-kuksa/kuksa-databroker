@@ -266,6 +266,7 @@ It also supports bi-directional streaming between client and server.
 
 Kuksa Databroker implements the following service interfaces:
 
+- [kuksa.val.v2.VAL](../proto/kuksa/val/v2/val.proto)
 - [kuksa.val.v1.VAL](../proto/kuksa/val/v1/val.proto)
 - [sdv.databroker.v1.Broker](../proto/sdv/databroker/v1/broker.proto)
 - [sdv.databroker.v1.Collector](../proto/sdv/databroker/v1/collector.proto)

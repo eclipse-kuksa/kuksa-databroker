@@ -120,7 +120,7 @@ The quickest possible way to get Kuksa Databroker up and running.
 ### Reading and writing VSS data using the CLI
 
 1. Start the CLI in a container attached to the _kuksa_ bridge network and connect to the Databroker container:
-   The databroker supports both of `sdv.databroker.v1` and `kuksa.val.v1` as an API. Per default the databroker-cli uses the `sdv.databroker.v1` interface. To change it use `--protocol` option when starting. Choose either one of `kuksa-val-v1` and `sdv-databroker-v1`.
+   The databroker supports the lastest new API `kuksa.val.v2` and `kuksa.val.v1` by default, `sdv.databroker.v1` must be enabled using `--enable-databroker-v1`. Per default the databroker-cli uses the `sdv.databroker.v1` interface. To change it use `--protocol` option when starting. Choose either one of `kuksa-val-v1` and `sdv-databroker-v1`, databroker-cli still does not support  `kuksa.val.v2`.
 
    ```sh
    # in a new terminal
