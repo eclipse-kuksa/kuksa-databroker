@@ -88,6 +88,11 @@ Data is usually exchanged with ECUs by means of a CAN bus or Ethernet based prot
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+<!-- KUKSA ANALYSIS -->
+## Kuksa analysis
+Extended [Kuksa analysis](./doc/kuksa_analysis.md) containing functional requirements, use cases diagrams, latest and new API definition `kuksa.val.v2` as well as new design discussions for future developments and improvements.
+
+
 <!-- GETTING STARTED -->
 
 ## Getting started
