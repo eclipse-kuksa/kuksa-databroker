@@ -1,4 +1,5 @@
 # Design Topics
+The document aims to gather current design decisions, sketches, and incomplete ideas regarding various design topics. This includes areas where no decisions have been made yet, as well as topics where decisions may still be pending.
 
 # Design topics status
 | Description                               | Status                       |
@@ -44,7 +45,7 @@
     - [Alternative 3](#alternative-3)
 - [Split subscribe method due to performance reasons](#split-subscribe-method-due-to-performance-reasons)
 - [Service VAL better naming](#service-val-better-naming)
-- [Extend and split service definition for V3?](#extend-and-split-service-definition-for-v3)
+- [Extend and split service definition for kuksa.val.v3 (current latest version kuksa.val.v2)?](#extend-and-split-service-definition-for-kuksavalv3-current-latest-version-kuksavalv2)
 - [COVESA topics](#covesa-topics)
 
 # Data availability/persistence according to lifecycle of Client, Databroker and Provider
@@ -57,7 +58,7 @@
     Description:
    1. The data broker either ...
       * Stores last set values during its own lifecycle,
-      * ? stores values during the system's power cycle (i.e., "persists" values over own restarts, or
+      * Stores values during the system's power cycle (i.e., "persists" values over own restarts, or
       * store values over system's power cycles.
 
    2. How to "reset" values availability if its provider got inactive (without reseting the value)?
@@ -72,8 +73,8 @@
     Status: 🟢
     Current decisions:
       Only `ListMetadata` support wildcard due to complex error handling in the implementation and usability.
+      Also due to performance issues, i.e when calling `subscribe` since the wildcard was checked for each path and each response.
     Description:
- * Should `Get` and `Subscribe` calls support Wildcard request?
  * Do we want it only for `GetMetadata`?
 
 Reference -> [Wildcard](../wildcard_matching.md)
@@ -710,7 +711,7 @@ message SubscribeByIdResponse {
     Current decisions:
     Description:
 
-# Extend and split service definition for V3?
+# Extend and split service definition for kuksa.val.v3 (current latest version kuksa.val.v2)?
     Status: 🔴
     Current decisions:
     Description:
