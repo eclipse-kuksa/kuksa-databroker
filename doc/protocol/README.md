@@ -81,12 +81,12 @@ TLS is currently not supported.
 The VISS Standard is not applicable for gRPC protocols. Here is an overview what the gRPC API in KUKSA databroker is capable of:
 
 - Read: Reading VSS datapoints
-  - Reading current or target value for actuators
+  - Reading value for actuators (for kuksa.val.v1 current or target values)
   - Reading some metadata information from VSS datapoints
 - Write: Writing VSS datapoints
   - Writing sensor values
-  - Writing current or target value for actuators
+  - Writing value for actuators (for kuksa.val.v1 current or target value)
   - Soon: Writing some metadata information from VSS datapoints
 - Subscription: Subscribing VSS datapoints
   - Subscribing sensor values
-  - Subscribing current or target value for actuators
+  - Subscribing value for actuators (for kuksa.val.v1 current or target value)

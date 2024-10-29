@@ -104,7 +104,7 @@
     Status: 🟢
 
     Description: The Signal Consumer shall be able to actuate the value of an actuator. This value should be forwarded to the actuator's provider if the provider is available, provider to Vehicle Network and get an acknowledgment response back.
-      * Databroker should not store the target value but only forward it to the provider.
+      * Databroker should not store the provided value but only forward it to the provider.
 
       * IF no provider is connected
           THEN Signal Consumer shall receive an error that no provider is available.
@@ -117,7 +117,7 @@
     Status: 🟢
 
     Description: The Signal Consumer shall be able to actuate the values of multiple actuators simultaneously. These values should be forwarded to the corresponding actuators' providers only if all providers are available.
-      * Databroker should not store the target value but only forward them to the providers.
+      * Databroker should not store the provided value but only forward them to the providers.
 
       * IF any provider is not connected
           THEN Signal Consumer shall receive an error that no provider is available.

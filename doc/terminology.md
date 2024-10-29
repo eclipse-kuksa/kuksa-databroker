@@ -2,23 +2,25 @@
 
 This pages gives an overview about the terms we use, when talking about KUKSA components or systems built with KUKSA.
 
-* [Terminology](#terminology)
-* [KUKSA.val components](#kuksaval-components)
-   * [VSS Server](#vss-server)
-   * [Client](#client)
-   * [Clients: VSS Consumers](#clients-vss-consumers)
-   * [Clients: VSS Providers](#clients-vss-providers)
-      * [data-provider](#data-provider)
-      * [actuation-provider](#actuation-provider)
-* [Vehicle Signal Specification (VSS)](#vehicle-signal-specification-vss)
-   * [Signal](#signal)
-      * [Sensor](#sensor)
-      * [Actuator](#actuator)
-      * [Attribute](#attribute)
-   * [Value](#value)
-   * [Metadata](#metadata)
-   * [Overlay](#overlay)
-   * [Datapoint](#datapoint)
+- [Terminology](#terminology)
+- [KUKSA.val components](#kuksaval-components)
+  - [VSS Server](#vss-server)
+  - [Client](#client)
+  - [Clients: VSS Consumers](#clients-vss-consumers)
+  - [Clients: VSS Providers](#clients-vss-providers)
+    - [data-provider](#data-provider)
+    - [actuation-provider](#actuation-provider)
+- [Vehicle Signal Specification (VSS)](#vehicle-signal-specification-vss)
+  - [Signal](#signal)
+    - [Sensor](#sensor)
+    - [Actuator](#actuator)
+    - [Attribute](#attribute)
+  - [Value](#value)
+      - [for kuksa.val.v1](#for-kuksavalv1)
+      - [for kuksa.val.v2:](#for-kuksavalv2)
+  - [Metadata](#metadata)
+  - [Overlay](#overlay)
+  - [Datapoint](#datapoint)
 
 # KUKSA.val components
 
@@ -64,9 +66,9 @@ A data-provider intends to make sure that the actual state of a vehicle is curre
 Historically you also may still find the term "feeder", when referring to a data-provider.
 
 ### actuation-provider
-An actuation-provider is trying to ensure that the target value of a VSS actuator is reflected by the actual state of a vehicle.
+An actuation-provider is trying to ensure that the value (called `target_value` for `kuksa.val.v1`) of a VSS actuator is reflected by the actual state of a vehicle.
 
-To this end, an actuation-provider can subscribe to the target value of a VSS actuator in the server.
+To this end, an actuation-provider can subscribe to the value of a VSS actuator in the server.
 If a VSS consumer requests the _desired_ state of the VSS actuator `Vehicle.Body.Trunk.Rear.IsOpen` to be `true`, the actuation-provider for `Vehicle.Body.Trunk.Rear.IsOpen` would try to interact with a vehicle's system trying to unlock and open the trunk.
 
 While from the server's point of view, an actuation provider is just a client, actuation-providers can not be passive towards other in-vehicle systems. Therefore, considering safety in an actuation-provider or underlying systems is very important.
@@ -97,7 +99,13 @@ Actuators are signals that are  used to control the desired value of a property.
 Attributes are signals that have a default value, specified by its default member in VSS. Like sensors, attribute values can also change, similar to sensor values. The latter can be useful for attribute values that are likely to change during the lifetime of the vehicle. However, attribute values should typically not change more than once per ignition cycle. Example: `Vehicle.VehicleIdentification.VIN`. [[Source]](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/attributes/)
 
 ## Value
-The value of a signal. The data type of the value must match the data type specified in the VSS entry for the signal. Currently KUKSA.val supports the _current_value_ for sensors, actuators and attributes as well as _target_value_ for actuators
+The value of a signal. The data type of the value must match the data type specified in the VSS entry for the signal.
+
+#### for kuksa.val.v1
+kuksa.val.v1 supports the _current_value_ for sensors, actuators and attributes as well as _target_value_ for actuators
+
+#### for kuksa.val.v2:
+There is not _current value_ or _target value_ concepts, there are just simply _data value_ for sensors, actuators and attributes.
 
 ## Metadata
 Metadata of a VSS signal is data belonging to a signal, that is not the value. Standard VSS metadata are [unit](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_units/) and [datatype](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_types/) as well as some human readable description or comments. Custom metadata entries may be defined in [VSS overlays](https://covesa.github.io/vehicle_signal_specification/rule_set/overlay/). Currently KUKSA.val does not support custom metadata.
