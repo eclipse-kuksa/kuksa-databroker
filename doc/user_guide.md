@@ -171,6 +171,16 @@ Kuksa Databroker implements the following service interfaces:
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+
+## Current and target value concept vs data value concept.
+For some of the APIs (`sdv.databroker.v1` and `kuksa.val.v1`), the concepts of `current_value` and `target_value` were introduced to differentiate between the expected or desired value for an actuator and the current value published by the provider (both stored in the Databroker’s database).
+
+This concept has been removed in `kuksa.val.v2`. Now, there is only a single `data_value` for sensors and actuators, meaning that desired actuator values are simply forwarded from the Signal Consumer to the Databroker and then to the Provider. The Provider is responsible for updating the `data_value` received from the vehicle network.
+
+**Kuksa does not guarantee that the desired actuator value will be fully updated on the vehicle network; it only forwards actuator values from the Signal Consumer to the vehicle network.**
+
+**Do not mix different versions of APIs for providers and clients, as this will cause issues; kuksa.val.v2 is not backward compatible with sdv.databroker.v1 and kuksa.val.v1**
+
 ## sdv.databroker.v1 Query Syntax, disabled by default, use `--enable-databroker-v1` to enable it
 
 Clients can subscribe to updates of data entries of interest using an SQL-based [query syntax](./QUERY.md).
@@ -210,13 +220,6 @@ docker run --rm -it -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databroker:main -
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
-
-## Current and target value concept vs data value concept.
-For some of the APIs (`sdv.databroker.v1` and `kuksa.val.v1`), the concepts of `current_value` and `target_value` were introduced to differentiate between the expected or desired value for an actuator and the current value published by the provider (both stored in the Databroker’s database).
-
-This concept has been removed in `kuksa.val.v2`. Now, there is only a single `data_value` for sensors and actuators, meaning that desired actuator values are simply forwarded from the Signal Consumer to the Databroker and then to the Provider. The Provider is responsible for updating the `data_value` received from the vehicle network.
-
-Kuksa does not guarantee that the desired actuator value will be fully updated on the vehicle network; it only forwards actuator values from the Signal Consumer to the vehicle network.
 
 ## Signal Change Types
 
