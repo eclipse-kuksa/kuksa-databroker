@@ -631,6 +631,7 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tonic-mock",
+ "tonic-reflection",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -3138,6 +3139,19 @@ dependencies = [
  "http",
  "http-body",
  "prost",
+ "tonic",
+]
+
+[[package]]
+name = "tonic-reflection"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "548c227bd5c0fae5925812c4ec6c66ffcfced23ea370cb823f4d18f0fc1cb6a7"
+dependencies = [
+ "prost",
+ "prost-types",
+ "tokio",
+ "tokio-stream",
  "tonic",
 ]
 
