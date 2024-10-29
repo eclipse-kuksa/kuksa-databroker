@@ -267,6 +267,15 @@ cargo test --all-targets
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+## Performance
+The Kuksa team has released an official tool to measure the latency and throughput of the Databroker for all supported APIs:
+[kuksa-perf](https://github.com/eclipse-kuksa/kuksa-perf)
+
+The use case measures the time it takes for a signal to be transferred from the Provider to the Signal Consumer
+Signal Consumer(stream subscribe) <- Databroker <- Provider(stream publish)
+
+Feel free to use it and share your results with us!
+
 ## Contributing
 
 Please refer to the [Kuksa Contributing Guide](CONTRIBUTING.md).
