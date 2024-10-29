@@ -92,6 +92,15 @@ Data is usually exchanged with ECUs by means of a CAN bus or Ethernet based prot
 ## Kuksa analysis
 Extended [Kuksa analysis](./doc/kuksa_analysis.md) containing functional requirements, use cases diagrams, latest and new API definition `kuksa.val.v2` as well as new design discussions for future developments and improvements.
 
+### APIs supported by Databroker
+
+Kuksa Databroker implements the following service interfaces:
+
+- Enabled on Databroker by default [kuksa.val.v2.VAL](../proto/kuksa/val/v2/val.proto)
+- Enabled on Databroker by default [kuksa.val.v1.VAL](../proto/kuksa/val/v1/val.proto)
+- Disabled on Databroker by default [sdv.databroker.v1.Broker](../proto/sdv/databroker/v1/broker.proto)
+- Disabled on Databroker by default [sdv.databroker.v1.Collector](../proto/sdv/databroker/v1/collector.proto)
+
 
 <!-- GETTING STARTED -->
 

@@ -145,7 +145,33 @@ docker run --rm -it --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## Query Syntax
+## APIs supported by Databroker
+
+Kuksa Databroker provides [gRPC](https://grpc.io/) based API endpoints which can be used by
+clients to interact with the server.
+
+gRPC services are specified by means of `.proto` files which define the services and the data
+exchanged between server and client.
+
+[Tooling](https://grpc.io/docs/languages/) is available for most popular programming languages to create
+client stubs for invoking the services.
+
+The Databroker uses gRPC's default HTTP/2 transport and [protocol buffers](https://developers.google.com/protocol-buffers) for message serialization.
+The same `.proto` file can be used to generate server skeleton and client stubs for other transports and serialization formats as well.
+
+HTTP/2 is a binary replacement for HTTP/1.1 used for handling connections, multiplexing (channels) and providing a standardized way to add headers for authorization and TLS for encryption/authentication.
+It also supports bi-directional streaming between client and server.
+
+Kuksa Databroker implements the following service interfaces:
+
+- Enabled on Databroker by default [kuksa.val.v2.VAL](../proto/kuksa/val/v2/val.proto)
+- Enabled on Databroker by default [kuksa.val.v1.VAL](../proto/kuksa/val/v1/val.proto)
+- Disabled on Databroker by default, use `--enable-databroker-v1` to enable [sdv.databroker.v1.Broker](../proto/sdv/databroker/v1/broker.proto)
+- Disabled on Databroker by default, use `--enable-databroker-v1` to enable [sdv.databroker.v1.Collector](../proto/sdv/databroker/v1/collector.proto)
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+## Query Syntax, disabled by default, use `--enable-databroker-v1` to enable it
 
 Clients can subscribe to updates of data entries of interest using an SQL-based [query syntax](./QUERY.md).
 
@@ -229,7 +255,12 @@ Vehicle.Cabin.Door.Row1.Left.IsOpen:
   description: Is door open or closed
 ```
 
+#### For kuksa.val.v1:
+
 The change types currently apply on _current_ values, when subscribing to a _target value_, as an actuation provider would do, any set on the target value is propagated just like in `continuous` mode, even if a datapoint (and thus its current value behavior) is set to `onchange` or `static`. The idea here is, that a "set" by an application is the intent to actuate something (maybe a retry even), and should thus always be forwarded to the provider.
+
+#### For kuksa.val.v2:
+There is not _current value_ or _target value_ concepts, there are just simply _data value_ (`sensor` and `actuator`) which are registered as `continuous`
 
 ## Configuration Reference
 
@@ -247,31 +278,6 @@ The default configuration can be overridden by means of setting the correspondin
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## API
-
-Kuksa Databroker provides [gRPC](https://grpc.io/) based API endpoints which can be used by
-clients to interact with the server.
-
-gRPC services are specified by means of `.proto` files which define the services and the data
-exchanged between server and client.
-
-[Tooling](https://grpc.io/docs/languages/) is available for most popular programming languages to create
-client stubs for invoking the services.
-
-The Databroker uses gRPC's default HTTP/2 transport and [protocol buffers](https://developers.google.com/protocol-buffers) for message serialization.
-The same `.proto` file can be used to generate server skeleton and client stubs for other transports and serialization formats as well.
-
-HTTP/2 is a binary replacement for HTTP/1.1 used for handling connections, multiplexing (channels) and providing a standardized way to add headers for authorization and TLS for encryption/authentication.
-It also supports bi-directional streaming between client and server.
-
-Kuksa Databroker implements the following service interfaces:
-
-- [kuksa.val.v2.VAL](../proto/kuksa/val/v2/val.proto)
-- [kuksa.val.v1.VAL](../proto/kuksa/val/v1/val.proto)
-- [sdv.databroker.v1.Broker](../proto/sdv/databroker/v1/broker.proto)
-- [sdv.databroker.v1.Collector](../proto/sdv/databroker/v1/collector.proto)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Troubleshooting
 
