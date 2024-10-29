@@ -45,17 +45,27 @@ service VAL {
   // Subscribe to a set of signals using string path parameters
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the signals are non-existant.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied for any of the signals.
+  //   INVALID_ARGUMENT if the request is empty or provided path is too long
   //
-  // When subscribing the Broker shall immediately return the value for all
-  // subscribed entries. If no value is available when subscribing a DataPoint
-  // with value None shall be returned.
+  // When subscribing, Databroker shall immediately return the value for all
+  // subscribed entries.
+  // If a value isn't available when subscribing to a it, it should return None
+  //
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
 
   // Subscribe to a set of signals using i32 id parameters
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the signals are non-existant.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied for any of the signals.
+  //   INVALID_ARGUMENT if the request is empty
+  //
+  // When subscribing, Databroker shall immediately return the value for all
+  // subscribed entries.
+  // If a value isn't available when subscribing to a it, it should return None
+  //
   rpc SubscribeById(SubscribeByIdRequest) returns (stream SubscribeByIdResponse);
 
   // Actuate a single actuator
@@ -63,12 +73,16 @@ service VAL {
   // Returns (GRPC error code):
   //   NOT_FOUND if the actuator does not exist.
   //   PERMISSION_DENIED if access is denied for the actuator.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   UNAVAILABLE if there is no provider currently providing the actuator
+  //   DATA_LOSS is there is a internal TransmissionFailure
   //   INVALID_ARGUMENT
   //       - if the data type used in the request does not match
   //            the data type of the addressed signal
   //       - if the requested value is not accepted,
   //            e.g. if sending an unsupported enum value
+  //       - if the provided value is out of the min/max range specified
+  //
   rpc Actuate(ActuateRequest) returns (ActuateResponse);
 
   // Actuate simultaneously multiple actuators.
@@ -78,18 +92,25 @@ service VAL {
   // Returns (GRPC error code):
   //   NOT_FOUND if any of the actuators are non-existant.
   //   PERMISSION_DENIED if access is denied for any of the actuators.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   UNAVAILABLE if there is no provider currently providing an actuator
+  //   DATA_LOSS is there is a internal TransmissionFailure
   //   INVALID_ARGUMENT
   //       - if the data type used in the request does not match
   //            the data type of the addressed signal
   //       - if the requested value is not accepted,
   //            e.g. if sending an unsupported enum value
+  //       - if any of the provided actuators values are out of the min/max range specified
+  //
   rpc BatchActuate(BatchActuateRequest) returns (BatchActuateResponse);
 
   // List metadata of signals matching the request.
   //
   // Returns (GRPC error code):
   //   NOT_FOUND if the specified root branch does not exist.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
+  //   INVALID_ARGUMENT if the provided path or wildcard is wrong.
+  //
   rpc ListMetadata(ListMetadataRequest) returns (ListMetadataResponse);
 
   // Publish a signal value. Used for low frequency signals (e.g. attributes).
@@ -98,12 +119,14 @@ service VAL {
   //   NOT_FOUND if any of the signals are non-existant.
   //   PERMISSION_DENIED
   //       - if access is denied for any of the signals.
-  //       - if the signal is already provided by another provider.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   INVALID_ARGUMENT
   //       - if the data type used in the request does not match
   //            the data type of the addressed signal
   //       - if the published value is not accepted,
   //            e.g. if sending an unsupported enum value
+  //       - if the published value is out of the min/max range specified
+  //
   rpc PublishValue(PublishValueRequest) returns (PublishValueResponse);
 
   // Open a stream used to provide actuation and/or publishing values using
@@ -112,7 +135,31 @@ service VAL {
   //
   // The open stream is used for request / response type communication between the
   // provider and server (where the initiator of a request can vary).
-  // Errors are communicated as messages in the stream.
+  //
+  // Errors:
+  //    - Provider sends ProvideActuationRequest -> Databroker returns ProvideActuationResponse
+  //        Returns (GRPC error code) and closes the stream call (strict case).
+  //          NOT_FOUND if any of the signals are non-existant.
+  //          PERMISSION_DENIED if access is denied for any of the signals.
+  //          UNAUTHENTICATED if no credentials provided or credentials has expired
+  //          ALREADY_EXISTS if a provider already claimed the ownership of an actuator
+  //
+  //    - Provider sends PublishValuesRequest -> Databroker returns PublishValuesResponse
+  //        GRPC errors are returned as messages in the stream
+  //        response with the signal id `map<int32, Error> status = 2;` (permissive case)
+  //          NOT_FOUND if a signal is non-existant.
+  //          PERMISSION_DENIED
+  //              - if access is denied for a signal.
+  //          INVALID_ARGUMENT
+  //              - if the data type used in the request does not match
+  //                   the data type of the addressed signal
+  //              - if the published value is not accepted,
+  //                   e.g. if sending an unsupported enum value
+  //              - if the published value is out of the min/max range specified
+  //
+  //    - Provider returns BatchActuateStreamResponse <- Databroker sends BatchActuateStreamRequest
+  //        No error definition, a BatchActuateStreamResponse is expected from provider.
+  //
   rpc OpenProviderStream(stream OpenProviderStreamRequest) returns (stream OpenProviderStreamResponse);
 
   // Get server information
