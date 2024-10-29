@@ -211,6 +211,13 @@ docker run --rm -it -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databroker:main -
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+## Current and target value concept vs data value concept.
+For some of the APIs (`sdv.databroker.v1` and `kuksa.val.v1`), the concepts of `current_value` and `target_value` were introduced to differentiate between the expected or desired value for an actuator and the current value published by the provider (both stored in the Databroker’s database).
+
+This concept has been removed in `kuksa.val.v2`. Now, there is only a single `data_value` for sensors and actuators, meaning that desired actuator values are simply forwarded from the Signal Consumer to the Databroker and then to the Provider. The Provider is responsible for updating the `data_value` received from the vehicle network.
+
+Kuksa does not guarantee that the desired actuator value will be fully updated on the vehicle network; it only forwards actuator values from the Signal Consumer to the vehicle network.
+
 ## Signal Change Types
 
 Internally, databroker knows different change types for VSS signals. There are three change-types
@@ -260,7 +267,8 @@ Vehicle.Cabin.Door.Row1.Left.IsOpen:
 The change types currently apply on _current_ values, when subscribing to a _target value_, as an actuation provider would do, any set on the target value is propagated just like in `continuous` mode, even if a datapoint (and thus its current value behavior) is set to `onchange` or `static`. The idea here is, that a "set" by an application is the intent to actuate something (maybe a retry even), and should thus always be forwarded to the provider.
 
 #### For kuksa.val.v2:
-There is not _current value_ or _target value_ concepts, there are just simply _data value_ (`sensor` and `actuator`) which are registered as `continuous`
+The concept of _current value_ and _target value_ does not exist in `kuksa.val.v2`, there are just simply _data value_ for `sensor` and `actuator` which are registered by default as `continuous`.
+The change types apply to the _data value_, meaning that if `x-kuksa-changetype` is not specified (`continuous` by default), subscribers will be notified whenever the provider publishes a new value, whether there has been a change or not. Notifications for changes will only occur if the type is set to `onchange`.
 
 ## Configuration Reference
 
