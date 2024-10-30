@@ -87,7 +87,7 @@
  * Provider porvides signals values to Databroker as fast as receives data from the Vehicle Network.
 
 **Postconditions:**
- * A subscription is created, and Signal Consumer receives streaming of signals.
+ * A subscription is created, and the consumer receives updates for those signals where the state changes.
 
 **Sequence diagram:**
 
