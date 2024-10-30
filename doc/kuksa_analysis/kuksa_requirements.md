@@ -110,6 +110,7 @@
           THEN Signal Consumer shall receive an error that no provider is available.
           ELSE IF databroker successfully forwarded the value to the provider
             THEN Signal Consumer shall receive an acknowledgement of receipt.
+      * IF provided signal path is not an actuator Signal Consumer should receive an error.
 
 ### FR7-ASC
     Title: Actuate multiple actuators simultaneously with Databroker forwarded acknowledgment.
@@ -123,6 +124,7 @@
           THEN Signal Consumer shall receive an error that no provider is available.
           ELSE IF databroker successfully forwarded the values to all providers
             THEN Signal Consumer shall receive an acknowledgement of receipt.
+      * IF provided signal path is not an actuator Signal Consumer should receive an error.
 
 ### FR8-ASC
     Title: Provider availability detection for Signal Consumer
