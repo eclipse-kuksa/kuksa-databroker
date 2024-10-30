@@ -107,7 +107,7 @@
 
 
 ## UC3
-    Title: Signal Consumer actuates on an actuator.
+    Title: The consumer wants to set the value of an actuator signal.
 
     Status: 🟢
 
