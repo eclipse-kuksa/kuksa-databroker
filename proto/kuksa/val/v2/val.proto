@@ -28,6 +28,8 @@ service VAL {
   //   NOT_FOUND if the requested signal doesn't exist
   //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied
+  //   INVALID_ARGUMENT if the request is empty or provided path is too long
+  //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
   //
   rpc GetValue(GetValueRequest) returns (GetValueResponse);
 
@@ -39,6 +41,8 @@ service VAL {
   //   NOT_FOUND if any of the requested signals doesn't exist.
   //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied for any of the requested signals.
+  //   INVALID_ARGUMENT if the request is empty or provided path is too long
+  //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
   //
   rpc GetValues(GetValuesRequest) returns (GetValuesResponse);
 
@@ -48,6 +52,7 @@ service VAL {
   //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied for any of the signals.
   //   INVALID_ARGUMENT if the request is empty or provided path is too long
+  //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
   //
   // When subscribing, Databroker shall immediately return the value for all
   // subscribed entries.
@@ -60,7 +65,7 @@ service VAL {
   //   NOT_FOUND if any of the signals are non-existant.
   //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied for any of the signals.
-  //   INVALID_ARGUMENT if the request is empty
+  //   INVALID_ARGUMENT if the request is empty or provided path is too long
   //
   // When subscribing, Databroker shall immediately return the value for all
   // subscribed entries.
@@ -77,6 +82,7 @@ service VAL {
   //   UNAVAILABLE if there is no provider currently providing the actuator
   //   DATA_LOSS is there is a internal TransmissionFailure
   //   INVALID_ARGUMENT
+  //       - if the provided path is not an actuator.
   //       - if the data type used in the request does not match
   //            the data type of the addressed signal
   //       - if the requested value is not accepted,
@@ -96,6 +102,7 @@ service VAL {
   //   UNAVAILABLE if there is no provider currently providing an actuator
   //   DATA_LOSS is there is a internal TransmissionFailure
   //   INVALID_ARGUMENT
+  //       - if any of the provided path is not an actuator.
   //       - if the data type used in the request does not match
   //            the data type of the addressed signal
   //       - if the requested value is not accepted,

@@ -383,9 +383,17 @@ impl From<&broker::UpdateError> for proto::Error {
                 code: proto::ErrorCode::InvalidArgument.into(),
                 message: "Wrong Type".to_string(),
             },
-            broker::UpdateError::OutOfBounds => proto::Error {
+            broker::UpdateError::OutOfBoundsAllowed => proto::Error {
                 code: proto::ErrorCode::InvalidArgument.into(),
-                message: "Out of Bounds".to_string(),
+                message: "Out of Bounds Allowed".to_string(),
+            },
+            broker::UpdateError::OutOfBoundsMinMax => proto::Error {
+                code: proto::ErrorCode::InvalidArgument.into(),
+                message: "Out of Bounds MinMax".to_string(),
+            },
+            broker::UpdateError::OutOfBoundsType => proto::Error {
+                code: proto::ErrorCode::InvalidArgument.into(),
+                message: "Out of Bounds Type".to_string(),
             },
             broker::UpdateError::UnsupportedType => proto::Error {
                 code: proto::ErrorCode::InvalidArgument.into(),
@@ -455,9 +463,17 @@ impl broker::UpdateError {
                 tonic::Code::InvalidArgument,
                 format!("Wrong type provided (id: {})", id),
             ),
-            broker::UpdateError::OutOfBounds => tonic::Status::new(
+            broker::UpdateError::OutOfBoundsAllowed => tonic::Status::new(
                 tonic::Code::InvalidArgument,
-                format!("Value out of bounds (id: {})", id),
+                format!("Value out of allowed bounds (id: {})", id),
+            ),
+            broker::UpdateError::OutOfBoundsMinMax => tonic::Status::new(
+                tonic::Code::InvalidArgument,
+                format!("Value out of min/max bounds (id: {})", id),
+            ),
+            broker::UpdateError::OutOfBoundsType => tonic::Status::new(
+                tonic::Code::InvalidArgument,
+                format!("Value out of type bounds (id: {})", id),
             ),
             broker::UpdateError::UnsupportedType => tonic::Status::new(
                 tonic::Code::InvalidArgument,

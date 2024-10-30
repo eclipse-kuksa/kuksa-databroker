@@ -688,11 +688,27 @@ fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> Da
                 message: "cannot set datapoint to value of unsupported type".to_string(),
             }),
         },
-        broker::UpdateError::OutOfBounds => DataEntryError {
+        broker::UpdateError::OutOfBoundsAllowed => DataEntryError {
             path: path.clone(),
             error: Some(proto::Error {
                 code: 400,
-                reason: String::from("value out of bounds"),
+                reason: String::from("value out of allowed bounds"),
+                message: String::from("given value exceeds type's boundaries"),
+            }),
+        },
+        broker::UpdateError::OutOfBoundsMinMax => DataEntryError {
+            path: path.clone(),
+            error: Some(proto::Error {
+                code: 400,
+                reason: String::from("value out of min/max bounds"),
+                message: String::from("given value exceeds type's boundaries"),
+            }),
+        },
+        broker::UpdateError::OutOfBoundsType => DataEntryError {
+            path: path.clone(),
+            error: Some(proto::Error {
+                code: 400,
+                reason: String::from("value out of type bounds"),
                 message: String::from("given value exceeds type's boundaries"),
             }),
         },

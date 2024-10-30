@@ -50,7 +50,9 @@ pub enum ActuationError {
 pub enum UpdateError {
     NotFound,
     WrongType,
-    OutOfBounds,
+    OutOfBoundsAllowed,
+    OutOfBoundsMinMax,
+    OutOfBoundsType,
     UnsupportedType,
     PermissionDenied,
     PermissionExpired,
@@ -247,6 +249,12 @@ impl Entry {
         update
     }
 
+    pub fn validate_actuator_value(&self, data_value: &DataValue) -> Result<(), UpdateError> {
+        self.validate_value(data_value)?;
+        self.validate_allowed(data_value)?;
+        Ok(())
+    }
+
     pub fn validate(&self, update: &EntryUpdate) -> Result<(), UpdateError> {
         if let Some(datapoint) = &update.datapoint {
             self.validate_value(&datapoint.value)?;
@@ -314,56 +322,56 @@ impl Entry {
                 (DataValue::BoolArray(allowed_values), DataValue::Bool(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::DoubleArray(allowed_values), DataValue::Double(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::FloatArray(allowed_values), DataValue::Float(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::Int32Array(allowed_values), DataValue::Int32(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::Int64Array(allowed_values), DataValue::Int64(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::StringArray(allowed_values), DataValue::String(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::Uint32Array(allowed_values), DataValue::Uint32(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::Uint64Array(allowed_values), DataValue::Uint64(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::BoolArray(allowed_values), DataValue::BoolArray(value)) => {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -372,7 +380,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -381,7 +389,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -390,7 +398,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -399,7 +407,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -408,7 +416,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -417,7 +425,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -426,7 +434,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -446,14 +454,14 @@ impl Entry {
             debug!("Checking min, comparing value {:?} and {:?}", value, min);
             match value.greater_than_equal(min) {
                 Ok(true) => {}
-                _ => return Err(UpdateError::OutOfBounds),
+                _ => return Err(UpdateError::OutOfBoundsMinMax),
             };
         }
         if let Some(max) = &self.metadata.max {
             debug!("Checking max, comparing value {:?} and {:?}", value, max);
             match value.less_than_equal(max) {
                 Ok(true) => {}
-                _ => return Err(UpdateError::OutOfBounds),
+                _ => return Err(UpdateError::OutOfBoundsMinMax),
             };
         }
         Ok(())
@@ -497,14 +505,14 @@ impl Entry {
             DataType::Int8 => match value {
                 DataValue::Int32(value) => match i8::try_from(*value) {
                     Ok(_) => Ok(()),
-                    Err(_) => Err(UpdateError::OutOfBounds),
+                    Err(_) => Err(UpdateError::OutOfBoundsType),
                 },
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Int16 => match value {
                 DataValue::Int32(value) => match i16::try_from(*value) {
                     Ok(_) => Ok(()),
-                    Err(_) => Err(UpdateError::OutOfBounds),
+                    Err(_) => Err(UpdateError::OutOfBoundsType),
                 },
                 _ => Err(UpdateError::WrongType),
             },
@@ -520,14 +528,14 @@ impl Entry {
             DataType::Uint8 => match value {
                 DataValue::Uint32(value) => match u8::try_from(*value) {
                     Ok(_) => Ok(()),
-                    Err(_) => Err(UpdateError::OutOfBounds),
+                    Err(_) => Err(UpdateError::OutOfBoundsType),
                 },
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint16 => match value {
                 DataValue::Uint32(value) => match u16::try_from(*value) {
                     Ok(_) => Ok(()),
-                    Err(_) => Err(UpdateError::OutOfBounds),
+                    Err(_) => Err(UpdateError::OutOfBoundsType),
                 },
                 _ => Err(UpdateError::WrongType),
             },
@@ -563,7 +571,7 @@ impl Entry {
                                 Ok(_) => {}
                                 Err(err) => return Err(err),
                             },
-                            Err(_) => return Err(UpdateError::OutOfBounds),
+                            Err(_) => return Err(UpdateError::OutOfBoundsType),
                         }
                     }
                     Ok(())
@@ -578,7 +586,7 @@ impl Entry {
                                 Ok(_) => {}
                                 Err(err) => return Err(err),
                             },
-                            Err(_) => return Err(UpdateError::OutOfBounds),
+                            Err(_) => return Err(UpdateError::OutOfBoundsType),
                         }
                     }
                     Ok(())
@@ -619,7 +627,7 @@ impl Entry {
                                     Err(err) => return Err(err),
                                 }
                             }
-                            Err(_) => return Err(UpdateError::OutOfBounds),
+                            Err(_) => return Err(UpdateError::OutOfBoundsType),
                         }
                     }
                     Ok(())
@@ -636,7 +644,7 @@ impl Entry {
                                     Err(err) => return Err(err),
                                 }
                             }
-                            Err(_) => return Err(UpdateError::OutOfBounds),
+                            Err(_) => return Err(UpdateError::OutOfBoundsType),
                         }
                     }
                     Ok(())
@@ -1758,7 +1766,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         for actuation_change in &actuation_changes {
             let vss_id = actuation_change.id;
             self.can_write_actuator_target(&vss_id).await?;
-            self.validate_actuator_value(&vss_id, &actuation_change.data_value)
+            self.validate_actuator_update(&vss_id, &actuation_change.data_value)
                 .await?;
         }
 
@@ -1811,7 +1819,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         let vss_id = *vss_id;
 
         self.can_write_actuator_target(&vss_id).await?;
-        self.validate_actuator_value(&vss_id, data_value).await?;
+        self.validate_actuator_update(&vss_id, data_value).await?;
 
         let read_subscription_guard = self.broker.subscriptions.read().await;
         let opt_actuation_subscription = &read_subscription_guard
@@ -1886,7 +1894,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         }
     }
 
-    async fn validate_actuator_value(
+    async fn validate_actuator_update(
         &self,
         vss_id: &i32,
         data_value: &DataValue,
@@ -1894,31 +1902,52 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         let result_entry = self.get_entry_by_id(*vss_id).await;
         match result_entry {
             Ok(entry) => {
-                let validation = entry.validate_value(data_value);
-                let vss_path = entry.metadata.path;
+                let metadata = entry.metadata.clone();
+                let vss_path = metadata.path;
+                if metadata.entry_type != EntryType::Actuator {
+                    let message = format!("Tried to set a value for a non-actuator: {}", vss_path);
+                    return Err((ActuationError::WrongType, message));
+                }
+                let validation = entry.validate_actuator_value(data_value);
                 match validation {
                     Ok(_) => Ok(()),
-                    Err(UpdateError::OutOfBounds) => {
+                    Err(UpdateError::OutOfBoundsMinMax) => {
                         let message = format!(
-                            "Out of bounds value provided for {}: {} | Expected range [min: {}, max: {}]",
+                            "Out of bounds min/max value provided for {}: {} | Expected range [min: {}, max: {}]",
                             vss_path,
                             data_value,
-                            entry.metadata.min.map_or("None".to_string(), |value| value.to_string()),
-                            entry.metadata.max.map_or("None".to_string(), |value| value.to_string()),
+                            metadata.min.map_or("None".to_string(), |value| value.to_string()),
+                            metadata.max.map_or("None".to_string(), |value| value.to_string()),
                         );
-                        Err((ActuationError::OutOfBounds, message))
+                        Err((ActuationError::OutOfBounds, message.to_string()))
+                    }
+                    Err(UpdateError::OutOfBoundsAllowed) => {
+                        let message = format!(
+                            "Out of bounds allowed value provided for {}: {} | Expected values [{}]",
+                            vss_path,
+                            data_value,
+                            metadata.allowed.map_or("None".to_string(), |value| value.to_string())
+                        );
+                        Err((ActuationError::OutOfBounds, message.to_string()))
+                    }
+                    Err(UpdateError::OutOfBoundsType) => {
+                        let message = format!(
+                            "Out of bounds type value provided for {}: {} | overflow for {}",
+                            vss_path, data_value, metadata.data_type,
+                        );
+                        Err((ActuationError::OutOfBounds, message.to_string()))
                     }
                     Err(UpdateError::UnsupportedType) => {
                         let message = format!(
                             "Unsupported type for vss_path {}. Expected type: {}",
-                            vss_path, entry.metadata.data_type
+                            vss_path, metadata.data_type
                         );
                         Err((ActuationError::UnsupportedType, message))
                     }
                     Err(UpdateError::WrongType) => {
                         let message = format!(
                             "Wrong type for vss_path {}. Expected type: {}",
-                            vss_path, entry.metadata.data_type
+                            vss_path, metadata.data_type
                         );
                         Err((ActuationError::WrongType, message))
                     }
@@ -2510,7 +2539,7 @@ pub mod tests {
         match helper_add_int8(&broker, "test.datapoint1", -6, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2525,7 +2554,7 @@ pub mod tests {
         match helper_add_int8(&broker, "test.datapoint3", 11, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2597,7 +2626,7 @@ pub mod tests {
         match helper_add_int16(&broker, "test.datapoint1", -6, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2612,7 +2641,7 @@ pub mod tests {
         match helper_add_int16(&broker, "test.datapoint3", 11, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2684,7 +2713,7 @@ pub mod tests {
         match helper_add_int32(&broker, "test.datapoint1", -501, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2713,7 +2742,7 @@ pub mod tests {
         match helper_add_int32(&broker, "test.datapoint1", 1001, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2792,7 +2821,7 @@ pub mod tests {
         match helper_add_int64(&broker, "test.datapoint1", -500001, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2807,7 +2836,7 @@ pub mod tests {
         match helper_add_int64(&broker, "test.datapoint3", 10000001, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2879,7 +2908,7 @@ pub mod tests {
         match helper_add_uint8(&broker, "test.datapoint1", 2, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2894,7 +2923,7 @@ pub mod tests {
         match helper_add_uint8(&broker, "test.datapoint3", 27, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2968,7 +2997,7 @@ pub mod tests {
         match helper_add_int32array(&broker, "test.datapoint1", -501, -500, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -2976,7 +3005,7 @@ pub mod tests {
         match helper_add_int32array(&broker, "test.datapoint2", -500, -501, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -3005,14 +3034,14 @@ pub mod tests {
         match helper_add_int32array(&broker, "test.datapoint1", 1001, 1000, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
         match helper_add_int32array(&broker, "test.datapoint2", 100, 1001, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -3093,7 +3122,7 @@ pub mod tests {
         match helper_add_doublearray(&broker, "test.datapoint1", -500.3, -500.0, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -3101,7 +3130,7 @@ pub mod tests {
         match helper_add_doublearray(&broker, "test.datapoint2", -500.0, -500.3, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -3118,7 +3147,7 @@ pub mod tests {
         match helper_add_doublearray(&broker, "test.datapoint4", 1000.3, 1000.0, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
@@ -3127,7 +3156,7 @@ pub mod tests {
         match helper_add_doublearray(&broker, "test.datapoint5", 1000.0, 1000.3, timestamp).await {
             Err(err_vec) => {
                 assert_eq!(err_vec.len(), 1);
-                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBounds)
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
             }
             _ => panic!("Failure expected"),
         }
