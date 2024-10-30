@@ -26,6 +26,7 @@ use tokio::signal::unix::{signal, SignalKind};
 #[cfg(feature = "tls")]
 use tracing::warn;
 use tracing::{debug, error, info};
+use std::thread::available_parallelism;
 
 use clap::{Arg, ArgAction, Command};
 
@@ -170,8 +171,7 @@ async fn read_metadata_file<'a, 'b>(
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let version = option_env!("CARGO_PKG_VERSION").unwrap_or_default();
 
     let about = format!(
@@ -249,10 +249,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .arg(
             Arg::new("enable-databroker-v1")
-                .display_order(30)
+                .display_order(33)
                 .long("enable-databroker-v1")
                 .help("Enable sdv.databroker.v1 (GRPC) service")
                 .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("worker-threads")
+                .display_order(34)
+                .long("worker-threads")
+                .help("How many worker threads will be spawned by the tokio runtime. Default is as many cores are detected on the system")
+                .value_name("WORKER_THREADS")
+                .required(false)
+                .env("KUKSA_WORKER_THREADS")
+                .value_parser(clap::value_parser!(usize))
         );
 
     #[cfg(feature = "tls")]
@@ -319,154 +329,168 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
     }
 
+
+
     let args = parser.get_matches();
 
-    // install global collector configured based on RUST_LOG env var.
-    databroker::init_logging();
 
-    info!("Starting Kuksa Databroker {}", version);
+    let cores = available_parallelism().unwrap().get();
+    let worker_threads: &usize = args.get_one::<usize>("worker-threads").unwrap_or(&cores);
+    
 
-    let ip_addr = args.get_one::<String>("address").unwrap().parse()?;
-    let port = args
-        .get_one::<u16>("port")
-        .expect("port should be a number");
-    let addr = std::net::SocketAddr::new(ip_addr, *port);
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(*worker_threads)
+        .enable_all()
+        .build()
+        .unwrap();
 
-    let broker = broker::DataBroker::new(version);
-    let database = broker.authorized_access(&permissions::ALLOW_ALL);
+    runtime.block_on(async {
+        // install global collector configured based on RUST_LOG env var.
+        databroker::init_logging();
 
-    add_kuksa_attribute(
-        &database,
-        "Kuksa.Databroker.GitVersion".to_owned(),
-        option_env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
-            .unwrap_or("N/A")
-            .to_owned(),
-        "Databroker version as reported by GIT".to_owned(),
-    )
-    .await;
+        info!("Starting Kuksa Databroker {}", version);
 
-    add_kuksa_attribute(
-        &database,
-        "Kuksa.Databroker.CargoVersion".to_owned(),
-        option_env!("CARGO_PKG_VERSION").unwrap_or("N/A").to_owned(),
-        "Databroker version as reported by GIT".to_owned(),
-    )
-    .await;
+        let ip_addr = args.get_one::<String>("address").unwrap().parse()?;
+        let port = args
+            .get_one::<u16>("port")
+            .expect("port should be a number");
+        let addr = std::net::SocketAddr::new(ip_addr, *port);
 
-    add_kuksa_attribute(
-        &database,
-        "Kuksa.Databroker.CommitSha".to_owned(),
-        option_env!("VERGEN_GIT_SHA").unwrap_or("N/A").to_owned(),
-        "Commit SHA of current version".to_owned(),
-    )
-    .await;
+        let broker = broker::DataBroker::new(version);
+        let database = broker.authorized_access(&permissions::ALLOW_ALL);
 
-    if let Some(metadata_filenames) = args.get_many::<String>("vss-file") {
-        for filename in metadata_filenames {
-            read_metadata_file(&database, filename).await?;
+        add_kuksa_attribute(
+            &database,
+            "Kuksa.Databroker.GitVersion".to_owned(),
+            option_env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
+                .unwrap_or("N/A")
+                .to_owned(),
+            "Databroker version as reported by GIT".to_owned(),
+        )
+        .await;
+
+        add_kuksa_attribute(
+            &database,
+            "Kuksa.Databroker.CargoVersion".to_owned(),
+            option_env!("CARGO_PKG_VERSION").unwrap_or("N/A").to_owned(),
+            "Databroker version as reported by GIT".to_owned(),
+        )
+        .await;
+
+        add_kuksa_attribute(
+            &database,
+            "Kuksa.Databroker.CommitSha".to_owned(),
+            option_env!("VERGEN_GIT_SHA").unwrap_or("N/A").to_owned(),
+            "Commit SHA of current version".to_owned(),
+        )
+        .await;
+
+        if let Some(metadata_filenames) = args.get_many::<String>("vss-file") {
+            for filename in metadata_filenames {
+                read_metadata_file(&database, filename).await?;
+            }
         }
-    }
 
-    #[cfg(feature = "tls")]
-    let tls_config = if args.get_flag("insecure") {
-        ServerTLS::Disabled
-    } else {
-        let cert_file = args.get_one::<String>("tls-cert");
-        let key_file = args.get_one::<String>("tls-private-key");
-        match (cert_file, key_file) {
-            (Some(cert_file), Some(key_file)) => {
-                let cert = std::fs::read(cert_file)?;
-                let key = std::fs::read(key_file)?;
-                let identity = tonic::transport::Identity::from_pem(cert, key);
-                ServerTLS::Enabled {
-                    tls_config: tonic::transport::ServerTlsConfig::new().identity(identity),
+        #[cfg(feature = "tls")]
+        let tls_config = if args.get_flag("insecure") {
+            ServerTLS::Disabled
+        } else {
+            let cert_file = args.get_one::<String>("tls-cert");
+            let key_file = args.get_one::<String>("tls-private-key");
+            match (cert_file, key_file) {
+                (Some(cert_file), Some(key_file)) => {
+                    let cert = std::fs::read(cert_file)?;
+                    let key = std::fs::read(key_file)?;
+                    let identity = tonic::transport::Identity::from_pem(cert, key);
+                    ServerTLS::Enabled {
+                        tls_config: tonic::transport::ServerTlsConfig::new().identity(identity),
+                    }
+                }
+                (Some(_), None) => {
+                    return Err(
+                        "TLS private key (--tls-private-key) must be set if --tls-cert is.".into(),
+                    );
+                }
+                (None, Some(_)) => {
+                    return Err(
+                        "TLS certificate (--tls-cert) must be set if --tls-private-key is.".into(),
+                    );
+                }
+                (None, None) => {
+                    warn!(
+                        "TLS is not enabled. Default behavior of accepting insecure connections \
+                        when TLS is not configured may change in the future! \
+                        Please use --insecure to explicitly enable this behavior."
+                    );
+                    ServerTLS::Disabled
                 }
             }
-            (Some(_), None) => {
-                return Err(
-                    "TLS private key (--tls-private-key) must be set if --tls-cert is.".into(),
-                );
-            }
-            (None, Some(_)) => {
-                return Err(
-                    "TLS certificate (--tls-cert) must be set if --tls-private-key is.".into(),
-                );
-            }
-            (None, None) => {
-                warn!(
-                    "TLS is not enabled. Default behavior of accepting insecure connections \
-                     when TLS is not configured may change in the future! \
-                     Please use --insecure to explicitly enable this behavior."
-                );
-                ServerTLS::Disabled
-            }
-        }
-    };
-
-    let enable_authorization = !args.get_flag("disable-authorization");
-    let jwt_public_key = match args.get_one::<String>("jwt-public-key") {
-        Some(pub_key_filename) => match std::fs::read_to_string(pub_key_filename) {
-            Ok(pub_key) => {
-                info!("Using '{pub_key_filename}' to authenticate access tokens");
-                Ok(Some(pub_key))
-            }
-            Err(err) => {
-                error!("Failed to open file {:?}: {}", pub_key_filename, err);
-                Err(err)
-            }
-        },
-        None => Ok(None),
-    }?;
-
-    let authorization = match (enable_authorization, jwt_public_key) {
-        (true, Some(pub_key)) => Authorization::new(pub_key)?,
-        (true, None) => {
-            warn!("Authorization is not enabled.");
-            Authorization::Disabled
-        }
-        (false, _) => Authorization::Disabled,
-    };
-
-    #[cfg(feature = "viss")]
-    {
-        let viss_bind_addr = if args.contains_id("viss-address") {
-            args.get_one::<String>("viss-address").unwrap().parse()?
-        } else {
-            args.get_one::<String>("address").unwrap().parse()?
         };
 
-        let viss_port = args
-            .get_one::<u16>("viss-port")
-            .expect("port should be a number");
-        let viss_addr = std::net::SocketAddr::new(viss_bind_addr, *viss_port);
-
-        if args.get_flag("enable-viss") {
-            let broker = broker.clone();
-            let authorization = authorization.clone();
-            tokio::spawn(async move {
-                if let Err(err) = viss::server::serve(viss_addr, broker, authorization).await {
-                    error!("{err}");
+        let enable_authorization = !args.get_flag("disable-authorization");
+        let jwt_public_key = match args.get_one::<String>("jwt-public-key") {
+            Some(pub_key_filename) => match std::fs::read_to_string(pub_key_filename) {
+                Ok(pub_key) => {
+                    info!("Using '{pub_key_filename}' to authenticate access tokens");
+                    Ok(Some(pub_key))
                 }
-            });
+                Err(err) => {
+                    error!("Failed to open file {:?}: {}", pub_key_filename, err);
+                    Err(err)
+                }
+            },
+            None => Ok(None),
+        }?;
+
+        let authorization = match (enable_authorization, jwt_public_key) {
+            (true, Some(pub_key)) => Authorization::new(pub_key)?,
+            (true, None) => {
+                warn!("Authorization is not enabled.");
+                Authorization::Disabled
+            }
+            (false, _) => Authorization::Disabled,
+        };
+
+        #[cfg(feature = "viss")]
+        {
+            let viss_bind_addr = if args.contains_id("viss-address") {
+                args.get_one::<String>("viss-address").unwrap().parse()?
+            } else {
+                args.get_one::<String>("address").unwrap().parse()?
+            };
+
+            let viss_port = args
+                .get_one::<u16>("viss-port")
+                .expect("port should be a number");
+            let viss_addr = std::net::SocketAddr::new(viss_bind_addr, *viss_port);
+
+            if args.get_flag("enable-viss") {
+                let broker = broker.clone();
+                let authorization = authorization.clone();
+                tokio::spawn(async move {
+                    if let Err(err) = viss::server::serve(viss_addr, broker, authorization).await {
+                        error!("{err}");
+                    }
+                });
+            }
         }
-    }
 
-    let mut apis = vec![grpc::server::Api::KuksaValV1];
+        let mut apis = vec![grpc::server::Api::KuksaValV1];
 
-    if args.get_flag("enable-databroker-v1") {
-        apis.push(grpc::server::Api::SdvDatabrokerV1);
-    }
-
-    grpc::server::serve(
-        addr,
-        broker,
-        #[cfg(feature = "tls")]
-        tls_config,
-        &apis,
-        authorization,
-        shutdown_handler(),
-    )
-    .await?;
+        if args.get_flag("enable-databroker-v1") {
+            apis.push(grpc::server::Api::SdvDatabrokerV1);
+        }
+        grpc::server::serve(
+            addr,
+            broker,
+            #[cfg(feature = "tls")]
+            tls_config,
+            &apis,
+            authorization,
+            shutdown_handler(),
+        )
+        .await
+    })?;
 
     Ok(())
 }
