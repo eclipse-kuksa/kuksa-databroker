@@ -21,12 +21,12 @@ use databroker::broker::RegistrationError;
 #[cfg(feature = "tls")]
 use databroker::grpc::server::ServerTLS;
 
+use std::thread::available_parallelism;
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 #[cfg(feature = "tls")]
 use tracing::warn;
 use tracing::{debug, error, info};
-use std::thread::available_parallelism;
 
 use clap::{Arg, ArgAction, Command};
 
@@ -329,14 +329,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
     }
 
-
-
     let args = parser.get_matches();
-
 
     let cores = available_parallelism().unwrap().get();
     let worker_threads: &usize = args.get_one::<usize>("worker-threads").unwrap_or(&cores);
-    
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(*worker_threads)
