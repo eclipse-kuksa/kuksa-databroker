@@ -7,6 +7,7 @@ This file contains an overview what the KUKSA Server and databroker each support
 | VISS V1                  |      -       |        -         |
 | VISS V2                  |     x/-      |       x/-        |
 | gRPC (kuksa)             |      x       |        -         |
+| gRPC (kuksa.val.v2)      |      -       |        x         |
 | gRPC (kuksa.val.v1)      |      -       |        x         |
 | gRPC (sdv.databroker.v1) |      -       |        x         |
 
@@ -42,6 +43,10 @@ x<sup>2</sup> Relies on the non-standard `attribute` values which doesn't work w
 
 For a more detailed view of the supported JSON-schemas [click here](https://github.com/eclipse/kuksa.val/blob/master/kuksa-val-server/include/VSSRequestJsonSchema.hpp)
 
+### sdv.databroker.v1 in KUKSA Databroker
+
+To enable the legacy `sdv.databroker.v1` API you must start Databroker with the `--enable-databroker-v1` argument.
+
 ### VISSv2 in KUKSA Databroker
 
 KUKSA databroker aims to provide a standards compliant implementation of VISSv2 (using the websocket transport).
@@ -60,6 +65,9 @@ The `enable-viss` flag must be provided at startup in order to enable the VISSv2
 $ databroker --enable-viss
 ```
 
+The arguments `--viss-address` and `--viss-port` can be used if you want to use a different address or port than default for VISS.
+If not specified, the address `127.0.0.1` will be used unless otherwise specified with `--address`, and the port 8090 will be used.
+
 Using kuksa-client, the VISSv2 interface of databroker is available using the `ws` protocol in the uri, i.e.:
 
 ```shell
@@ -73,12 +81,12 @@ TLS is currently not supported.
 The VISS Standard is not applicable for gRPC protocols. Here is an overview what the gRPC API in KUKSA databroker is capable of:
 
 - Read: Reading VSS datapoints
-  - Reading current or target value for actuators
+  - Reading value for actuators (for kuksa.val.v1 current or target values)
   - Reading some metadata information from VSS datapoints
 - Write: Writing VSS datapoints
   - Writing sensor values
-  - Writing current or target value for actuators
+  - Writing value for actuators (for kuksa.val.v1 current or target value)
   - Soon: Writing some metadata information from VSS datapoints
 - Subscription: Subscribing VSS datapoints
   - Subscribing sensor values
-  - Subscribing current or target value for actuators
+  - Subscribing value for actuators (for kuksa.val.v1 current or target value)

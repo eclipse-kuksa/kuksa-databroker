@@ -60,7 +60,7 @@ The [COVESA Vehicle Signal Specification](https://covesa.github.io/vehicle_signa
 
 However, VSS does not define how these signals are to be collected and managed within a vehicle, nor does it prescribe how other components in the vehicle can read or write signal values from and to the tree.
 
-**Kuksa Databroker** is a resource efficient implementation of the VSS signal tree and is intended to be run within a vehicle on a microprocessor based platform. It allows applications in the vehicle to interact with the vehicle's sensors and actuators using a uniform, high level gRPC API for querying signals, updating current and target values of sensors and actuators and getting notified about changes to signals of interest.
+**Kuksa Databroker** is a resource efficient implementation of the VSS signal tree and is intended to be run within a vehicle on a microprocessor based platform. It allows applications in the vehicle to interact with the vehicle's sensors and actuators using a uniform, high level gRPC API for querying signals, updating values of sensors and actuators and getting notified about changes to signals of interest.
 
 <!-- black box diagram -- inputs/outputs -->
 
@@ -85,6 +85,21 @@ Data is usually exchanged with ECUs by means of a CAN bus or Ethernet based prot
 - 100% Open Source (Apache 2.0 license)
 - Written in Rust with an easy-to-use language agnostic gRPC interface
 - Lightweight (<4 MB statically compiled), allowing it to run on even small vehicle computers
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- KUKSA ANALYSIS -->
+## Kuksa analysis
+Extended [Kuksa analysis](./doc/kuksa_analysis.md) containing functional requirements, use cases diagrams, latest and new API definition `kuksa.val.v2` as well as new design discussions for future developments and improvements.
+
+### APIs supported by Databroker
+
+Kuksa Databroker implements the following service interfaces:
+
+- Enabled on Databroker by default [kuksa.val.v2.VAL](proto/kuksa/val/v2/val.proto) (recommended to use)
+- Enabled on Databroker by default [kuksa.val.v1.VAL](proto/kuksa/val/v1/val.proto)
+- Disabled on Databroker by default [sdv.databroker.v1.Broker](proto/sdv/databroker/v1/broker.proto)
+- Disabled on Databroker by default [sdv.databroker.v1.Collector](proto/sdv/databroker/v1/collector.proto)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -114,10 +129,13 @@ The quickest possible way to get Kuksa Databroker up and running.
 
    > :bulb: **Tip:** You can stop the container using `ctrl-c`.
 
+*Note that not all APIs are enabled by default, see [user guide](doc/user_guide.md) and*
+*[protocols](doc/protocol/README.md) for more information!*
+
 ### Reading and writing VSS data using the CLI
 
 1. Start the CLI in a container attached to the _kuksa_ bridge network and connect to the Databroker container:
-   The databroker supports both of `sdv.databroker.v1` and `kuksa.val.v1` as an API. Per default the databroker-cli uses the `sdv.databroker.v1` interface. To change it use `--protocol` option when starting. Chosse eihter one of `kuksa-val-v1` and `sdv-databroker-v1`.
+   The databroker supports the lastest new API `kuksa.val.v2` and `kuksa.val.v1` by default, `sdv.databroker.v1` must be enabled using `--enable-databroker-v1`. Per default the databroker-cli uses the `sdv.databroker.v1` interface. To change it use `--protocol` option when starting. Choose either one of `kuksa-val-v1` and `sdv-databroker-v1`, databroker-cli still does not support  `kuksa.val.v2`.
 
    ```sh
    # in a new terminal
@@ -248,6 +266,15 @@ cargo test --all-targets
 ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Performance
+The Kuksa team has released an official tool to measure the latency and throughput of the Databroker for all supported APIs:
+[kuksa-perf](https://github.com/eclipse-kuksa/kuksa-perf)
+
+The use case measures the time it takes for a signal to be transferred from the Provider to the Signal Consumer
+Signal Consumer(stream subscribe) <- Databroker <- Provider(stream publish)
+
+Feel free to use it and share your results with us!
 
 ## Contributing
 
