@@ -1262,7 +1262,7 @@ mod test {
                 entry_type: proto::v1::EntryType::Sensor.into(),
                 change_type: proto::v1::ChangeType::OnChange.into(),
                 description: "".into(),
-                allowed: None,
+                value_restriction: None,
             },
             proto::v1::Metadata {
                 id: 2,
@@ -1271,7 +1271,7 @@ mod test {
                 entry_type: proto::v1::EntryType::Sensor.into(),
                 change_type: proto::v1::ChangeType::OnChange.into(),
                 description: "".into(),
-                allowed: None,
+                value_restriction: None,
             },
             proto::v1::Metadata {
                 id: 3,
@@ -1280,7 +1280,7 @@ mod test {
                 entry_type: proto::v1::EntryType::Sensor.into(),
                 change_type: proto::v1::ChangeType::OnChange.into(),
                 description: "".into(),
-                allowed: None,
+                value_restriction: None,
             },
         ]
         .to_vec();
