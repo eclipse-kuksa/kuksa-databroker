@@ -370,7 +370,9 @@ impl From<&broker::UpdateError> for proto::DatapointError {
             broker::UpdateError::WrongType | broker::UpdateError::UnsupportedType => {
                 proto::DatapointError::InvalidType
             }
-            broker::UpdateError::OutOfBounds => proto::DatapointError::OutOfBounds,
+            broker::UpdateError::OutOfBoundsAllowed => proto::DatapointError::OutOfBounds,
+            broker::UpdateError::OutOfBoundsMinMax => proto::DatapointError::OutOfBounds,
+            broker::UpdateError::OutOfBoundsType => proto::DatapointError::OutOfBounds,
             broker::UpdateError::PermissionDenied => proto::DatapointError::AccessDenied,
             broker::UpdateError::PermissionExpired => proto::DatapointError::AccessDenied,
         }

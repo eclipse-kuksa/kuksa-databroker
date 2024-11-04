@@ -338,6 +338,7 @@ impl proto::val_server::Val for broker::DataBroker {
     //   UNAVAILABLE if there is no provider currently providing the actuator
     //   DATA_LOSS is there is a internal TransmissionFailure
     //   INVALID_ARGUMENT
+    //       - if the provided path is not an actuator.
     //       - if the data type used in the request does not match
     //            the data type of the addressed signal
     //       - if the requested value is not accepted,
@@ -1712,7 +1713,7 @@ mod tests {
                 // Handle the error from the publish_value function
                 assert_eq!(status.code(), tonic::Code::InvalidArgument);
                 // As of the today the first added datapoint get value 0 by default.
-                assert_eq!(status.message(), "Value out of bounds (id: 0)");
+                assert_eq!(status.message(), "Value out of min/max bounds (id: 0)");
             }
         }
     }
