@@ -189,7 +189,12 @@ where
     let mut router = server.add_optional_service(kuksa_val_v1);
 
     if apis.contains(&Api::KuksaValV2) {
-        router = router.add_optional_service(Some(
+        let service = tonic_reflection::server::Builder::configure()
+            .register_encoded_file_descriptor_set(kuksa::val::v2::FILE_DESCRIPTOR_SET)
+            .build()
+            .unwrap();
+
+        router = router.add_service(service).add_optional_service(Some(
             kuksa::val::v2::val_server::ValServer::with_interceptor(
                 broker.clone(),
                 authorization.clone(),
