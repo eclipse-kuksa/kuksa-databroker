@@ -12,6 +12,7 @@
  ********************************************************************************/
 
 syntax = "proto3";
+// Please do not add optional fields due to proto3 limitations
 
 package kuksa.val.v2;
 
