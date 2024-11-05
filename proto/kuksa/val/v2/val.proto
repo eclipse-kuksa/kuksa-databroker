@@ -52,12 +52,18 @@ service VAL {
   //   NOT_FOUND if any of the signals are non-existant.
   //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied for any of the signals.
-  //   INVALID_ARGUMENT if the request is empty or provided path is too long
-  //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
+  //   INVALID_ARGUMENT
+  //       - if the request is empty or provided path is too long
+  //             MAX_REQUEST_PATH_LENGTH: usize = 1000;
+  //       - if buffer_size exceeds the maximum permitted
+  //             MAX_BUFFER_SIZE: usize = 1000;
   //
   // When subscribing, Databroker shall immediately return the value for all
   // subscribed entries.
   // If a value isn't available when subscribing to a it, it should return None
+  //
+  // If a subscriber is slow to consume signals, messages will be buffered up
+  // to the specified buffer_size before the oldest messages are dropped.
   //
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
 
@@ -66,11 +72,18 @@ service VAL {
   //   NOT_FOUND if any of the signals are non-existant.
   //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   PERMISSION_DENIED if access is denied for any of the signals.
-  //   INVALID_ARGUMENT if the request is empty or provided path is too long
+  //   INVALID_ARGUMENT
+  //       - if the request is empty or provided path is too long
+  //             MAX_REQUEST_PATH_LENGTH: usize = 1000;
+  //       - if buffer_size exceeds the maximum permitted
+  //             MAX_BUFFER_SIZE: usize = 1000;
   //
   // When subscribing, Databroker shall immediately return the value for all
   // subscribed entries.
   // If a value isn't available when subscribing to a it, it should return None
+  //
+  // If a subscriber is slow to consume signals, messages will be buffered up
+  // to the specified buffer_size before the oldest messages are dropped.
   //
   rpc SubscribeById(SubscribeByIdRequest) returns (stream SubscribeByIdResponse);
 
@@ -192,6 +205,10 @@ message GetValuesResponse {
 
 message SubscribeRequest {
   repeated string signal_paths = 1;
+
+  // Specifies the number of messages that can be buffered for
+  // slow subscribers before the oldest messages are dropped.
+  uint32 buffer_size           = 2;
 }
 
 message SubscribeResponse {
@@ -200,6 +217,10 @@ message SubscribeResponse {
 
 message SubscribeByIdRequest {
   repeated int32 signal_ids = 1;
+
+  // Specifies the number of messages that can be buffered for
+  // slow subscribers before the oldest messages are dropped.
+  uint32 buffer_size        = 2;
 }
 
 message SubscribeByIdResponse {

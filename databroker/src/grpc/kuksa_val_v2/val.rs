@@ -221,9 +221,15 @@ impl proto::val_server::Val for broker::DataBroker {
             None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
         };
 
-        let broker = self.authorized_access(&permissions);
-
         let request = request.into_inner();
+        if request.buffer_size == 0 {
+            return Err(tonic::Status::invalid_argument(format!(
+                "Provided buffer_size {} should be greater than zero.",
+                request.buffer_size
+            )));
+        }
+
+        let broker = self.authorized_access(&permissions);
 
         let signal_paths = request.signal_paths;
         let size = signal_paths.len();
@@ -247,7 +253,10 @@ impl proto::val_server::Val for broker::DataBroker {
             );
         }
 
-        match broker.subscribe(valid_requests).await {
+        match broker
+            .subscribe(valid_requests, Some(request.buffer_size as usize))
+            .await
+        {
             Ok(stream) => {
                 let stream = convert_to_proto_stream(stream, size);
                 Ok(tonic::Response::new(Box::pin(stream)))
@@ -257,6 +266,10 @@ impl proto::val_server::Val for broker::DataBroker {
                 Err(tonic::Status::invalid_argument("Invalid Argument"))
             }
             Err(SubscriptionError::InternalError) => Err(tonic::Status::internal("Internal Error")),
+            Err(SubscriptionError::InvalidBufferSize) => Err(tonic::Status::new(
+                tonic::Code::InvalidArgument,
+                "Subscription buffer_size max allowed value is 1000",
+            )),
         }
     }
 
@@ -287,9 +300,15 @@ impl proto::val_server::Val for broker::DataBroker {
             None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
         };
 
-        let broker = self.authorized_access(&permissions);
-
         let request = request.into_inner();
+        if request.buffer_size == 0 {
+            return Err(tonic::Status::invalid_argument(format!(
+                "Provided lag_buffer_capacity {} should be greater than zero.",
+                request.buffer_size
+            )));
+        }
+
+        let broker = self.authorized_access(&permissions);
 
         let signal_ids = request.signal_ids;
         let size = signal_ids.len();
@@ -313,7 +332,10 @@ impl proto::val_server::Val for broker::DataBroker {
             );
         }
 
-        match broker.subscribe(valid_requests).await {
+        match broker
+            .subscribe(valid_requests, Some(request.buffer_size as usize))
+            .await
+        {
             Ok(stream) => {
                 let stream = convert_to_proto_stream_id(stream, size);
                 Ok(tonic::Response::new(Box::pin(stream)))
@@ -328,6 +350,10 @@ impl proto::val_server::Val for broker::DataBroker {
             Err(SubscriptionError::InternalError) => {
                 Err(tonic::Status::new(tonic::Code::Internal, "Internal Error"))
             }
+            Err(SubscriptionError::InvalidBufferSize) => Err(tonic::Status::new(
+                tonic::Code::InvalidArgument,
+                "Subscription buffer_size max allowed value is 1000",
+            )),
         }
     }
 
@@ -1836,6 +1862,7 @@ mod tests {
 
         let mut request = tonic::Request::new(proto::SubscribeRequest {
             signal_paths: vec!["test.datapoint1".to_string()],
+            buffer_size: 5,
         });
 
         request
@@ -1982,6 +2009,7 @@ mod tests {
 
         let mut request = tonic::Request::new(proto::SubscribeByIdRequest {
             signal_ids: vec![entry_id],
+            buffer_size: 5,
         });
 
         request
