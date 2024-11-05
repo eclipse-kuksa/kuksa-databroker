@@ -345,7 +345,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         databroker::init_logging();
 
         info!("Starting Kuksa Databroker {}", version);
-        info!("Using {} threads with {} cores available on the system", worker_threads, cores);
+        info!(
+            "Using {} threads with {} cores available on the system",
+            worker_threads, cores
+        );
 
         let ip_addr = args.get_one::<String>("address").unwrap().parse()?;
         let port = args
