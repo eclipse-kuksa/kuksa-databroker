@@ -32,6 +32,7 @@ use databroker::{
 };
 
 use tokio::net::TcpListener;
+use tokio_stream::wrappers::TcpListenerStream;
 use tracing::debug;
 
 use lazy_static::lazy_static;
@@ -188,6 +189,7 @@ impl DataBrokerWorld {
         let addr = listener
             .local_addr()
             .expect("failed to determine listener's port");
+        let incoming = TcpListenerStream::new(listener);
 
         tokio::spawn(async move {
             let commit_sha = option_env!("VERGEN_GIT_SHA").unwrap_or("unknown");
@@ -230,7 +232,7 @@ impl DataBrokerWorld {
             }
 
             grpc::server::serve_with_incoming_shutdown(
-                listener,
+                incoming,
                 data_broker,
                 #[cfg(feature = "tls")]
                 CERTS.server_tls_config(),
