@@ -215,21 +215,23 @@ impl From<&proto::Datapoint> for broker::DataValue {
     }
 }
 
-fn value_restriction_from(metadata: &broker::Metadata) -> Option<proto::ValueRestriction> {
+fn value_restrictions_from(metadata: &broker::Metadata) -> Option<proto::ValueRestrictions> {
     match metadata.data_type {
         DataType::String | DataType::StringArray => {
             let allowed = match metadata.allowed.as_ref() {
-                Some(broker::DataValue::StringArray(vec)) => vec.clone(),
-                _ => Vec::new(),
+                Some(broker::DataValue::StringArray(vec)) => Some(vec.clone()),
+                _ => None,
             };
 
-            if !allowed.is_empty() {
-                return Some(proto::ValueRestriction {
-                    r#type: Some(proto::value_restriction::Type::String(
-                        proto::ValueRestrictionString {
-                            allowed_values: allowed,
-                        },
-                    )),
+            if allowed.is_some() {
+                return Some(proto::ValueRestrictions {
+                    allowed: allowed.map(|v| proto::Allowed {
+                        values: Some(proto::allowed::Values::StringValues(proto::StringArray {
+                            values: v,
+                        })),
+                    }),
+                    min: None,
+                    max: None,
                 });
             };
         }
@@ -254,23 +256,27 @@ fn value_restriction_from(metadata: &broker::Metadata) -> Option<proto::ValueRes
             let allowed = match metadata.allowed.as_ref() {
                 Some(allowed) => match allowed {
                     broker::DataValue::Int32Array(vec) => {
-                        vec.iter().cloned().map(i64::from).collect()
+                        Some(vec.iter().cloned().map(i64::from).collect())
                     }
-                    broker::DataValue::Int64Array(vec) => vec.to_vec(),
-                    _ => Vec::new(),
+                    broker::DataValue::Int64Array(vec) => Some(vec.to_vec()),
+                    _ => None,
                 },
-                _ => Vec::new(),
+                _ => None,
             };
 
-            if min_value.is_some() | max_value.is_some() | !allowed.is_empty() {
-                return Some(proto::ValueRestriction {
-                    r#type: Some(proto::value_restriction::Type::Signed(
-                        proto::ValueRestrictionInt {
-                            allowed_values: allowed,
-                            min: min_value,
-                            max: max_value,
-                        },
-                    )),
+            if min_value.is_some() | max_value.is_some() | allowed.is_some() {
+                return Some(proto::ValueRestrictions {
+                    allowed: allowed.map(|v| proto::Allowed {
+                        values: Some(proto::allowed::Values::Int64Values(proto::Int64Array {
+                            values: v,
+                        })),
+                    }),
+                    min: min_value.map(|v| proto::Value {
+                        typed_value: { Some(proto::value::TypedValue::Int64(v)) },
+                    }),
+                    max: max_value.map(|v| proto::Value {
+                        typed_value: { Some(proto::value::TypedValue::Int64(v)) },
+                    }),
                 });
             };
         }
@@ -295,23 +301,26 @@ fn value_restriction_from(metadata: &broker::Metadata) -> Option<proto::ValueRes
             let allowed = match metadata.allowed.as_ref() {
                 Some(allowed) => match allowed {
                     broker::DataValue::Uint32Array(vec) => {
-                        vec.iter().cloned().map(u64::from).collect()
+                        Some(vec.iter().cloned().map(u64::from).collect())
                     }
-                    broker::DataValue::Uint64Array(vec) => vec.to_vec(),
-                    _ => Vec::new(),
+                    broker::DataValue::Uint64Array(vec) => Some(vec.to_vec()),
+                    _ => None,
                 },
-                _ => Vec::new(),
+                _ => None,
             };
-
-            if min_value.is_some() | max_value.is_some() | !allowed.is_empty() {
-                return Some(proto::ValueRestriction {
-                    r#type: Some(proto::value_restriction::Type::Unsigned(
-                        proto::ValueRestrictionUint {
-                            allowed_values: allowed,
-                            min: min_value,
-                            max: max_value,
-                        },
-                    )),
+            if min_value.is_some() | max_value.is_some() | allowed.is_some() {
+                return Some(proto::ValueRestrictions {
+                    allowed: allowed.map(|v| proto::Allowed {
+                        values: Some(proto::allowed::Values::Uint64Values(proto::Uint64Array {
+                            values: v,
+                        })),
+                    }),
+                    min: min_value.map(|v| proto::Value {
+                        typed_value: { Some(proto::value::TypedValue::Uint64(v)) },
+                    }),
+                    max: max_value.map(|v| proto::Value {
+                        typed_value: { Some(proto::value::TypedValue::Uint64(v)) },
+                    }),
                 });
             };
         }
@@ -329,23 +338,27 @@ fn value_restriction_from(metadata: &broker::Metadata) -> Option<proto::ValueRes
             let allowed = match metadata.allowed.as_ref() {
                 Some(allowed) => match allowed {
                     broker::DataValue::FloatArray(vec) => {
-                        vec.iter().cloned().map(f64::from).collect()
+                        Some(vec.iter().cloned().map(f64::from).collect())
                     }
-                    broker::DataValue::DoubleArray(vec) => vec.to_vec(),
-                    _ => Vec::new(),
+                    broker::DataValue::DoubleArray(vec) => Some(vec.to_vec()),
+                    _ => None,
                 },
-                _ => Vec::new(),
+                _ => None,
             };
 
-            if min_value.is_some() | max_value.is_some() | !allowed.is_empty() {
-                return Some(proto::ValueRestriction {
-                    r#type: Some(proto::value_restriction::Type::FloatingPoint(
-                        proto::ValueRestrictionFloat {
-                            allowed_values: allowed,
-                            min: min_value,
-                            max: max_value,
-                        },
-                    )),
+            if min_value.is_some() | max_value.is_some() | allowed.is_some() {
+                return Some(proto::ValueRestrictions {
+                    allowed: allowed.map(|v| proto::Allowed {
+                        values: Some(proto::allowed::Values::DoubleValues(proto::DoubleArray {
+                            values: v,
+                        })),
+                    }),
+                    min: min_value.map(|v| proto::Value {
+                        typed_value: { Some(proto::value::TypedValue::Double(v)) },
+                    }),
+                    max: max_value.map(|v| proto::Value {
+                        typed_value: { Some(proto::value::TypedValue::Double(v)) },
+                    }),
                 });
             };
         }
@@ -363,11 +376,11 @@ impl From<&broker::Metadata> for proto::Metadata {
             id: metadata.id,
             data_type: proto::DataType::from(metadata.data_type.clone()) as i32,
             entry_type: proto::EntryType::from(metadata.entry_type.clone()) as i32,
-            description: Some(metadata.description.clone()),
-            comment: None,
-            deprecation: None,
-            unit: metadata.unit.clone(),
-            value_restriction: value_restriction_from(metadata),
+            description: metadata.description.clone(),
+            comment: String::new(),
+            deprecation: String::new(),
+            unit: metadata.unit.clone().unwrap_or_default(),
+            value_restrictions: value_restrictions_from(metadata),
         }
     }
 }
