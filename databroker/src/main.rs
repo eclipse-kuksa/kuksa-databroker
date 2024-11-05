@@ -15,6 +15,12 @@
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
+static DEFAULT_UNIX_SOCKET_PATH: &str = "/run/kuksa/databroker.sock";
+
+use std::io;
+use std::os::unix::fs::FileTypeExt;
+use std::path::Path;
+
 use databroker::authorization::Authorization;
 use databroker::broker::RegistrationError;
 
@@ -179,6 +185,15 @@ async fn read_metadata_file<'a, 'b>(
     Ok(())
 }
 
+fn unlink_unix_domain_socket(path: impl AsRef<Path>) -> Result<(), io::Error> {
+    if let Ok(metadata) = std::fs::metadata(&path) {
+        if metadata.file_type().is_socket() {
+            std::fs::remove_file(&path)?;
+        }
+    };
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let version = option_env!("CARGO_PKG_VERSION").unwrap_or_default();
     let commit_sha = option_env!("VERGEN_GIT_SHA").unwrap_or_default();
@@ -228,8 +243,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .default_value("55555"),
         )
         .arg(
-            Arg::new("vss-file")
+            Arg::new("enable-unix-socket")
+                .display_order(3)
+                .long("enable-unix-socket")
+                .help("Listen on unix socket, default /run/kuksa/databroker.sock")
+                .action(ArgAction::SetTrue)
+                .env("KUKSA_DATABROKER_ENABLE_UNIX_SOCKET")
+        )
+        .arg(
+            Arg::new("unix-socket")
                 .display_order(4)
+                .long("unix-socket")
+                .help("Listen on unix socket, e.g. /tmp/kuksa/databroker.sock")
+                .action(ArgAction::Set)
+                .value_name("PATH")
+                .required(false)
+                .env("KUKSA_DATABROKER_UNIX_SOCKET"),
+        )
+        .arg(
+            Arg::new("vss-file")
+                .display_order(5)
                 .alias("metadata")
                 .long("vss")
                 .help("Populate data broker with VSS metadata from (comma-separated) list of files")
@@ -242,7 +275,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .arg(
             Arg::new("jwt-public-key")
-                .display_order(5)
+                .display_order(6)
                 .long("jwt-public-key")
                 .help("Public key used to verify JWT access tokens")
                 .action(ArgAction::Set)
@@ -251,7 +284,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .arg(
             Arg::new("disable-authorization")
-                .display_order(6)
+                .display_order(7)
                 .long("disable-authorization")
                 .help("Disable authorization")
                 .action(ArgAction::SetTrue),
@@ -489,7 +522,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if args.get_flag("enable-databroker-v1") {
             apis.push(grpc::server::Api::SdvDatabrokerV1);
         }
-        grpc::server::serve(
+
+        let unix_socket_path = args.get_one::<String>("unix-socket").cloned().or_else(|| {
+            // If the --unix-socket PATH is not explicitly set, check whether it
+            // should be enabled using the default path
+            if args.get_flag("enable-unix-socket") {
+                Some(DEFAULT_UNIX_SOCKET_PATH.into())
+            } else {
+                None
+            }
+        });
+
+        if let Some(path) = unix_socket_path {
+            // We cannot assume that the socket was closed down properly
+            // so unlink before we recreate it.
+            unlink_unix_domain_socket(&path)?;
+            std::fs::create_dir_all(Path::new(&path).parent().unwrap())?;
+            let broker = broker.clone();
+            let authorization = authorization.clone();
+            let apis = apis.clone();
+            tokio::spawn(async move {
+                if let Err(err) =
+                    grpc::server::serve_uds(&path, broker, &apis, authorization, shutdown_handler())
+                        .await
+                {
+                    error!("{err}");
+                }
+
+                info!("Unlinking unix domain socket at {}", path);
+                unlink_unix_domain_socket(path)
+                    .unwrap_or_else(|_| error!("Failed to unlink unix domain socket"));
+            });
+        }
+
+        // On Linux systems try to notify daemon readiness to systemd.
+        // This function determines whether the a system is using systemd
+        // or not, so it is safe to use on non-systemd systems as well.
+        #[cfg(target_os = "linux")]
+        {
+            match sd_notify::booted() {
+                Ok(true) => {
+                    info!("Notifying systemd that the service is ready");
+                    sd_notify::notify(false, &[sd_notify::NotifyState::Ready])?;
+                }
+                _ => {
+                    debug!("System is not using systemd, will not try to notify");
+                }
+            }
+        }
+
+        grpc::server::serve_tcp(
             addr,
             broker,
             #[cfg(feature = "tls")]

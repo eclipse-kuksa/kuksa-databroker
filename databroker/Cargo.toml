@@ -60,7 +60,6 @@ glob-match = "0.2.1"
 jemallocator = { version = "0.5.0", optional = true }
 lazy_static = "1.4.0"
 thiserror = "1.0.47"
-
 futures = { version = "0.3.28" }
 async-trait = "0.1.82"
 
