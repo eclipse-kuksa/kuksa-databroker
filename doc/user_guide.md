@@ -235,15 +235,18 @@ The change types currently apply on _current_ values, when subscribing to a _tar
 
 The default configuration can be overridden by means of setting the corresponding environment variables and/or providing options on the command line as illustrated in the previous sections.
 
-| CLI option               | Environment Variable             | Default Value | Description                                                                                           |
-| ------------------------ | -------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------- |
-| `--vss`,<br>`--metadata` | `KUKSA_DATABROKER_METADATA_FILE` |               | Populate data broker with metadata from file                                                          |
-| `--address`              | `KUKSA_DATABROKER_ADDR`          | `127.0.0.1`   | Listen for rpc calls                                                                                  |
-| `--port`                 | `KUKSA_DATABROKER_PORT`          | `55555`       | Listen for rpc calls                                                                                  |
-| `--jwt-public-key`       |                                  |               | Public key used to verify JWT access tokens                                                           |
-| `--tls-cert`             |                                  |               | TLS certificate file (.pem)                                                                           |
-| `--tls-private-key`      |                                  |               | TLS private key file (.key)                                                                           |
-| `--insecure`             |                                  |               | Allow insecure connections (default unless `--tls-cert` and `--tls-private-key` options are provided) |
+| CLI option                | Environment Variable             | Default Value                                       | Description                                                                                           |
+| ------------------------- | -------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `--vss`,<br>`--metadata`  | `KUKSA_DATABROKER_METADATA_FILE` |                                                     | Populate data broker with metadata from file                                                          |
+| `--address`               | `KUKSA_DATABROKER_ADDR`          | `127.0.0.1`                                         | Listen for rpc calls                                                                                  |
+| `--port`                  | `KUKSA_DATABROKER_PORT`          | `55555`                                             | Listen for rpc calls                                                                                  |
+| `--jwt-public-key`        |                                  |                                                     | Public key used to verify JWT access tokens                                                           |
+| `--tls-cert`              |                                  |                                                     | TLS certificate file (.pem)                                                                           |
+| `--tls-private-key`       |                                  |                                                     | TLS private key file (.key)                                                                           |
+| `--disable-authorization` |                                  | `true`                                              | Disable authorization |
+| `--insecure`              |                                  |                                                     | Allow insecure connections (default unless `--tls-cert` and `--tls-private-key` options are provided) |
+| `--worker-threads`        | `KUKSA_WORKER_THREADS`           | as many threads as cores are detected on the system | How many worker threads will be spawned by the tokio runtime.                                         |
+| `--enable-databroker-v1`  |                                  | `false`                                             | Enable sdv.databroker.v1 (GRPC) service                                                               |
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
