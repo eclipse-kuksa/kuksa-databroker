@@ -646,9 +646,10 @@ impl proto::val_server::Val for broker::DataBroker {
                                             },
                                             Some(PublishValuesRequest(publish_values_request)) => {
                                                 let response = publish_values(&broker, &publish_values_request).await;
-                                                if let Err(err) = response_stream_sender.send(Ok(response)).await
-                                                {
-                                                    debug!("Failed to send response: {}", err);
+                                                if let Some(value) = response {
+                                                    if let Err(err) = response_stream_sender.send(Ok(value)).await {
+                                                        debug!("Failed to send response: {}", err);
+                                                    }
                                                 }
                                             },
                                             Some(BatchActuateStreamResponse(_batch_actuate_stream_response)) => {
@@ -768,7 +769,7 @@ async fn provide_actuation(
 async fn publish_values(
     broker: &AuthorizedAccess<'_, '_>,
     request: &databroker_proto::kuksa::val::v2::PublishValuesRequest,
-) -> OpenProviderStreamResponse {
+) -> Option<OpenProviderStreamResponse> {
     let ids: Vec<(i32, broker::EntryUpdate)> = request
         .datapoints
         .iter()
@@ -793,17 +794,8 @@ async fn publish_values(
 
     // TODO check if provider is allowed to update the entries for the provided signals?
     match broker.update_entries(ids).await {
-        Ok(_) => OpenProviderStreamResponse {
-            action: Some(
-                open_provider_stream_response::Action::PublishValuesResponse(
-                    PublishValuesResponse {
-                        request_id: request.request_id,
-                        status: HashMap::new(),
-                    },
-                ),
-            ),
-        },
-        Err(err) => OpenProviderStreamResponse {
+        Ok(_) => None,
+        Err(err) => Some(OpenProviderStreamResponse {
             action: Some(
                 open_provider_stream_response::Action::PublishValuesResponse(
                     PublishValuesResponse {
@@ -815,7 +807,7 @@ async fn publish_values(
                     },
                 ),
             ),
-        },
+        }),
     }
 }
 
