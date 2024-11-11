@@ -648,7 +648,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 let response = publish_values(&broker, &publish_values_request).await;
                                                 if let Some(value) = response {
                                                     if let Err(err) = response_stream_sender.send(Ok(value)).await {
-                                                        debug!("Failed to send response: {}", err);
+                                                        debug!("Failed to send error response: {}", err);
                                                     }
                                                 }
                                             },
