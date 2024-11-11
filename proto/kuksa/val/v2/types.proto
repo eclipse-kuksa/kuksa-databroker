@@ -106,27 +106,9 @@ message Metadata {
   string unit                          = 16;
 
   // Value restrictions checked/enforced by Databroker
-  ValueRestrictions value_restrictions = 17;
-}
-
-// Restriction fields are checked/enforced by Databroker.
-// They can be either values specified in VSS, or if not present implicit limits for the datatype.
-message ValueRestrictions {
-  Allowed allowed = 1;
-  Value min       = 2;
-  Value max       = 3;
-}
-
-message Allowed {
-  oneof values {
-    StringArray string_values = 1;
-    Int32Array int32_values   = 3;
-    Int64Array int64_values   = 4;
-    Uint32Array uint32_values = 5;
-    Uint64Array uint64_values = 6;
-    FloatArray float_values   = 7;
-    DoubleArray double_values = 8;
-  }
+  Value allowed_values                 = 17; // Must be of array type
+  Value min                            = 18;
+  Value max                            = 19;
 }
 
 // VSS Data type of a signal

@@ -303,163 +303,89 @@ impl From<&proto::ChangeType> for broker::ChangeType {
     }
 }
 
-fn value_restriction_from(metadata: &broker::Metadata) -> Option<proto::ValueRestrictions> {
-    match metadata.data_type {
-        broker::DataType::String | broker::DataType::StringArray => {
-            let allowed = match metadata.allowed.as_ref() {
-                Some(broker::DataValue::StringArray(vec)) => Some(vec.clone()),
-                _ => None,
-            };
+fn transform_allowed(value: &Option<broker::DataValue>) -> Option<proto::Allowed> {
+    match value {
+        Some(value) => match value {
+            broker::DataValue::StringArray(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::StringValues(proto::StringArray {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::Int32Array(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::Int32Values(proto::Int32Array {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::Int64Array(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::Int64Values(proto::Int64Array {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::Uint32Array(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::Uint32Values(proto::Uint32Array {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::Uint64Array(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::Uint64Values(proto::Uint64Array {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::FloatArray(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::FloatValues(proto::FloatArray {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::DoubleArray(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::DoubleValues(proto::DoubleArray {
+                    values: array.clone(),
+                })),
+            }),
+            _ => {
+                debug!("Wrong datatype used for allowed values");
+                None
+            }
+        },
+        None => None,
+    }
+}
 
-            if allowed.is_some() {
-                return Some(proto::ValueRestrictions {
-                    allowed: allowed.map(|v| proto::Allowed {
-                        values: Some(proto::allowed::Values::StringValues(proto::StringArray {
-                            values: v,
-                        })),
-                    }),
-                    min: None,
-                    max: None,
-                });
-            };
-        }
-        broker::DataType::Int8
-        | broker::DataType::Int16
-        | broker::DataType::Int32
-        | broker::DataType::Int64
-        | broker::DataType::Int8Array
-        | broker::DataType::Int16Array
-        | broker::DataType::Int32Array
-        | broker::DataType::Int64Array => {
-            let min_value = match metadata.min {
-                Some(broker::DataValue::Int32(value)) => Some(i64::from(value)),
-                Some(broker::DataValue::Int64(value)) => Some(value),
-                _ => None,
-            };
-            let max_value = match metadata.max {
-                Some(broker::DataValue::Int32(value)) => Some(i64::from(value)),
-                Some(broker::DataValue::Int64(value)) => Some(value),
-                _ => None,
-            };
-            let allowed = match metadata.allowed.as_ref() {
-                Some(allowed) => match allowed {
-                    broker::DataValue::Int32Array(vec) => {
-                        Some(vec.iter().cloned().map(i64::from).collect())
-                    }
-                    broker::DataValue::Int64Array(vec) => Some(vec.to_vec()),
-                    _ => None,
-                },
-                _ => None,
-            };
-
-            if min_value.is_some() | max_value.is_some() | allowed.is_some() {
-                return Some(proto::ValueRestrictions {
-                    allowed: allowed.map(|v| proto::Allowed {
-                        values: Some(proto::allowed::Values::Int64Values(proto::Int64Array {
-                            values: v,
-                        })),
-                    }),
-                    min: min_value.map(|v| proto::ValueRestriction {
-                        typed_value: { Some(proto::value_restriction::TypedValue::Int64(v)) },
-                    }),
-                    max: max_value.map(|v| proto::ValueRestriction {
-                        typed_value: { Some(proto::value_restriction::TypedValue::Int64(v)) },
-                    }),
-                });
-            };
-        }
-        broker::DataType::Uint8
-        | broker::DataType::Uint16
-        | broker::DataType::Uint32
-        | broker::DataType::Uint64
-        | broker::DataType::Uint8Array
-        | broker::DataType::Uint16Array
-        | broker::DataType::Uint32Array
-        | broker::DataType::Uint64Array => {
-            let min_value = match metadata.min {
-                Some(broker::DataValue::Uint32(value)) => Some(u64::from(value)),
-                Some(broker::DataValue::Uint64(value)) => Some(value),
-                _ => None,
-            };
-            let max_value = match metadata.max {
-                Some(broker::DataValue::Uint32(value)) => Some(u64::from(value)),
-                Some(broker::DataValue::Uint64(value)) => Some(value),
-                _ => None,
-            };
-            let allowed = match metadata.allowed.as_ref() {
-                Some(allowed) => match allowed {
-                    broker::DataValue::Uint32Array(vec) => {
-                        Some(vec.iter().cloned().map(u64::from).collect())
-                    }
-                    broker::DataValue::Uint64Array(vec) => Some(vec.to_vec()),
-                    _ => None,
-                },
-                _ => None,
-            };
-
-            if min_value.is_some() | max_value.is_some() | allowed.is_some() {
-                return Some(proto::ValueRestrictions {
-                    allowed: allowed.map(|v| proto::Allowed {
-                        values: Some(proto::allowed::Values::Uint64Values(proto::Uint64Array {
-                            values: v,
-                        })),
-                    }),
-                    min: min_value.map(|v| proto::ValueRestriction {
-                        typed_value: { Some(proto::value_restriction::TypedValue::Uint64(v)) },
-                    }),
-                    max: max_value.map(|v| proto::ValueRestriction {
-                        typed_value: { Some(proto::value_restriction::TypedValue::Uint64(v)) },
-                    }),
-                });
-            };
-        }
-        broker::DataType::Float
-        | broker::DataType::Double
-        | broker::DataType::FloatArray
-        | broker::DataType::DoubleArray => {
-            let min_value = match metadata.min {
-                Some(broker::DataValue::Float(value)) => Some(f64::from(value)),
-                Some(broker::DataValue::Double(value)) => Some(value),
-                _ => None,
-            };
-            let max_value = match metadata.max {
-                Some(broker::DataValue::Float(value)) => Some(f64::from(value)),
-                Some(broker::DataValue::Double(value)) => Some(value),
-                _ => None,
-            };
-            let allowed = match metadata.allowed.as_ref() {
-                Some(allowed) => match allowed {
-                    broker::DataValue::FloatArray(vec) => {
-                        Some(vec.iter().cloned().map(f64::from).collect())
-                    }
-                    broker::DataValue::DoubleArray(vec) => Some(vec.to_vec()),
-                    _ => None,
-                },
-                _ => None,
-            };
-
-            if min_value.is_some() | max_value.is_some() | allowed.is_some() {
-                return Some(proto::ValueRestrictions {
-                    allowed: allowed.map(|v| proto::Allowed {
-                        values: Some(proto::allowed::Values::DoubleValues(proto::DoubleArray {
-                            values: v,
-                        })),
-                    }),
-                    min: min_value.map(|v| proto::ValueRestriction {
-                        typed_value: { Some(proto::value_restriction::TypedValue::Double(v)) },
-                    }),
-                    max: max_value.map(|v| proto::ValueRestriction {
-                        typed_value: { Some(proto::value_restriction::TypedValue::Double(v)) },
-                    }),
-                });
-            };
-        }
-
-        _ => {
-            debug!("Datatype {:?} not yet handled", metadata.data_type);
-        }
-    };
-    None
+fn transform_min_max(value: &Option<broker::DataValue>) -> Option<proto::ValueRestriction> {
+    match value {
+        Some(value) => match value {
+            broker::DataValue::String(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::String(
+                    value.to_owned(),
+                )),
+            }),
+            broker::DataValue::Bool(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Bool(*value)),
+            }),
+            broker::DataValue::Int32(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Int32(*value)),
+            }),
+            broker::DataValue::Int64(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Int64(*value)),
+            }),
+            broker::DataValue::Uint32(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Uint32(*value)),
+            }),
+            broker::DataValue::Uint64(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Uint64(*value)),
+            }),
+            broker::DataValue::Float(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Float(*value)),
+            }),
+            broker::DataValue::Double(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Double(*value)),
+            }),
+            _ => {
+                debug!("Wrong datatype used for min/max values");
+                None
+            }
+        },
+        None => None,
+    }
 }
 
 impl From<&broker::Metadata> for proto::Metadata {
@@ -471,7 +397,9 @@ impl From<&broker::Metadata> for proto::Metadata {
             data_type: proto::DataType::from(&metadata.data_type) as i32,
             change_type: proto::ChangeType::Continuous as i32, // TODO: Add to metadata
             description: metadata.description.to_owned(),
-            value_restrictions: value_restriction_from(metadata),
+            allowed: transform_allowed(&metadata.allowed),
+            min: transform_min_max(&metadata.min),
+            max: transform_min_max(&metadata.max),
         }
     }
 }
