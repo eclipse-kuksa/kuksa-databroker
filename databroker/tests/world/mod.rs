@@ -190,9 +190,9 @@ impl DataBrokerWorld {
             .expect("failed to determine listener's port");
 
         tokio::spawn(async move {
-            let version = option_env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
-                .unwrap_or(option_env!("VERGEN_GIT_SHA").unwrap_or("unknown"));
-            let data_broker = broker::DataBroker::new(version);
+            let commit_sha = option_env!("VERGEN_GIT_SHA").unwrap_or("unknown");
+            let version = option_env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT").unwrap_or(commit_sha);
+            let data_broker = broker::DataBroker::new(version, commit_sha);
             let database = data_broker.authorized_access(&permissions::ALLOW_ALL);
             for (name, data_type, change_type, entry_type) in data_entries {
                 if let Err(_error) = database
@@ -202,6 +202,8 @@ impl DataBrokerWorld {
                         change_type,
                         entry_type,
                         "N/A".to_string(),
+                        None, // min
+                        None, // max
                         None,
                         None,
                     )

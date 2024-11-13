@@ -1,4 +1,4 @@
-# KUKSA.val Quickstart
+# KUKSA.val Quickstart using kuksa.val.v1 API
 
 The quickest possible way to get KUKSA.val up and running
 

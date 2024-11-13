@@ -131,6 +131,8 @@ impl proto::broker_server::Broker for broker::DataBroker {
                                         data_type: None,
                                         description: None,
                                         allowed: None,
+                                        max: None,
+                                        min: None,
                                         unit: None,
                                     },
                                 ));
