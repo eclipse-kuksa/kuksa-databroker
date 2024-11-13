@@ -151,7 +151,7 @@ service VAL {
   //          UNAUTHENTICATED if no credentials provided or credentials has expired
   //          ALREADY_EXISTS if a provider already claimed the ownership of an actuator
   //
-  //    - Provider sends PublishValuesRequest -> Databroker returns PublishValuesResponse
+  //    - Provider sends PublishValuesRequest -> Databroker returns PublishValuesResponse upon error, and nothing upon success
   //        GRPC errors are returned as messages in the stream
   //        response with the signal id `map<int32, Error> status = 2;` (permissive case)
   //          NOT_FOUND if a signal is non-existant.
