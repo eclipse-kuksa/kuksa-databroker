@@ -143,5 +143,11 @@ pub mod kuksa {
                 }
             }
         }
+        pub mod v2 {
+            tonic::include_proto!("kuksa.val.v2");
+
+            pub const FILE_DESCRIPTOR_SET: &[u8] =
+                tonic::include_file_descriptor_set!("kuksa.val.v2_descriptor");
+        }
     }
 }

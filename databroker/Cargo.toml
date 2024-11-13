@@ -27,6 +27,7 @@ kuksa-common = { path = "../lib/common"}
 kuksa = { path = "../lib/kuksa"}
 databroker-proto = { workspace = true }
 tonic = { workspace = true, features = ["transport", "channel", "prost"] }
+tonic-reflection = "0.11.0"
 prost = { workspace = true }
 prost-types = { workspace = true }
 tokio = { workspace = true, features = [
@@ -60,9 +61,11 @@ jemallocator = { version = "0.5.0", optional = true }
 lazy_static = "1.4.0"
 thiserror = "1.0.47"
 
+futures = { version = "0.3.28" }
+async-trait = "0.1.82"
+
 # VISS
 axum = { version = "0.6.20", optional = true, features = ["ws"] }
-futures = { version = "0.3.28", optional = true }
 chrono = { version = "0.4.31", optional = true, features = ["std"] }
 uuid = { version = "1.4.1", optional = true, features = ["v4"] }
 
@@ -74,7 +77,7 @@ sd-notify = "0.4.1"
 default = ["tls"]
 tls = ["tonic/tls"]
 jemalloc = ["dep:jemallocator"]
-viss = ["dep:axum", "dep:chrono", "dep:futures", "dep:uuid"]
+viss = ["dep:axum", "dep:chrono", "dep:uuid"]
 libtest = []
 
 [build-dependencies]

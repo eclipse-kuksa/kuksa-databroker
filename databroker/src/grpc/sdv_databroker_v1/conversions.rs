@@ -16,6 +16,7 @@ use databroker_proto::sdv::databroker::v1 as proto;
 use prost_types::Timestamp;
 use std::convert::TryInto;
 use std::time::SystemTime;
+use tracing::debug;
 
 use crate::broker;
 
@@ -302,6 +303,91 @@ impl From<&proto::ChangeType> for broker::ChangeType {
     }
 }
 
+fn transform_allowed(value: &Option<broker::DataValue>) -> Option<proto::Allowed> {
+    match value {
+        Some(value) => match value {
+            broker::DataValue::StringArray(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::StringValues(proto::StringArray {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::Int32Array(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::Int32Values(proto::Int32Array {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::Int64Array(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::Int64Values(proto::Int64Array {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::Uint32Array(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::Uint32Values(proto::Uint32Array {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::Uint64Array(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::Uint64Values(proto::Uint64Array {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::FloatArray(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::FloatValues(proto::FloatArray {
+                    values: array.clone(),
+                })),
+            }),
+            broker::DataValue::DoubleArray(array) => Some(proto::Allowed {
+                values: Some(proto::allowed::Values::DoubleValues(proto::DoubleArray {
+                    values: array.clone(),
+                })),
+            }),
+            _ => {
+                debug!("Wrong datatype used for allowed values");
+                None
+            }
+        },
+        None => None,
+    }
+}
+
+fn transform_min_max(value: &Option<broker::DataValue>) -> Option<proto::ValueRestriction> {
+    match value {
+        Some(value) => match value {
+            broker::DataValue::String(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::String(
+                    value.to_owned(),
+                )),
+            }),
+            broker::DataValue::Bool(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Bool(*value)),
+            }),
+            broker::DataValue::Int32(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Int32(*value)),
+            }),
+            broker::DataValue::Int64(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Int64(*value)),
+            }),
+            broker::DataValue::Uint32(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Uint32(*value)),
+            }),
+            broker::DataValue::Uint64(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Uint64(*value)),
+            }),
+            broker::DataValue::Float(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Float(*value)),
+            }),
+            broker::DataValue::Double(value) => Some(proto::ValueRestriction {
+                typed_value: Some(proto::value_restriction::TypedValue::Double(*value)),
+            }),
+            _ => {
+                debug!("Wrong datatype used for min/max values");
+                None
+            }
+        },
+        None => None,
+    }
+}
+
 impl From<&broker::Metadata> for proto::Metadata {
     fn from(metadata: &broker::Metadata) -> Self {
         proto::Metadata {
@@ -311,54 +397,9 @@ impl From<&broker::Metadata> for proto::Metadata {
             data_type: proto::DataType::from(&metadata.data_type) as i32,
             change_type: proto::ChangeType::Continuous as i32, // TODO: Add to metadata
             description: metadata.description.to_owned(),
-            allowed: match metadata.allowed.as_ref() {
-                Some(broker::DataValue::StringArray(vec)) => Some(proto::Allowed {
-                    values: Some(proto::allowed::Values::StringValues(proto::StringArray {
-                        values: vec.clone(),
-                    })),
-                }),
-                Some(broker::DataValue::Int32Array(vec)) => Some(proto::Allowed {
-                    values: Some(proto::allowed::Values::Int32Values(proto::Int32Array {
-                        values: vec.clone(),
-                    })),
-                }),
-                Some(broker::DataValue::Int64Array(vec)) => Some(proto::Allowed {
-                    values: Some(proto::allowed::Values::Int64Values(proto::Int64Array {
-                        values: vec.clone(),
-                    })),
-                }),
-                Some(broker::DataValue::Uint32Array(vec)) => Some(proto::Allowed {
-                    values: Some(proto::allowed::Values::Uint32Values(proto::Uint32Array {
-                        values: vec.clone(),
-                    })),
-                }),
-                Some(broker::DataValue::Uint64Array(vec)) => Some(proto::Allowed {
-                    values: Some(proto::allowed::Values::Uint64Values(proto::Uint64Array {
-                        values: vec.clone(),
-                    })),
-                }),
-                Some(broker::DataValue::FloatArray(vec)) => Some(proto::Allowed {
-                    values: Some(proto::allowed::Values::FloatValues(proto::FloatArray {
-                        values: vec.clone(),
-                    })),
-                }),
-                Some(broker::DataValue::DoubleArray(vec)) => Some(proto::Allowed {
-                    values: Some(proto::allowed::Values::DoubleValues(proto::DoubleArray {
-                        values: vec.clone(),
-                    })),
-                }),
-                Some(broker::DataValue::BoolArray(_))
-                | Some(broker::DataValue::NotAvailable)
-                | Some(broker::DataValue::Bool(_))
-                | Some(broker::DataValue::String(_))
-                | Some(broker::DataValue::Int32(_))
-                | Some(broker::DataValue::Int64(_))
-                | Some(broker::DataValue::Uint32(_))
-                | Some(broker::DataValue::Uint64(_))
-                | Some(broker::DataValue::Float(_))
-                | Some(broker::DataValue::Double(_))
-                | None => None,
-            },
+            allowed: transform_allowed(&metadata.allowed),
+            min: transform_min_max(&metadata.min),
+            max: transform_min_max(&metadata.max),
         }
     }
 }
@@ -370,7 +411,9 @@ impl From<&broker::UpdateError> for proto::DatapointError {
             broker::UpdateError::WrongType | broker::UpdateError::UnsupportedType => {
                 proto::DatapointError::InvalidType
             }
-            broker::UpdateError::OutOfBounds => proto::DatapointError::OutOfBounds,
+            broker::UpdateError::OutOfBoundsAllowed => proto::DatapointError::OutOfBounds,
+            broker::UpdateError::OutOfBoundsMinMax => proto::DatapointError::OutOfBounds,
+            broker::UpdateError::OutOfBoundsType => proto::DatapointError::OutOfBounds,
             broker::UpdateError::PermissionDenied => proto::DatapointError::AccessDenied,
             broker::UpdateError::PermissionExpired => proto::DatapointError::AccessDenied,
         }

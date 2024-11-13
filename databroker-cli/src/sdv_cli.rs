@@ -1263,6 +1263,8 @@ mod test {
                 change_type: proto::v1::ChangeType::OnChange.into(),
                 description: "".into(),
                 allowed: None,
+                min: None,
+                max: None,
             },
             proto::v1::Metadata {
                 id: 2,
@@ -1272,6 +1274,8 @@ mod test {
                 change_type: proto::v1::ChangeType::OnChange.into(),
                 description: "".into(),
                 allowed: None,
+                min: None,
+                max: None,
             },
             proto::v1::Metadata {
                 id: 3,
@@ -1281,6 +1285,8 @@ mod test {
                 change_type: proto::v1::ChangeType::OnChange.into(),
                 description: "".into(),
                 allowed: None,
+                min: None,
+                max: None,
             },
         ]
         .to_vec();

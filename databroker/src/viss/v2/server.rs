@@ -168,6 +168,8 @@ impl Viss for Server {
                         entry_type: None,
                         data_type: None,
                         description: None,
+                        min: None,
+                        max: None,
                         allowed: None,
                         unit: None,
                     })
@@ -197,8 +199,14 @@ impl Viss for Server {
                                 UpdateError::WrongType => Error::BadRequest {
                                     msg: Some("Wrong data type.".into()),
                                 },
-                                UpdateError::OutOfBounds => Error::BadRequest {
-                                    msg: Some("Value out of bounds.".into()),
+                                UpdateError::OutOfBoundsAllowed => Error::BadRequest {
+                                    msg: Some("Value out of allowed bounds.".into()),
+                                },
+                                UpdateError::OutOfBoundsMinMax => Error::BadRequest {
+                                    msg: Some("Value out of min/max bounds.".into()),
+                                },
+                                UpdateError::OutOfBoundsType => Error::BadRequest {
+                                    msg: Some("Value out of type bounds.".into()),
                                 },
                                 UpdateError::UnsupportedType => Error::BadRequest {
                                     msg: Some("Unsupported data type.".into()),

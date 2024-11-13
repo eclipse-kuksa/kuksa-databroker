@@ -33,6 +33,7 @@ use crate::broker::SubscriptionError;
 use crate::broker::{AuthorizedAccess, EntryReadAccess};
 use crate::glob::Matcher;
 use crate::permissions::Permissions;
+use crate::types::{DataType, DataValue};
 
 const MAX_REQUEST_PATH_LENGTH: usize = 1000;
 
@@ -687,11 +688,27 @@ fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> Da
                 message: "cannot set datapoint to value of unsupported type".to_string(),
             }),
         },
-        broker::UpdateError::OutOfBounds => DataEntryError {
+        broker::UpdateError::OutOfBoundsAllowed => DataEntryError {
             path: path.clone(),
             error: Some(proto::Error {
                 code: 400,
-                reason: String::from("value out of bounds"),
+                reason: String::from("value out of allowed bounds"),
+                message: String::from("given value exceeds type's boundaries"),
+            }),
+        },
+        broker::UpdateError::OutOfBoundsMinMax => DataEntryError {
+            path: path.clone(),
+            error: Some(proto::Error {
+                code: 400,
+                reason: String::from("value out of min/max bounds"),
+                message: String::from("given value exceeds type's boundaries"),
+            }),
+        },
+        broker::UpdateError::OutOfBoundsType => DataEntryError {
+            path: path.clone(),
+            error: Some(proto::Error {
+                code: 400,
+                reason: String::from("value out of type bounds"),
                 message: String::from("given value exceeds type's boundaries"),
             }),
         },
@@ -792,72 +809,147 @@ fn proto_entry_from_entry_and_fields(
         }
         if all || fields.contains(&proto::Field::MetadataValueRestriction) {
             metadata_is_set = true;
-            metadata.value_restriction = match entry.metadata().allowed.as_ref() {
-                Some(allowed) => match allowed {
-                    broker::DataValue::StringArray(vec) => Some(proto::ValueRestriction {
-                        r#type: Some(proto::value_restriction::Type::String(
-                            proto::ValueRestrictionString {
-                                allowed_values: vec.clone(),
-                            },
-                        )),
-                    }),
-                    broker::DataValue::Int32Array(vec) => Some(proto::ValueRestriction {
-                        r#type: Some(proto::value_restriction::Type::Signed(
-                            proto::ValueRestrictionInt {
-                                allowed_values: vec.iter().cloned().map(i64::from).collect(),
-                                min: None, // TODO: Implement
-                                max: None, // TODO: Implement
-                            },
-                        )),
-                    }),
-                    broker::DataValue::Int64Array(vec) => Some(proto::ValueRestriction {
-                        r#type: Some(proto::value_restriction::Type::Signed(
-                            proto::ValueRestrictionInt {
-                                allowed_values: vec.clone(),
-                                min: None, // TODO: Implement
-                                max: None, // TODO: Implement
-                            },
-                        )),
-                    }),
-                    broker::DataValue::Uint32Array(vec) => Some(proto::ValueRestriction {
-                        r#type: Some(proto::value_restriction::Type::Unsigned(
-                            proto::ValueRestrictionUint {
-                                allowed_values: vec.iter().cloned().map(u64::from).collect(),
-                                min: None, // TODO: Implement
-                                max: None, // TODO: Implement
-                            },
-                        )),
-                    }),
-                    broker::DataValue::Uint64Array(vec) => Some(proto::ValueRestriction {
-                        r#type: Some(proto::value_restriction::Type::Unsigned(
-                            proto::ValueRestrictionUint {
-                                allowed_values: vec.clone(),
-                                min: None, // TODO: Implement
-                                max: None, // TODO: Implement
-                            },
-                        )),
-                    }),
-                    broker::DataValue::FloatArray(vec) => Some(proto::ValueRestriction {
-                        r#type: Some(proto::value_restriction::Type::FloatingPoint(
-                            proto::ValueRestrictionFloat {
-                                allowed_values: vec.iter().cloned().map(f64::from).collect(),
-                                min: None, // TODO: Implement
-                                max: None, // TODO: Implement
-                            },
-                        )),
-                    }),
-                    broker::DataValue::DoubleArray(vec) => Some(proto::ValueRestriction {
-                        r#type: Some(proto::value_restriction::Type::FloatingPoint(
-                            proto::ValueRestrictionFloat {
-                                allowed_values: vec.clone(),
-                                min: None, // TODO: Implement
-                                max: None, // TODO: Implement
-                            },
-                        )),
-                    }),
-                    _ => None,
-                },
-                None => None,
+            debug!("Datatype {:?} to be handled", entry.metadata().data_type);
+            match entry.metadata().data_type {
+                DataType::String | DataType::StringArray => {
+                    let allowed = match entry.metadata().allowed.as_ref() {
+                        Some(broker::DataValue::StringArray(vec)) => vec.clone(),
+                        _ => Vec::new(),
+                    };
+
+                    if !allowed.is_empty() {
+                        metadata.value_restriction = Some(proto::ValueRestriction {
+                            r#type: Some(proto::value_restriction::Type::String(
+                                proto::ValueRestrictionString {
+                                    allowed_values: allowed,
+                                },
+                            )),
+                        });
+                    };
+                }
+                DataType::Int8
+                | DataType::Int16
+                | DataType::Int32
+                | DataType::Int64
+                | DataType::Int8Array
+                | DataType::Int16Array
+                | DataType::Int32Array
+                | DataType::Int64Array => {
+                    let min_value = match entry.metadata().min {
+                        Some(DataValue::Int32(value)) => Some(i64::from(value)),
+                        Some(DataValue::Int64(value)) => Some(value),
+                        _ => None,
+                    };
+                    let max_value = match entry.metadata().max {
+                        Some(DataValue::Int32(value)) => Some(i64::from(value)),
+                        Some(DataValue::Int64(value)) => Some(value),
+                        _ => None,
+                    };
+                    let allowed = match entry.metadata().allowed.as_ref() {
+                        Some(allowed) => match allowed {
+                            broker::DataValue::Int32Array(vec) => {
+                                vec.iter().cloned().map(i64::from).collect()
+                            }
+                            broker::DataValue::Int64Array(vec) => vec.to_vec(),
+                            _ => Vec::new(),
+                        },
+                        _ => Vec::new(),
+                    };
+
+                    if min_value.is_some() | max_value.is_some() | !allowed.is_empty() {
+                        metadata.value_restriction = Some(proto::ValueRestriction {
+                            r#type: Some(proto::value_restriction::Type::Signed(
+                                proto::ValueRestrictionInt {
+                                    allowed_values: allowed,
+                                    min: min_value,
+                                    max: max_value,
+                                },
+                            )),
+                        });
+                    };
+                }
+                DataType::Uint8
+                | DataType::Uint16
+                | DataType::Uint32
+                | DataType::Uint64
+                | DataType::Uint8Array
+                | DataType::Uint16Array
+                | DataType::Uint32Array
+                | DataType::Uint64Array => {
+                    let min_value = match entry.metadata().min {
+                        Some(DataValue::Uint32(value)) => Some(u64::from(value)),
+                        Some(DataValue::Uint64(value)) => Some(value),
+                        _ => None,
+                    };
+                    let max_value = match entry.metadata().max {
+                        Some(DataValue::Uint32(value)) => Some(u64::from(value)),
+                        Some(DataValue::Uint64(value)) => Some(value),
+                        _ => None,
+                    };
+                    let allowed = match entry.metadata().allowed.as_ref() {
+                        Some(allowed) => match allowed {
+                            broker::DataValue::Uint32Array(vec) => {
+                                vec.iter().cloned().map(u64::from).collect()
+                            }
+                            broker::DataValue::Uint64Array(vec) => vec.to_vec(),
+                            _ => Vec::new(),
+                        },
+                        _ => Vec::new(),
+                    };
+
+                    if min_value.is_some() | max_value.is_some() | !allowed.is_empty() {
+                        metadata.value_restriction = Some(proto::ValueRestriction {
+                            r#type: Some(proto::value_restriction::Type::Unsigned(
+                                proto::ValueRestrictionUint {
+                                    allowed_values: allowed,
+                                    min: min_value,
+                                    max: max_value,
+                                },
+                            )),
+                        });
+                    };
+                }
+                DataType::Float
+                | DataType::Double
+                | DataType::FloatArray
+                | DataType::DoubleArray => {
+                    let min_value = match entry.metadata().min {
+                        Some(DataValue::Float(value)) => Some(f64::from(value)),
+                        Some(DataValue::Double(value)) => Some(value),
+                        _ => None,
+                    };
+                    let max_value = match entry.metadata().max {
+                        Some(DataValue::Float(value)) => Some(f64::from(value)),
+                        Some(DataValue::Double(value)) => Some(value),
+                        _ => None,
+                    };
+                    let allowed = match entry.metadata().allowed.as_ref() {
+                        Some(allowed) => match allowed {
+                            broker::DataValue::FloatArray(vec) => {
+                                vec.iter().cloned().map(f64::from).collect()
+                            }
+                            broker::DataValue::DoubleArray(vec) => vec.to_vec(),
+                            _ => Vec::new(),
+                        },
+                        _ => Vec::new(),
+                    };
+
+                    if min_value.is_some() | max_value.is_some() | !allowed.is_empty() {
+                        metadata.value_restriction = Some(proto::ValueRestriction {
+                            r#type: Some(proto::value_restriction::Type::FloatingPoint(
+                                proto::ValueRestrictionFloat {
+                                    allowed_values: allowed,
+                                    min: min_value,
+                                    max: max_value,
+                                },
+                            )),
+                        });
+                    };
+                }
+
+                _ => {
+                    debug!("Datatype {:?} not yet handled", entry.metadata().data_type);
+                }
             }
         }
         if all || fields.contains(&proto::Field::MetadataActuator) {
@@ -984,6 +1076,8 @@ impl broker::EntryUpdate {
             data_type: None,
             description: None,
             allowed: None,
+            min: None,
+            max: None,
             unit: None,
         }
     }
@@ -1007,6 +1101,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1062,6 +1158,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 Some("km/h".to_owned()),
             )
@@ -1158,6 +1256,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1171,6 +1271,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test branch datapoint 2".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1219,6 +1321,8 @@ mod tests {
                 broker::ChangeType::OnChange,
                 broker::EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )

@@ -60,7 +60,7 @@ use the full name. When official release is created replace the copied *.json-fi
 Build and run kuksa_databroker using the new VSS file according to [documentation](../../README.md), e.g.
 
 ```sh
-$cargo run --bin databroker -- --metadata ../data/vss-core/vss_release_4.0.json
+$cargo run --bin databroker -- --metadata ./data/vss-core/vss_release_4.0.json
 ```
 
 Use the client to verify that changes in VSS are reflected, by doing e.g. set/get on some new or renamed signals.

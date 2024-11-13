@@ -65,6 +65,8 @@ async fn add_kuksa_attribute(
             description,
             None,
             None,
+            None,
+            None,
         )
         .await
     {
@@ -83,6 +85,8 @@ async fn add_kuksa_attribute(
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )];
@@ -116,7 +120,7 @@ async fn read_metadata_file<'a, 'b>(
     let entries = vss::parse_vss_from_reader(buffered)?;
 
     for (path, entry) in entries {
-        debug!("Adding VSS datapoint type {}", path);
+        debug!("Adding VSS datapoint {}", path);
 
         match database
             .add_entry(
@@ -125,6 +129,8 @@ async fn read_metadata_file<'a, 'b>(
                 entry.change_type,
                 entry.entry_type,
                 entry.description,
+                entry.min,
+                entry.max,
                 entry.allowed,
                 entry.unit,
             )
@@ -146,6 +152,8 @@ async fn read_metadata_file<'a, 'b>(
                             data_type: None,
                             description: None,
                             allowed: None,
+                            min: None,
+                            max: None,
                             unit: None,
                         },
                     )];
@@ -173,6 +181,7 @@ async fn read_metadata_file<'a, 'b>(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let version = option_env!("CARGO_PKG_VERSION").unwrap_or_default();
+    let commit_sha = option_env!("VERGEN_GIT_SHA").unwrap_or_default();
 
     let about = format!(
         concat!(
@@ -356,7 +365,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .expect("port should be a number");
         let addr = std::net::SocketAddr::new(ip_addr, *port);
 
-        let broker = broker::DataBroker::new(version);
+        let broker = broker::DataBroker::new(version, commit_sha);
         let database = broker.authorized_access(&permissions::ALLOW_ALL);
 
         add_kuksa_attribute(
@@ -475,7 +484,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        let mut apis = vec![grpc::server::Api::KuksaValV1];
+        let mut apis = vec![grpc::server::Api::KuksaValV1, grpc::server::Api::KuksaValV2];
 
         if args.get_flag("enable-databroker-v1") {
             apis.push(grpc::server::Api::SdvDatabrokerV1);

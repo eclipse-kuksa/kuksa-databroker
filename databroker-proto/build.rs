@@ -11,6 +11,8 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
+use std::{env, path::PathBuf};
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::env::set_var("PROTOC", protobuf_src::protoc());
     tonic_build::configure()
@@ -23,8 +25,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/sdv/databroker/v1/collector.proto",
                 "proto/kuksa/val/v1/val.proto",
                 "proto/kuksa/val/v1/types.proto",
+                "proto/kuksa/val/v2/val.proto",
+                "proto/kuksa/val/v2/types.proto",
             ],
             &["proto"],
         )?;
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    tonic_build::configure()
+        .file_descriptor_set_path(out_dir.join("kuksa.val.v2_descriptor.bin"))
+        .compile(
+            &[
+                "proto/kuksa/val/v2/val.proto",
+                "proto/kuksa/val/v2/types.proto",
+            ],
+            &["proto"],
+        )
+        .unwrap();
+
     Ok(())
 }

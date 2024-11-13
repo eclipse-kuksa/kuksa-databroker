@@ -12,6 +12,7 @@
  ********************************************************************************/
 
 syntax = "proto3";
+// Please do not add optional fields due to older proto3 versions limitations
 
 import "google/protobuf/timestamp.proto";
 
@@ -143,6 +144,20 @@ message Datapoint {
   }
 }
 
+message Metadata {
+  int32 id                             = 1;
+  EntryType entry_type                 = 2;
+  string name                          = 4;
+  DataType data_type                   = 5;
+  ChangeType change_type               = 6;  // CONTINUOUS or STATIC or ON_CHANGE
+  string description                   = 7;
+
+  // Value restrictions checked/enforced by Databroker.
+  Allowed allowed                      = 10;
+  ValueRestriction min                 = 11;
+  ValueRestriction max                 = 12;
+}
+
 message Allowed {
   oneof values {
     StringArray string_values = 1;
@@ -155,15 +170,15 @@ message Allowed {
   }
 }
 
-message Metadata {
-  int32 id               = 1;
-  EntryType entry_type   = 2;
-  string name            = 4;
-  DataType data_type     = 5;
-  ChangeType change_type = 6;  // CONTINUOUS or STATIC or ON_CHANGE
-  string description     = 7;
-
-  Allowed allowed = 10;
-  // int32             min_update_hz       = 10; // Only for CONTINUOUS
-  // int32             max_update_hz       = 11; // Only for CONTINUOUS
-};
+message ValueRestriction {
+  oneof typed_value {
+    string string = 1;
+    bool bool     = 2;
+    sint32 int32  = 3;
+    sint64 int64  = 4;
+    uint32 uint32 = 5;
+    uint64 uint64 = 6;
+    float float   = 7;
+    double double = 8;
+  }
+}
