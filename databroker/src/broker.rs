@@ -18,8 +18,9 @@ use crate::query;
 pub use crate::types::{ChangeType, DataType, DataValue, EntryType};
 
 use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_stream::Stream;
+use tokio_stream::{Stream, StreamExt};
 
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -32,6 +33,8 @@ use crate::types::ExecutionInputImplData;
 use tracing::{debug, info, warn};
 
 use crate::glob;
+
+const MAX_SUBSCRIBE_BUFFER_SIZE: usize = 1000;
 
 #[derive(Debug)]
 pub enum ActuationError {
@@ -135,14 +138,14 @@ pub struct QueryField {
     pub value: DataValue,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChangeNotification {
     pub id: i32,
     pub update: EntryUpdate,
     pub fields: HashSet<Field>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct EntryUpdates {
     pub updates: Vec<ChangeNotification>,
 }
@@ -157,6 +160,7 @@ pub enum QueryError {
 pub enum SubscriptionError {
     NotFound,
     InvalidInput,
+    InvalidBufferSize,
     InternalError,
 }
 
@@ -198,7 +202,7 @@ pub struct QuerySubscription {
 
 pub struct ChangeSubscription {
     entries: HashMap<i32, HashSet<Field>>,
-    sender: mpsc::Sender<EntryUpdates>,
+    sender: broadcast::Sender<EntryUpdates>,
     permissions: Permissions,
 }
 
@@ -805,7 +809,7 @@ impl Subscriptions {
             }
         });
         self.change_subscriptions.retain(|sub| {
-            if sub.sender.is_closed() {
+            if sub.sender.receiver_count() == 0 {
                 info!("Subscriber gone: removing subscription");
                 false
             } else if sub.permissions.is_expired() {
@@ -898,9 +902,12 @@ impl ChangeSubscription {
                     if notifications.updates.is_empty() {
                         Ok(())
                     } else {
-                        match self.sender.send(notifications).await {
-                            Ok(()) => Ok(()),
-                            Err(_) => Err(NotificationError {}),
+                        match self.sender.send(notifications) {
+                            Ok(_number_of_receivers) => Ok(()),
+                            Err(err) => {
+                                debug!("Send error for entry{}: ", err);
+                                Err(NotificationError {})
+                            }
                         }
                     }
                 } else {
@@ -939,9 +946,12 @@ impl ChangeSubscription {
                     }
                     notifications
                 };
-                match self.sender.send(notifications).await {
-                    Ok(()) => Ok(()),
-                    Err(_) => Err(NotificationError {}),
+                match self.sender.send(notifications) {
+                    Ok(_number_of_receivers) => Ok(()),
+                    Err(err) => {
+                        debug!("Send error for entry{}: ", err);
+                        Err(NotificationError {})
+                    }
                 }
             }
         }
@@ -1622,12 +1632,22 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
     pub async fn subscribe(
         &self,
         valid_entries: HashMap<i32, HashSet<Field>>,
+        buffer_size: Option<usize>,
     ) -> Result<impl Stream<Item = EntryUpdates>, SubscriptionError> {
         if valid_entries.is_empty() {
             return Err(SubscriptionError::InvalidInput);
         }
 
-        let (sender, receiver) = mpsc::channel(10);
+        let channel_capacity = if let Some(cap) = buffer_size {
+            if cap > MAX_SUBSCRIBE_BUFFER_SIZE {
+                return Err(SubscriptionError::InvalidBufferSize);
+            }
+            cap
+        } else {
+            1
+        };
+
+        let (sender, receiver) = broadcast::channel(channel_capacity);
         let subscription = ChangeSubscription {
             entries: valid_entries,
             sender,
@@ -1648,7 +1668,13 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .await
             .add_change_subscription(subscription);
 
-        let stream = ReceiverStream::new(receiver);
+        let stream = BroadcastStream::new(receiver).filter_map(|result| match result {
+            Ok(message) => Some(message),
+            Err(err) => {
+                debug!("Lagged entries: {}", err);
+                None
+            }
+        });
         Ok(stream)
     }
 
@@ -4234,20 +4260,23 @@ pub mod tests {
             .expect("Register datapoint should succeed");
 
         let mut stream = broker
-            .subscribe(HashMap::from([(id1, HashSet::from([Field::Datapoint]))]))
+            .subscribe(
+                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
+                None,
+            )
             .await
             .expect("subscription should succeed");
 
         // Stream should yield initial notification with current values i.e. NotAvailable
         match stream.next().await {
-            Some(next) => {
-                assert_eq!(next.updates.len(), 1);
+            Some(entry) => {
+                assert_eq!(entry.updates.len(), 1);
                 assert_eq!(
-                    next.updates[0].update.path,
+                    entry.updates[0].update.path,
                     Some("test.datapoint1".to_string())
                 );
                 assert_eq!(
-                    next.updates[0].update.datapoint.as_ref().unwrap().value,
+                    entry.updates[0].update.datapoint.as_ref().unwrap().value,
                     DataValue::NotAvailable
                 );
             }
@@ -4281,14 +4310,14 @@ pub mod tests {
 
         // Value has been set, expect the next item in stream to match.
         match stream.next().await {
-            Some(next) => {
-                assert_eq!(next.updates.len(), 1);
+            Some(entry) => {
+                assert_eq!(entry.updates.len(), 1);
                 assert_eq!(
-                    next.updates[0].update.path,
+                    entry.updates[0].update.path,
                     Some("test.datapoint1".to_string())
                 );
                 assert_eq!(
-                    next.updates[0].update.datapoint.as_ref().unwrap().value,
+                    entry.updates[0].update.datapoint.as_ref().unwrap().value,
                     DataValue::Int32(101)
                 );
             }

@@ -600,7 +600,7 @@ impl proto::val_server::Val for broker::DataBroker {
             }
         }
 
-        match broker.subscribe(entries).await {
+        match broker.subscribe(entries, Some(1)).await {
             Ok(stream) => {
                 let stream = convert_to_proto_stream(stream);
                 Ok(tonic::Response::new(Box::pin(stream)))
@@ -615,6 +615,10 @@ impl proto::val_server::Val for broker::DataBroker {
             Err(SubscriptionError::InternalError) => {
                 Err(tonic::Status::new(tonic::Code::Internal, "Internal Error"))
             }
+            Err(SubscriptionError::InvalidBufferSize) => Err(tonic::Status::new(
+                tonic::Code::InvalidArgument,
+                "Subscription buffer_size max allowed value is 1000",
+            )),
         }
     }
 

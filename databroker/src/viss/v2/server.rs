@@ -271,7 +271,7 @@ impl Viss for Server {
             });
         };
 
-        match broker.subscribe(entries).await {
+        match broker.subscribe(entries, Some(1)).await {
             Ok(stream) => {
                 let subscription_id = SubscriptionId::new();
 
@@ -303,6 +303,7 @@ impl Viss for Server {
                     broker::SubscriptionError::NotFound => Error::NotFoundInvalidPath,
                     broker::SubscriptionError::InvalidInput => Error::NotFoundInvalidPath,
                     broker::SubscriptionError::InternalError => Error::InternalServerError,
+                    broker::SubscriptionError::InvalidBufferSize => Error::InternalServerError,
                 },
                 ts: SystemTime::now().into(),
             }),
