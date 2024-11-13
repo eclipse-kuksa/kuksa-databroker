@@ -2204,19 +2204,15 @@ mod tests {
                 let entries_size = list_response.metadata.len();
                 assert_eq!(entries_size, 1);
 
-                let value_restriction = Some(proto::ValueRestriction {
-                    r#type: Some(proto::value_restriction::Type::Signed(
-                        proto::ValueRestrictionInt {
-                            allowed_values: Vec::new(),
-                            min: Some(-7),
-                            max: Some(19),
-                        },
-                    )),
+                let min: Option<Value> = Some(Value {
+                    typed_value: Some(proto::value::TypedValue::Int32(-7)),
                 });
-                assert_eq!(
-                    list_response.metadata.first().unwrap().value_restriction,
-                    value_restriction
-                )
+                let max = Some(Value {
+                    typed_value: Some(proto::value::TypedValue::Int32(19)),
+                });
+
+                assert_eq!(list_response.metadata.first().unwrap().min, min);
+                assert_eq!(list_response.metadata.first().unwrap().max, max);
             }
             Err(_status) => panic!("failed to execute get request"),
         }
