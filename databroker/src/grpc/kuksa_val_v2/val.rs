@@ -626,8 +626,10 @@ impl proto::val_server::Val for broker::DataBroker {
     //                   e.g. if sending an unsupported enum value
     //              - if the published value is out of the min/max range specified
     //
-    //    - Provider returns BatchActuateStreamResponse <- Databroker sends BatchActuateStreamRequest
-    //        No error definition, a BatchActuateStreamResponse is expected from provider.
+    //    - Databroker sends BatchActuateStreamRequest -> Provider may return one or more BatchActuateStreamResponse upon error,
+    //        but should for performance reasons send nothing upon success.
+    //        It is up to the provider to decide if the stream shall be closed,
+    //        as of today Databroker will not react on the received error message.
     //
     async fn open_provider_stream(
         &self,
@@ -678,8 +680,30 @@ impl proto::val_server::Val for broker::DataBroker {
                                                     }
                                                 }
                                             },
-                                            Some(BatchActuateStreamResponse(_batch_actuate_stream_response)) => {
-                                                // TODO discuss and implement
+                                            Some(BatchActuateStreamResponse(batch_actuate_stream_response)) => {
+
+                                                if let Some(error) = batch_actuate_stream_response.error {
+                                                    match error.code {
+                                                        0 => {},
+                                                        _ => {
+                                                            let mut msg : String = "Batch actuate stream response error".to_string();
+                                                            if let Some(signal_id) = batch_actuate_stream_response.signal_id {
+                                                                match signal_id.signal {
+                                                                    Some(proto::signal_id::Signal::Path(path)) => {
+                                                                        msg = msg + ", path: " + &path;
+                                                                    }
+                                                                    Some(proto::signal_id::Signal::Id(id)) => {
+                                                                        msg = msg + ", id: " + &id.to_string();
+                                                                    }
+                                                                    None => {}
+                                                                }
+                                                            }
+                                                            msg = msg + ", error code: " + &error.code.to_string() + ", error message: " + &error.message;
+                                                            debug!(msg)
+                                                        }
+                                                    }
+                                                }
+
                                             },
                                             None => {
 

@@ -178,8 +178,10 @@ service VAL {
   //                   e.g. if sending an unsupported enum value
   //              - if the published value is out of the min/max range specified
   //
-  //    - Provider returns BatchActuateStreamResponse <- Databroker sends BatchActuateStreamRequest
-  //        No error definition, a BatchActuateStreamResponse is expected from provider.
+  //    - Databroker sends BatchActuateStreamRequest -> Provider may return one or more BatchActuateStreamResponse upon error,
+  //        but should for performance reasons send nothing upon success.
+  //        It is up to the provider to decide if the stream shall be closed,
+  //        as of today Databroker will not react on the received error message.
   //
   rpc OpenProviderStream(stream OpenProviderStreamRequest) returns (stream OpenProviderStreamResponse);
 
@@ -280,7 +282,12 @@ message BatchActuateStreamRequest {
   repeated ActuateRequest actuate_requests = 1;
 }
 
+// Message that can be used by provider to indicate that an actuation request was not accepted.
+// It is optional for the provider to use this message, and for performance reasons it is recommended
+// not to send it upon success.
 message BatchActuateStreamResponse {
+  SignalID signal_id   = 1;
+  Error error = 2;
 }
 
 message OpenProviderStreamRequest {
