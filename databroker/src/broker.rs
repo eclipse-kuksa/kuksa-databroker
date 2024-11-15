@@ -4241,8 +4241,7 @@ pub mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_subscribe_and_get() {
+    async fn test_subscribe_and_get_buffer_size(buffer_size: Option<usize>) {
         let broker = DataBroker::default();
         let broker = broker.authorized_access(&permissions::ALLOW_ALL);
 
@@ -4264,7 +4263,7 @@ pub mod tests {
         let mut stream = broker
             .subscribe(
                 HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
-                None,
+                buffer_size,
             )
             .await
             .expect("subscription should succeed");
@@ -4338,6 +4337,49 @@ pub mod tests {
             }
             Err(ReadError::PermissionDenied | ReadError::PermissionExpired) => {
                 panic!("expected to be authorized");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_and_get() {
+        // None and 0-1000 is valid range
+        test_subscribe_and_get_buffer_size(None).await;
+        test_subscribe_and_get_buffer_size(Some(0)).await;
+        test_subscribe_and_get_buffer_size(Some(1000)).await;
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_buffersize_out_of_range() {
+        let broker = DataBroker::default();
+        let broker = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let id1 = broker
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                DataType::Int32,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        match broker
+            .subscribe(
+                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
+                // 1001 is just outside valid range 0-1000
+                Some(1001),
+            )
+            .await
+        {
+            Err(SubscriptionError::InvalidBufferSize) => {}
+            _ => {
+                panic!("expected it to fail with InvalidBufferSize");
             }
         }
     }
