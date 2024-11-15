@@ -11,14 +11,6 @@ The extended list of design topics for Kuksa Databroker is available in the [Kuk
 ### 3. Use Cases
 The use cases for Kuksa Databroker is available in the [Kuksa use cases](./kuksa_analysis/kuksa_use_cases.md)
 
-### 4. New API Definition
-The latest and new API `kuksa.val.v2` for Kuksa Databroker is available in [kuksa.val.v2](../proto/kuksa/val/v2/val.proto)
-
-This API is under development and will eventually replace:
-[kuksa.val.v1](https://github.com/eclipse-kuksa/kuksa-databroker/tree/main/proto/kuksa/val/v1) API.
-[sdv.databroker.v1](https://github.com/eclipse-kuksa/kuksa-databroker/tree/main/proto/sdv/databroker/v1) API.
-
-
 ### Documentation
   #### [Terminology](./terminology.md)
   #### [System Architecture](./system-architecture.md)

@@ -2368,7 +2368,9 @@ mod tests {
             .await
             .map(|res| res.into_inner())
         {
-            Ok(_) => {}
+            Ok(_) => {
+                panic!("We shall not succeed with a blank before *")
+            }
             Err(error) => {
                 assert_eq!(
                     error.code(),
@@ -2397,7 +2399,9 @@ mod tests {
             .await
             .map(|res| res.into_inner())
         {
-            Ok(_) => {}
+            Ok(_) => {
+                panic!("Success not expected!")
+            }
             Err(error) => {
                 assert_eq!(error.code(), tonic::Code::NotFound, "unexpected error code");
                 assert_eq!(

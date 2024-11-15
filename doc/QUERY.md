@@ -1,4 +1,7 @@
-# 1. Data Broker Query Syntax
+# 1. Databroker sdv.databroker.v1 Query Syntax
+
+*Note! This document is only relevant for the [sdv.databroker.v1](../proto/sdv/databroker/v1) API!*
+
 
 - [1. Data Broker Query Syntax](#1-data-broker-query-syntax)
   - [1.1. Intro](#11-intro)
