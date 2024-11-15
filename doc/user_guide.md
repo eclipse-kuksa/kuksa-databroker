@@ -14,11 +14,12 @@ The following sections provide information for running and configuring Databroke
     <li><a href="#running-databroker">Running Databroker</a></li>
     <li><a href="#enabling-authorization">Enabling Authorization</a></li>
     <li><a href="#enabling-tls">Enabling TLS</a></li>
-    <li><a href="#query-syntax">Query Syntax</a></li>
+    <li><a href="#apis-supported-by-databroker">APIs supported by Databroker</a></li>
+    <li><a href="#current-and-target-value-concept-vs-data-value-concept">Current and target value concept vs data value concept</a></li>
     <li><a href="#using-custom-vss-data-entries">Using Custom VSS Data Entries</a></li>
-    <li><a href="#configuration-reference">Configuration Reference</a></li>
     <li><a href="#signal-change-types">Signal Change Types</a></li>
-    <li><a href="#api">API</a></li>
+    <li><a href="#configuration-reference">Configuration Reference</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
     <li><a href="#known-limitations">Known Limitations</a></li>
   </ol>
 </details>
@@ -147,24 +148,30 @@ docker run --rm -it --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## Query Syntax
+## APIs supported by Databroker
 
-Clients can subscribe to updates of data entries of interest using an SQL-based [query syntax](./QUERY.md).
+Kuksa Databroker provides [gRPC](https://grpc.io/) based API endpoints which can be used by
+clients to interact with the server.
 
-You can try it out using the `subscribe` command in the client:
+Kuksa Databroker implements the following service interfaces:
 
-```shell
-subscribe
-SELECT
-  Vehicle.ADAS.ABS.IsError
-WHERE
-  Vehicle.ADAS.ABS.IsEngaged
-```
+- Enabled on Databroker by default [kuksa.val.v2.VAL](../proto/kuksa/val/v2/val.proto) (recommended to use but still not supported by databroker-cli)
+- Enabled on Databroker by default [kuksa.val.v1.VAL](../proto/kuksa/val/v1/val.proto)
+- Disabled on Databroker by default, use `--enable-databroker-v1` to enable [sdv.databroker.v1.Broker](../proto/sdv/databroker/v1/broker.proto)
+- Disabled on Databroker by default, use `--enable-databroker-v1` to enable [sdv.databroker.v1.Collector](../proto/sdv/databroker/v1/collector.proto)
 
-```console
-[subscribe]  OK
-Subscription is now running in the background. Received data is identified by [1].
-```
+Please visit [protocol documentation](protocol.md) for more information on the APIs.
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+## Current and target value concept vs data value concept.
+For some of the APIs (`sdv.databroker.v1` and `kuksa.val.v1`), the concepts of `current_value` and `target_value` were introduced to differentiate between the expected or desired value for an actuator and the current value published by the provider (both stored in the Databroker’s database).
+
+This concept has been removed in `kuksa.val.v2`. Now, there is only a single `data_value` for sensors and actuators, meaning that desired actuator values are simply forwarded from the Signal Consumer to the Databroker and then to the Provider. The Provider is responsible for updating on Databroker the `data_value` received from the vehicle network.
+
+**Kuksa does not guarantee that the desired actuator value will be fully updated on the vehicle network; it only forwards actuator values from the Signal Consumer to the vehicle network.**
+
+**Do not mix different versions of APIs for providers and clients, as this will cause issues; kuksa.val.v2 is not backward compatible with sdv.databroker.v1 and kuksa.val.v1**
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -251,31 +258,6 @@ The default configuration can be overridden by means of setting the correspondin
 | `--insecure`              |                                  |                                                     | Allow insecure connections (default unless `--tls-cert` and `--tls-private-key` options are provided) |
 | `--worker-threads`        | `KUKSA_WORKER_THREADS`           | as many threads as cores are detected on the system | How many worker threads will be spawned by the tokio runtime.                                         |
 | `--enable-databroker-v1`  |                                  | `false`                                             | Enable sdv.databroker.v1 (GRPC) service                                                               |
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-## API
-
-Kuksa Databroker provides [gRPC](https://grpc.io/) based API endpoints which can be used by
-clients to interact with the server.
-
-gRPC services are specified by means of `.proto` files which define the services and the data
-exchanged between server and client.
-
-[Tooling](https://grpc.io/docs/languages/) is available for most popular programming languages to create
-client stubs for invoking the services.
-
-The Databroker uses gRPC's default HTTP/2 transport and [protocol buffers](https://developers.google.com/protocol-buffers) for message serialization.
-The same `.proto` file can be used to generate server skeleton and client stubs for other transports and serialization formats as well.
-
-HTTP/2 is a binary replacement for HTTP/1.1 used for handling connections, multiplexing (channels) and providing a standardized way to add headers for authorization and TLS for encryption/authentication.
-It also supports bi-directional streaming between client and server.
-
-Kuksa Databroker implements the following service interfaces:
-
-- [kuksa.val.v1.VAL](../proto/kuksa/val/v1/val.proto)
-- [sdv.databroker.v1.Broker](../proto/sdv/databroker/v1/broker.proto)
-- [sdv.databroker.v1.Collector](../proto/sdv/databroker/v1/collector.proto)
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

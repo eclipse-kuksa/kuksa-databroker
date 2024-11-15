@@ -1,4 +1,4 @@
-# Authorization in KUKSA.VAL
+# Kuksa Authorization Concept
 
 * [Background](#background)
 * [Introduction to OAuth2](#introduction)
@@ -64,7 +64,7 @@ orientation around how it fits into the overall OAuth 2.0 Authorization Framewor
 # Introduction to OAuth2
 Using an authorization framework like OAuth2 is well suited for an environment where third party
 applications need delegated access to a resource, while at the same time restricting the scope
-of this access to minimum. 
+of this access to minimum.
 
 See [The OAuth 2.0 Authorization Framework](#the-oauth-20-authorization-framework) for a more
 detailed description of the benefits, and the problems the framework aims to solve.
@@ -75,7 +75,7 @@ OAuth 2.0 defines four roles:
   >   An entity capable of granting access to a protected resource.
   >   When the resource owner is a person, it is referred to as an
   >   end-user.
-  
+
   The resource owner in this context could be the OEM or the owner of a vehicle.
 
 * **Resource server**
@@ -421,19 +421,19 @@ Example:
 > * Third-party applications are required to store the resource
 >   owner's credentials for future use, typically a password in
 >   clear-text.
-> 
+>
 > * Servers are required to support password authentication, despite
 >   the security weaknesses inherent in passwords.
-> 
+>
 > * Third-party applications gain overly broad access to the resource
 >   owner's protected resources, leaving resource owners without any
 >   ability to restrict duration or access to a limited subset of
 >   resources.
-> 
+>
 > * Resource owners cannot revoke access to an individual third party
 >   without revoking access to all third parties, and must do so by
 >   changing the third party's password.
-> 
+>
 > * Compromise of any third-party application results in compromise of
 >   the end-user's password and all of the data protected by that
 >   password.
@@ -462,47 +462,47 @@ Example:
 > represent specific scopes and durations of access, granted by the
 > resource owner, and enforced by the resource server and authorization
 > server.
-> 
+>
 > The token may denote an identifier used to retrieve the authorization
 > information or may self-contain the authorization information in a
 > verifiable manner (i.e., a token string consisting of some data and a
 > signature).  Additional authentication credentials, which are beyond
 > the scope of this specification, may be required in order for the
 > client to use a token.
-> 
+>
 > The access token provides an abstraction layer, replacing different
 > authorization constructs (e.g., username and password) with a single
 > token understood by the resource server.  This abstraction enables
 > issuing access tokens more restrictive than the authorization grant
 > used to obtain them, as well as removing the resource server's need
 > to understand a wide range of authentication methods.
-   
+
 [[RFC 6749](https://www.rfc-editor.org/rfc/rfc6749#section-1.4)]
 
 #### Roles
 > OAuth defines four roles:
-> 
+>
 > * **resource owner**
->   
+>
 >   An entity capable of granting access to a protected resource.
 >   When the resource owner is a person, it is referred to as an
 >   end-user.
-> 
+>
 > * **resource server**
->   
+>
 >   The server hosting the protected resources, capable of accepting
 >   and responding to protected resource requests using access tokens.
-> 
+>
 > * **client**
->   
+>
 >   An application making protected resource requests on behalf of the
 >   resource owner and with its authorization.  The term "client" does
 >   not imply any particular implementation characteristics (e.g.,
 >   whether the application executes on a server, a desktop, or other
 >   devices).
-> 
+>
 > * **authorization server**
->   
+>
 >   The server issuing access tokens to the client after successfully
 >   authenticating the resource owner and obtaining authorization.
 
@@ -515,13 +515,13 @@ Example:
 > This specification defines a profile for issuing OAuth 2.0 access tokens in JSON Web Token (JWT)
   format. Authorization servers and resource servers from different vendors can leverage this
   profile to issue and consume access tokens in an interoperable manner.
-> 
+>
 > The original OAuth 2.0 Authorization Framework [RFC6749] specification does not mandate any
   specific format for access tokens. While that remains perfectly appropriate for many important
   scenarios, in-market use has shown that many commercial OAuth 2.0 implementations elected to
   issue access tokens using a format that can be parsed and validated by resource servers directly,
   without further authorization server involvement.
-> 
+>
 > This specification aims to provide a standardized and interoperable profile as an alternative to
   the proprietary JWT access token layouts going forward. Besides defining a common set of
   mandatory and optional claims, the profile provides clear indications on how authorization
@@ -557,4 +557,3 @@ Example:
 * [The OAuth 2.0 Authorization Framework [RFC 6749]](https://www.rfc-editor.org/rfc/rfc6749)
 
 * [JSON Web Token (JWT) Profile for OAuth 2.0 Access Tokens [RFC 9068]](https://datatracker.ietf.org/doc/html/rfc9068)
-

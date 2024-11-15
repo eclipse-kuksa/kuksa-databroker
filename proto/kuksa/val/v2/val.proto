@@ -249,7 +249,13 @@ message BatchActuateResponse {
 }
 
 message ListMetadataRequest {
+  // Root path to be used when listing metadata
+  // Shall correspond to a VSS branch, e.g. "Vehicle", "Vehicle.Cabin"
+  // Metadata for all signals under that branch will be returned unless filtered by filter.
+  // NOTE: Currently Databroker supports also signals and wildcards in root but that may
+  //       be removed in a future release!
   string root   = 1;
+  // NOTE : Currently not considered by Databroker, all signals matching root are returned
   string filter = 2;
 }
 
