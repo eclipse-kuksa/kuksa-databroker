@@ -1642,8 +1642,10 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             if cap > MAX_SUBSCRIBE_BUFFER_SIZE {
                 return Err(SubscriptionError::InvalidBufferSize);
             }
-            cap
+            // Requested capacity for old messages plus 1 for latest
+            cap + 1
         } else {
+            // Just latest message
             1
         };
 
