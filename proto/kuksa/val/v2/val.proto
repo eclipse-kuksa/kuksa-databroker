@@ -208,6 +208,8 @@ message SubscribeRequest {
 
   // Specifies the number of messages that can be buffered for
   // slow subscribers before the oldest messages are dropped.
+  // Default (0) results in that only latest message is kept.
+  // Maximum value supported is implementation dependent.
   uint32 buffer_size           = 2;
 }
 
@@ -220,6 +222,8 @@ message SubscribeByIdRequest {
 
   // Specifies the number of messages that can be buffered for
   // slow subscribers before the oldest messages are dropped.
+  // Default (0) results in that only latest message is kept.
+  // Maximum value supported is implementation dependent.
   uint32 buffer_size        = 2;
 }
 

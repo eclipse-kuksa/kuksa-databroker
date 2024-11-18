@@ -222,12 +222,6 @@ impl proto::val_server::Val for broker::DataBroker {
         };
 
         let request = request.into_inner();
-        if request.buffer_size == 0 {
-            return Err(tonic::Status::invalid_argument(format!(
-                "Provided buffer_size {} should be greater than zero.",
-                request.buffer_size
-            )));
-        }
 
         let broker = self.authorized_access(&permissions);
 
@@ -301,12 +295,6 @@ impl proto::val_server::Val for broker::DataBroker {
         };
 
         let request = request.into_inner();
-        if request.buffer_size == 0 {
-            return Err(tonic::Status::invalid_argument(format!(
-                "Provided lag_buffer_capacity {} should be greater than zero.",
-                request.buffer_size
-            )));
-        }
 
         let broker = self.authorized_access(&permissions);
 
