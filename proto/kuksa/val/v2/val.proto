@@ -128,7 +128,7 @@ service VAL {
   // List metadata of signals matching the request.
   //
   // Returns (GRPC error code):
-  //   NOT_FOUND if the specified root branch does not exist.
+  //   NOT_FOUND if no signals matching the request are found.
   //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   INVALID_ARGUMENT if the provided path or wildcard is wrong.
   //
@@ -247,8 +247,9 @@ message BatchActuateResponse {
 }
 
 message ListMetadataRequest {
-  string root   = 1;
-  string filter = 2;
+  // A path which may include wildcards
+  // See https://github.com/eclipse-kuksa/kuksa-databroker/blob/main/doc/wildcard_matching.md
+  string path   = 1;
 }
 
 message ListMetadataResponse {

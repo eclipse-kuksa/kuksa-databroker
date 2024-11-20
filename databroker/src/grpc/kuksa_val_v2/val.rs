@@ -479,7 +479,7 @@ impl proto::val_server::Val for broker::DataBroker {
     }
 
     // Returns (GRPC error code):
-    //   NOT_FOUND if the specified root branch does not exist.
+    //   NOT_FOUND if no signals matching the request are found.
     //   UNAUTHENTICATED if no credentials provided or credentials has expired
     //   INVALID_ARGUMENT if the provided path or wildcard is wrong.
     //
@@ -499,7 +499,7 @@ impl proto::val_server::Val for broker::DataBroker {
 
         let metadata_request = request.into_inner();
 
-        match Matcher::new(&metadata_request.root) {
+        match Matcher::new(&metadata_request.path) {
             Ok(matcher) => {
                 let mut metadata_response = Vec::new();
                 broker
@@ -512,7 +512,7 @@ impl proto::val_server::Val for broker::DataBroker {
                     .await;
                 if metadata_response.is_empty() {
                     Err(tonic::Status::not_found(
-                        "Specified root branch does not exist",
+                        "No signals matching given path found",
                     ))
                 } else {
                     Ok(tonic::Response::new(ListMetadataResponse {
@@ -2203,8 +2203,7 @@ mod tests {
             .expect("Register datapoint should succeed");
 
         let mut data_req = tonic::Request::new(proto::ListMetadataRequest {
-            root: "test.datapoint1".to_owned(),
-            filter: "".to_owned(),
+            path: "test.datapoint1".to_owned(),
         });
 
         // Manually insert permissions
@@ -2270,13 +2269,11 @@ mod tests {
             .expect("Register datapoint should succeed");
 
         let mut wildcard_req_two_asteriks = tonic::Request::new(proto::ListMetadataRequest {
-            root: "test.**".to_owned(),
-            filter: "".to_owned(),
+            path: "test.**".to_owned(),
         });
 
         let mut wildcard_req_one_asterik = tonic::Request::new(proto::ListMetadataRequest {
-            root: "test.*".to_owned(),
-            filter: "".to_owned(),
+            path: "test.*".to_owned(),
         });
         // Manually insert permissions
         wildcard_req_two_asteriks
@@ -2331,8 +2328,7 @@ mod tests {
             .expect("Register datapoint should succeed");
 
         let mut wildcard_req = tonic::Request::new(proto::ListMetadataRequest {
-            root: "test. **".to_owned(),
-            filter: "".to_owned(),
+            path: "test. **".to_owned(),
         });
 
         // Manually insert permissions
@@ -2360,8 +2356,7 @@ mod tests {
         }
 
         let mut not_found_req = tonic::Request::new(proto::ListMetadataRequest {
-            root: "test.notfound".to_owned(),
-            filter: "".to_owned(),
+            path: "test.notfound".to_owned(),
         });
 
         // Manually insert permissions
@@ -2378,7 +2373,7 @@ mod tests {
                 assert_eq!(error.code(), tonic::Code::NotFound, "unexpected error code");
                 assert_eq!(
                     error.message(),
-                    "Specified root branch does not exist",
+                    "No signals matching given path found",
                     "unexpected error reason"
                 );
             }
