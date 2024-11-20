@@ -37,6 +37,8 @@ Usage: databroker [OPTIONS]
 Options:
       --address <IP>            Bind address [env: KUKSA_DATABROKER_ADDR=] [default: 127.0.0.1]
       --port <PORT>             Bind port [env: KUKSA_DATABROKER_PORT=] [default: 55555]
+      --enable-unix-socket      Listen on unix socket, default /run/kuksa/databroker.sock [env: KUKSA_DATABROKER_ENABLE_UNIX_SOCKET=]
+      --unix-socket <PATH>      Listen on unix socket, e.g. /tmp/kuksa/databroker.sock [env: KUKSA_DATABROKER_UNIX_SOCKET=]
       --vss <FILE>              Populate data broker with VSS metadata from (comma-separated) list of files [env: KUKSA_DATABROKER_METADATA_FILE=]
       --jwt-public-key <FILE>   Public key used to verify JWT access tokens
       --disable-authorization   Disable authorization
@@ -145,46 +147,7 @@ docker run --rm -it --network kuksa -v ./certificates:/opt/kuksa ghcr.io/eclipse
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## APIs supported by Databroker
-
-Kuksa Databroker provides [gRPC](https://grpc.io/) based API endpoints which can be used by
-clients to interact with the server.
-
-gRPC services are specified by means of `.proto` files which define the services and the data
-exchanged between server and client.
-
-[Tooling](https://grpc.io/docs/languages/) is available for most popular programming languages to create
-client stubs for invoking the services.
-
-The Databroker uses gRPC's default HTTP/2 transport and [protocol buffers](https://developers.google.com/protocol-buffers) for message serialization.
-The same `.proto` file can be used to generate server skeleton and client stubs for other transports and serialization formats as well.
-
-HTTP/2 is a binary replacement for HTTP/1.1 used for handling connections, multiplexing (channels) and providing a standardized way to add headers for authorization and TLS for encryption/authentication.
-It also supports bi-directional streaming between client and server.
-
-Kuksa Databroker implements the following service interfaces:
-
-- Enabled on Databroker by default [kuksa.val.v2.VAL](../proto/kuksa/val/v2/val.proto) (recommended to use but still not supported by databroker-cli)
-- Enabled on Databroker by default [kuksa.val.v1.VAL](../proto/kuksa/val/v1/val.proto)
-- Disabled on Databroker by default, use `--enable-databroker-v1` to enable [sdv.databroker.v1.Broker](../proto/sdv/databroker/v1/broker.proto)
-- Disabled on Databroker by default, use `--enable-databroker-v1` to enable [sdv.databroker.v1.Collector](../proto/sdv/databroker/v1/collector.proto)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-## Current and target value concept vs data value concept.
-For some of the APIs (`sdv.databroker.v1` and `kuksa.val.v1`), the concepts of `current_value` and `target_value` were introduced to differentiate between the expected or desired value for an actuator and the current value published by the provider (both stored in the Databroker’s database).
-
-This concept has been removed in `kuksa.val.v2`. Now, there is only a single `data_value` for sensors and actuators, meaning that desired actuator values are simply forwarded from the Signal Consumer to the Databroker and then to the Provider. The Provider is responsible for updating on Databroker the `data_value` received from the vehicle network.
-
-**Kuksa does not guarantee that the desired actuator value will be fully updated on the vehicle network; it only forwards actuator values from the Signal Consumer to the vehicle network.**
-
-**Do not mix different versions of APIs for providers and clients, as this will cause issues; kuksa.val.v2 is not backward compatible with sdv.databroker.v1 and kuksa.val.v1**
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-## sdv.databroker.v1 Query Syntax, disabled by default, use `--enable-databroker-v1` to enable it
+## Query Syntax
 
 Clients can subscribe to updates of data entries of interest using an SQL-based [query syntax](./QUERY.md).
 
@@ -268,16 +231,7 @@ Vehicle.Cabin.Door.Row1.Left.IsOpen:
   description: Is door open or closed
 ```
 
-#### For kuksa.val.v1:
-
 The change types currently apply on _current_ values, when subscribing to a _target value_, as an actuation provider would do, any set on the target value is propagated just like in `continuous` mode, even if a datapoint (and thus its current value behavior) is set to `onchange` or `static`. The idea here is, that a "set" by an application is the intent to actuate something (maybe a retry even), and should thus always be forwarded to the provider.
-
-#### For kuksa.val.v2:
-The concept of _current value_ and _target value_ does not exist in `kuksa.val.v2`, there are just simply _data value_ for `sensor` and `actuator` which are registered by default as `continuous`.
-The change types apply to the _data value_, meaning that if `x-kuksa-changetype` is not specified (`continuous` by default), subscribers will be notified whenever the provider publishes a new value, whether there has been a change or not. Notifications for changes will only occur if the type is set to `onchange`.
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
 
 ## Configuration Reference
 
@@ -288,6 +242,8 @@ The default configuration can be overridden by means of setting the correspondin
 | `--vss`,<br>`--metadata`  | `KUKSA_DATABROKER_METADATA_FILE` |                                                     | Populate data broker with metadata from file                                                          |
 | `--address`               | `KUKSA_DATABROKER_ADDR`          | `127.0.0.1`                                         | Listen for rpc calls                                                                                  |
 | `--port`                  | `KUKSA_DATABROKER_PORT`          | `55555`                                             | Listen for rpc calls                                                                                  |
+| `--enable-unix-socket`    | `KUKSA_DATABROKER_ENABLE_UNIX_SOCKET` | | Listen on unix socket, default `/run/kuksa/databroker.sock` |
+| `--unix-socket`           | `KUKSA_DATABROKER_UNIX_SOCKET`   |                                                     |  Listen on unix socket, e.g. `/tmp/kuksa/databroker.sockcalls`                                                                             |
 | `--jwt-public-key`        |                                  |                                                     | Public key used to verify JWT access tokens                                                           |
 | `--tls-cert`              |                                  |                                                     | TLS certificate file (.pem)                                                                           |
 | `--tls-private-key`       |                                  |                                                     | TLS private key file (.key)                                                                           |
@@ -298,6 +254,30 @@ The default configuration can be overridden by means of setting the correspondin
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+## API
+
+Kuksa Databroker provides [gRPC](https://grpc.io/) based API endpoints which can be used by
+clients to interact with the server.
+
+gRPC services are specified by means of `.proto` files which define the services and the data
+exchanged between server and client.
+
+[Tooling](https://grpc.io/docs/languages/) is available for most popular programming languages to create
+client stubs for invoking the services.
+
+The Databroker uses gRPC's default HTTP/2 transport and [protocol buffers](https://developers.google.com/protocol-buffers) for message serialization.
+The same `.proto` file can be used to generate server skeleton and client stubs for other transports and serialization formats as well.
+
+HTTP/2 is a binary replacement for HTTP/1.1 used for handling connections, multiplexing (channels) and providing a standardized way to add headers for authorization and TLS for encryption/authentication.
+It also supports bi-directional streaming between client and server.
+
+Kuksa Databroker implements the following service interfaces:
+
+- [kuksa.val.v1.VAL](../proto/kuksa/val/v1/val.proto)
+- [sdv.databroker.v1.Broker](../proto/sdv/databroker/v1/broker.proto)
+- [sdv.databroker.v1.Collector](../proto/sdv/databroker/v1/collector.proto)
+
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Troubleshooting
 
