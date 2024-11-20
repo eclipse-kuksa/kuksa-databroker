@@ -32,7 +32,7 @@ use databroker_proto::kuksa::val::v2::{
 
 use kuksa::proto::v2::{
     signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ListMetadataResponse,
-    ProvideActuationResponse,
+    ProvideActuationResponse, ErrorCode
 };
 use std::collections::HashSet;
 use tokio::{select, sync::mpsc};
@@ -683,8 +683,8 @@ impl proto::val_server::Val for broker::DataBroker {
                                             Some(BatchActuateStreamResponse(batch_actuate_stream_response)) => {
 
                                                 if let Some(error) = batch_actuate_stream_response.error {
-                                                    match error.code {
-                                                        0 => {},
+                                                    match ErrorCode::try_from(error.code()) {
+                                                        Ok(ErrorCode::Ok)  => {},
                                                         _ => {
                                                             let mut msg : String = "Batch actuate stream response error".to_string();
                                                             if let Some(signal_id) = batch_actuate_stream_response.signal_id {
