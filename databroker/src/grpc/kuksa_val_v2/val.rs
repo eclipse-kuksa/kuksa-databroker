@@ -626,8 +626,8 @@ impl proto::val_server::Val for broker::DataBroker {
     //                   e.g. if sending an unsupported enum value
     //              - if the published value is out of the min/max range specified
     //
-    //    - Databroker sends BatchActuateStreamRequest -> Provider may return one or more BatchActuateStreamResponse upon error,
-    //        but should for performance reasons send nothing upon success.
+    //    - Databroker sends BatchActuateStreamRequest -> Provider shall return a BatchActuateStreamResponse,
+    //        for every signal requested to indicate if the request was accepted or not.
     //        It is up to the provider to decide if the stream shall be closed,
     //        as of today Databroker will not react on the received error message.
     //
@@ -683,22 +683,22 @@ impl proto::val_server::Val for broker::DataBroker {
                                             Some(BatchActuateStreamResponse(batch_actuate_stream_response)) => {
 
                                                 if let Some(error) = batch_actuate_stream_response.error {
-                                                    match ErrorCode::try_from(error.code()) {
-                                                        Ok(ErrorCode::Ok)  => {},
+                                                    match error.code() {
+                                                        ErrorCode::Ok  => {},
                                                         _ => {
                                                             let mut msg : String = "Batch actuate stream response error".to_string();
                                                             if let Some(signal_id) = batch_actuate_stream_response.signal_id {
                                                                 match signal_id.signal {
                                                                     Some(proto::signal_id::Signal::Path(path)) => {
-                                                                        msg = msg + ", path: " + &path;
+                                                                        msg = format!("{}, path: {}", msg, &path);
                                                                     }
                                                                     Some(proto::signal_id::Signal::Id(id)) => {
-                                                                        msg = msg + ", id: " + &id.to_string();
+                                                                        msg = format!("{}, id: {}",msg, &id.to_string());
                                                                     }
                                                                     None => {}
                                                                 }
                                                             }
-                                                            msg = msg + ", error code: " + &error.code.to_string() + ", error message: " + &error.message;
+                                                            msg = format!("{}, error code: {}, error message: {}", msg, &error.code.to_string(), &error.message);
                                                             debug!(msg)
                                                         }
                                                     }
