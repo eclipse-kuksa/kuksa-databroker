@@ -31,8 +31,8 @@ use databroker_proto::kuksa::val::v2::{
 };
 
 use kuksa::proto::v2::{
-    signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ListMetadataResponse,
-    ProvideActuationResponse, ErrorCode
+    signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ErrorCode,
+    ListMetadataResponse, ProvideActuationResponse,
 };
 use std::collections::HashSet;
 use tokio::{select, sync::mpsc};
