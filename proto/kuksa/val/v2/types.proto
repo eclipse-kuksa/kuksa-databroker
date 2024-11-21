@@ -67,10 +67,11 @@ message Error {
 }
 
 enum ErrorCode {
-  OK                = 0;
-  INVALID_ARGUMENT  = 1;
-  NOT_FOUND         = 2;
-  PERMISSION_DENIED = 3;
+  ERROR_CODE_UNSPECIFIED       = 0; // Default value, never to be explicitly set,
+  ERROR_CODE_OK                = 1;
+  ERROR_CODE_INVALID_ARGUMENT  = 2;
+  ERROR_CODE_NOT_FOUND         = 3;
+  ERROR_CODE_PERMISSION_DENIED = 4;
 }
 
 message Metadata {
