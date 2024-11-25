@@ -809,7 +809,7 @@ async fn publish_values(
     request: &databroker_proto::kuksa::val::v2::PublishValuesRequest,
 ) -> Option<OpenProviderStreamResponse> {
     let ids: Vec<(i32, broker::EntryUpdate)> = request
-        .datapoints
+        .data_points
         .iter()
         .map(|(id, datapoint)| {
             (
@@ -2132,7 +2132,7 @@ mod tests {
             action: Some(open_provider_stream_request::Action::PublishValuesRequest(
                 PublishValuesRequest {
                     request_id,
-                    datapoints: {
+                    data_points: {
                         let timestamp = Some(std::time::SystemTime::now().into());
 
                         let value = proto::Value {
