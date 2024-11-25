@@ -267,7 +267,7 @@ message PublishValueResponse {
 
 message PublishValuesRequest {
   int32 request_id                 = 1; /// Unique request id for the stream that can be used to identify the response.
-  map<int32, Datapoint> datapoints = 2;
+  map<int32, Datapoint> data_points = 2;
 }
 
 message PublishValuesResponse {
