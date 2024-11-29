@@ -22,7 +22,7 @@ https://www.eclipse.org/projects/handbook/#resources-commit
 
 Contact the project developers via the project's "dev" list.
 
-* https://dev.eclipse.org/mailman/listinfo/kuksa-dev
+* https://accounts.eclipse.org/mailing-list/kuksa-dev
 
 ## Pre-commit set up
 This repository is set up to use [pre-commit](https://pre-commit.com/) hooks.
