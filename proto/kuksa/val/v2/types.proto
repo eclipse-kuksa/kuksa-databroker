@@ -75,6 +75,9 @@ enum ErrorCode {
 }
 
 message Metadata {
+
+  // Full dot notated path for the signal
+  string path                          = 9;
   // ID field
   int32 id                             = 10;
 
@@ -110,6 +113,7 @@ message Metadata {
   Value allowed_values                 = 17; // Must be of array type
   Value min                            = 18;
   Value max                            = 19;
+
 }
 
 // VSS Data type of a signal
