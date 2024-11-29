@@ -17,6 +17,7 @@
 |---------------------|--------------------------------------|
 | `""`                | Everything                           |
 | `"Vehicle"`         | Everything starting with `Vehicle`   |
+| `"Vehicle.Speed"`   | `Vehicle.Speed` |
 | `"Vehicle.Cabin.Sunroof"` | `Vehicle.Cabin.Sunroof.Position`<br>`Vehicle.Cabin.Sunroof.Shade.Position`<br>`Vehicle.Cabin.Sunroof.Shade.Switch`<br>`Vehicle.Cabin.Sunroof.Switch` |
 | `"Vehicle.Cabin.Sunroof.**"` | `Vehicle.Cabin.Sunroof.Position`<br>`Vehicle.Cabin.Sunroof.Shade.Position`<br>`Vehicle.Cabin.Sunroof.Shade.Switch`<br>`Vehicle.Cabin.Sunroof.Switch`  |
 | `"Vehicle.Cabin.Sunroof.*"` | `Vehicle.Cabin.Sunroof.Position`<br>`Vehicle.Cabin.Sunroof.Switch`  |

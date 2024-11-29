@@ -2302,12 +2302,40 @@ mod tests {
             root: "test.*".to_owned(),
             filter: "".to_owned(),
         });
+
+        let mut no_wildcard_req_root = tonic::Request::new(proto::ListMetadataRequest {
+            root: "test".to_owned(),
+            filter: "".to_owned(),
+        });
+
+        let mut no_wildcard_req_branch = tonic::Request::new(proto::ListMetadataRequest {
+            root: "test.branch".to_owned(),
+            filter: "".to_owned(),
+        });
+
+        let mut empty_req = tonic::Request::new(proto::ListMetadataRequest {
+            root: "".to_owned(),
+            filter: "".to_owned(),
+        });
+
         // Manually insert permissions
         wildcard_req_two_asteriks
             .extensions_mut()
             .insert(permissions::ALLOW_ALL.clone());
 
         wildcard_req_one_asterik
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        no_wildcard_req_root
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        no_wildcard_req_branch
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        empty_req
             .extensions_mut()
             .insert(permissions::ALLOW_ALL.clone());
 
@@ -2323,6 +2351,39 @@ mod tests {
         }
 
         match proto::val_server::Val::list_metadata(&broker, wildcard_req_one_asterik)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(list_response) => {
+                let entries_size = list_response.metadata.len();
+                assert_eq!(entries_size, 1);
+            }
+            Err(_status) => panic!("failed to execute get request"),
+        }
+
+        match proto::val_server::Val::list_metadata(&broker, empty_req)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(list_response) => {
+                let entries_size = list_response.metadata.len();
+                assert_eq!(entries_size, 2);
+            }
+            Err(_status) => panic!("failed to execute get request"),
+        }
+
+        match proto::val_server::Val::list_metadata(&broker, no_wildcard_req_root)
+            .await
+            .map(|res| res.into_inner())
+        {
+            Ok(list_response) => {
+                let entries_size = list_response.metadata.len();
+                assert_eq!(entries_size, 2);
+            }
+            Err(_status) => panic!("failed to execute get request"),
+        }
+
+        match proto::val_server::Val::list_metadata(&broker, no_wildcard_req_branch)
             .await
             .map(|res| res.into_inner())
         {
