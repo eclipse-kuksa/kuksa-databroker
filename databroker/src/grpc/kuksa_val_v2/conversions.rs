@@ -219,6 +219,7 @@ impl From<&broker::Metadata> for proto::Metadata {
     fn from(metadata: &broker::Metadata) -> Self {
         proto::Metadata {
             id: metadata.id,
+            path: metadata.path.clone(),
             data_type: proto::DataType::from(metadata.data_type.clone()) as i32,
             entry_type: proto::EntryType::from(metadata.entry_type.clone()) as i32,
             description: metadata.description.clone(),
