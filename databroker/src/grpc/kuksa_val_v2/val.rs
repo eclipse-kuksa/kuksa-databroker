@@ -2253,6 +2253,10 @@ mod tests {
 
                 assert_eq!(list_response.metadata.first().unwrap().min, min);
                 assert_eq!(list_response.metadata.first().unwrap().max, max);
+                assert_eq!(
+                    list_response.metadata.first().unwrap().path,
+                    "test.datapoint1".to_string()
+                );
             }
             Err(_status) => panic!("failed to execute get request"),
         }
