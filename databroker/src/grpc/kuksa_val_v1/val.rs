@@ -10,7 +10,7 @@
 *
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
-
+ 
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::iter::FromIterator;
@@ -24,8 +24,18 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;
 use tonic::{Response, Status, Streaming};
-use tracing::debug;
-use tracing::info;
+use tracing::{debug, info};
+
+#[cfg(feature="otel")]
+use {
+     tracing_opentelemetry::OpenTelemetrySpanExt,
+     tonic::metadata::KeyAndValueRef,
+     opentelemetry::global,
+};
+
+
+
+
 
 use crate::broker;
 use crate::broker::ReadError;
@@ -256,11 +266,24 @@ impl proto::val_server::Val for broker::DataBroker {
         }
     }
 
+    #[cfg_attr(feature="otel",tracing::instrument(name="val_set",skip(self, request), fields(trace_id, timestamp= chrono::Utc::now().to_string())))]
     async fn set(
         &self,
         request: tonic::Request<proto::SetRequest>,
     ) -> Result<tonic::Response<proto::SetResponse>, tonic::Status> {
         debug!(?request);
+        
+        #[cfg(feature="otel")]
+        let request = (||{
+            let (trace_id, request) = read_incoming_trace_id(request);
+            let metadata = request.metadata();
+            let cx = global::get_text_map_propagator(|propagator| {
+            propagator.extract(&MetadataMapExtractor(&metadata))
+        });
+            tracing::Span::current().record("trace_id", &trace_id).set_parent(cx);
+            request
+        })();
+       
         let permissions = match request.extensions().get::<Permissions>() {
             Some(permissions) => {
                 debug!(?permissions);
@@ -472,6 +495,7 @@ impl proto::val_server::Val for broker::DataBroker {
         >,
     >;
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="subscribe", skip(self, request), fields(trace_id, timestamp=chrono::Utc::now().to_string())))]
     async fn subscribe(
         &self,
         request: tonic::Request<proto::SubscribeRequest>,
@@ -666,6 +690,7 @@ async fn validate_entry_update(
     Ok((id, update))
 }
 
+#[cfg_attr(feature="otel", tracing::instrument(name="val_convert_to_data_entry_error", skip(path, error), fields(timestamp=chrono::Utc::now().to_string())))]
 fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> DataEntryError {
     match error {
         broker::UpdateError::NotFound => DataEntryError {
@@ -735,6 +760,7 @@ fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> Da
     }
 }
 
+#[cfg_attr(feature="otel", tracing::instrument(name = "val_convert_to_proto_stream", skip(input), fields(timestamp=chrono::Utc::now().to_string())))]
 fn convert_to_proto_stream(
     input: impl Stream<Item = broker::EntryUpdates>,
 ) -> impl Stream<Item = Result<proto::SubscribeResponse, tonic::Status>> {
@@ -1051,7 +1077,32 @@ fn combine_view_and_fields(
     combined
 }
 
+// Metadata extractor for gRPC
+#[cfg(feature="otel")]
+struct MetadataMapExtractor<'a>(&'a tonic::metadata::MetadataMap);
+
+#[cfg(feature="otel")]
+impl<'a> opentelemetry::propagation::Extractor for MetadataMapExtractor<'a> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|val| val.to_str().ok())
+    }
+
+     /// Collect all the keys from the HeaderMap.
+     fn keys(&self) -> Vec<&str> {
+        self.0.iter()
+            .filter_map(|kv| {
+                if let KeyAndValueRef::Ascii(key, _) = kv {
+                    Some(key.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+}
+
 impl broker::EntryUpdate {
+    #[cfg_attr(feature="otel", tracing::instrument(name = "val_from_proto_entry_and_fields",skip(entry,fields), fields(timestamp=chrono::Utc::now().to_string())))]
     fn from_proto_entry_and_fields(
         entry: &proto::DataEntry,
         fields: HashSet<proto::Field>,
@@ -1068,6 +1119,17 @@ impl broker::EntryUpdate {
             match &entry.actuator_target {
                 Some(datapoint) => Some(Some(broker::Datapoint::from(datapoint.clone()))),
                 None => Some(None),
+            }
+        } else {
+            None
+        };
+        let metadata_description = if fields.contains(&proto::Field::MetadataDescription) {
+            match &entry.metadata {
+                Some(metadata) => match &metadata.description {
+                   Some(description) => Some(description),
+                   None => None,
+                }
+                None => None,
             }
         } else {
             None
