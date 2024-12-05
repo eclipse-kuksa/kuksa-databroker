@@ -1,12 +1,8 @@
 # sdv.databroker.v1 protobuf API
 
-This directory contain a Protobuf API supported by KUKSA.val Databroker.
+This directory contain a Protobuf API supported by KUKSA Databroker.
 
-As of today KUKSA.val Databroker supports both this API and the
-[kuksa.val.v1](https://github.com/eclipse-kuksa/kuksa-databroker/tree/main/proto/kuksa/val/v1) API.
-The [kuksa.val.v1](https://github.com/eclipse-kuksa/kuksa-databroker/tree/main/proto/kuksa/val/v1) API is the newer API and is still
-in development. It does not yet support all features supported by this API.
+To enable the legacy `sdv.databroker.v1` API you must start Databroker with the `--enable-databroker-v1` argument.
 
-This API may in the future be deprecated. It is recommended to use
-the [kuksa.val.v1](https://github.com/eclipse-kuksa/kuksa-databroker/tree/main/proto/kuksa/val/v1) API, unless you need
-functionality currently only provided by this API.
+This API is deprecated. It is recommended to use
+the [kuksa.val.v2](../../../kuksa/val/v2/val.proto).

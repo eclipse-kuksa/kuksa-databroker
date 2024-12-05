@@ -1,0 +1,188 @@
+/********************************************************************************
+ * Copyright (c) 2024 Contributors to the Eclipse Foundation
+ *
+ * See the NOTICE file(s) distributed with this work for additional
+ * information regarding copyright ownership.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Apache License 2.0 which is available at
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ********************************************************************************/
+
+syntax = "proto3";
+// Please do not add optional fields due to older proto3 versions limitations
+
+package kuksa.val.v2;
+import "google/protobuf/timestamp.proto";
+
+option go_package = "kuksa/val/v2";
+
+// A Datapoint represents a timestamped value.
+// The 'value' field can be explicitly 'None', meaning the Datapoint exists but no value is present.
+message Datapoint {
+  google.protobuf.Timestamp timestamp = 1;  // The timestamp of the datapoint.
+  Value value                         = 2;  // The value associated with the timestamp. If no value is present, this field can be 'None'.
+}
+
+message Value {
+  oneof typed_value {
+    string string            = 11;
+    bool bool                = 12;
+    sint32 int32             = 13;
+    sint64 int64             = 14;
+    uint32 uint32            = 15;
+    uint64 uint64            = 16;
+    float float              = 17;
+    double double            = 18;
+    StringArray string_array = 21;
+    BoolArray bool_array     = 22;
+    Int32Array int32_array   = 23;
+    Int64Array int64_array   = 24;
+    Uint32Array uint32_array = 25;
+    Uint64Array uint64_array = 26;
+    FloatArray float_array   = 27;
+    DoubleArray double_array = 28;
+  }
+}
+
+message SignalID {
+  oneof signal {
+    // Numeric identifier to the signal
+    // As of today Databroker assigns arbitrary unique numbers to each registered signal
+    // at startup, meaning that identifiers may change after restarting Databroker.
+    // A mechanism for static identifiers may be introduced in the future.
+    int32 id    = 1;
+    // Full VSS-style path to a specific signal, like "Vehicle.Speed"
+    // Wildcards and paths to branches are not supported.
+    // The given path must be known by the Databroker.
+    string path = 2;
+  }
+}
+
+message Error {
+  ErrorCode code = 1;
+  string message = 2;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED       = 0; // Default value, never to be explicitly set,
+  ERROR_CODE_OK                = 1;
+  ERROR_CODE_INVALID_ARGUMENT  = 2;
+  ERROR_CODE_NOT_FOUND         = 3;
+  ERROR_CODE_PERMISSION_DENIED = 4;
+}
+
+message Metadata {
+  // ID field
+  int32 id                             = 10;
+
+  // Data type
+  // The VSS data type of the entry (i.e. the value, min, max etc).
+  //
+  // NOTE: protobuf doesn't have int8, int16, uint8 or uint16 which means
+  // that these values must be serialized as int32 and uint32 respectively.
+  DataType data_type                   = 11;
+
+  // Entry type
+  EntryType entry_type                 = 12;
+
+  // Description
+  // Describes the meaning and content of the entry.
+  string description                   = 13;
+
+  // Comment
+  // A comment can be used to provide additional informal information
+  // on a entry.
+  string comment                       = 14;
+
+  // Deprecation
+  // Whether this entry is deprecated. Can contain recommendations of what
+  // to use instead.
+  string deprecation                   = 15;
+
+  // Unit
+  // The unit of measurement
+  string unit                          = 16;
+
+  // Value restrictions checked/enforced by Databroker
+  Value allowed_values                 = 17; // Must be of array type
+  Value min                            = 18;
+  Value max                            = 19;
+}
+
+// VSS Data type of a signal
+//
+// Protobuf doesn't support int8, int16, uint8 or uint16.
+// These are mapped to int32 and uint32 respectively.
+//
+enum DataType {
+  DATA_TYPE_UNSPECIFIED     = 0;
+  DATA_TYPE_STRING          = 1;
+  DATA_TYPE_BOOLEAN         = 2;
+  DATA_TYPE_INT8            = 3;
+  DATA_TYPE_INT16           = 4;
+  DATA_TYPE_INT32           = 5;
+  DATA_TYPE_INT64           = 6;
+  DATA_TYPE_UINT8           = 7;
+  DATA_TYPE_UINT16          = 8;
+  DATA_TYPE_UINT32          = 9;
+  DATA_TYPE_UINT64          = 10;
+  DATA_TYPE_FLOAT           = 11;
+  DATA_TYPE_DOUBLE          = 12;
+  DATA_TYPE_TIMESTAMP       = 13;
+  DATA_TYPE_STRING_ARRAY    = 20;
+  DATA_TYPE_BOOLEAN_ARRAY   = 21;
+  DATA_TYPE_INT8_ARRAY      = 22;
+  DATA_TYPE_INT16_ARRAY     = 23;
+  DATA_TYPE_INT32_ARRAY     = 24;
+  DATA_TYPE_INT64_ARRAY     = 25;
+  DATA_TYPE_UINT8_ARRAY     = 26;
+  DATA_TYPE_UINT16_ARRAY    = 27;
+  DATA_TYPE_UINT32_ARRAY    = 28;
+  DATA_TYPE_UINT64_ARRAY    = 29;
+  DATA_TYPE_FLOAT_ARRAY     = 30;
+  DATA_TYPE_DOUBLE_ARRAY    = 31;
+  DATA_TYPE_TIMESTAMP_ARRAY = 32;
+}
+
+// Entry type
+enum EntryType {
+  ENTRY_TYPE_UNSPECIFIED = 0;
+  ENTRY_TYPE_ATTRIBUTE   = 1;
+  ENTRY_TYPE_SENSOR      = 2;
+  ENTRY_TYPE_ACTUATOR    = 3;
+}
+
+message StringArray {
+  repeated string values = 1;
+}
+
+message BoolArray {
+  repeated bool values = 1;
+}
+
+message Int32Array {
+  repeated sint32 values = 1;
+}
+
+message Int64Array {
+  repeated sint64 values = 1;
+}
+
+message Uint32Array {
+  repeated uint32 values = 1;
+}
+
+message Uint64Array {
+  repeated uint64 values = 1;
+}
+
+message FloatArray {
+  repeated float values = 1;
+}
+
+message DoubleArray {
+  repeated double values = 1;
+}

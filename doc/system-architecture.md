@@ -1,4 +1,4 @@
-# KUKSA System Components and Deployment
+# Kuksa System Components and Deployment
 
 This document shows basic KUKSA deployments and gives examples for provider components.
 

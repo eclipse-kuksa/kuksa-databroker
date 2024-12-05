@@ -1,0 +1,332 @@
+/********************************************************************************
+ * Copyright (c) 2024 Contributors to the Eclipse Foundation
+ *
+ * See the NOTICE file(s) distributed with this work for additional
+ * information regarding copyright ownership.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Apache License 2.0 which is available at
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ********************************************************************************/
+
+syntax = "proto3";
+// Please do not add optional fields due to older proto3 versions limitations
+
+package kuksa.val.v2;
+
+option go_package = "kuksa/val/v2";
+
+import "kuksa/val/v2/types.proto";
+
+service VAL {
+  // Get the latest value of a signal
+  // If the signal exist but does not have a valid value
+  // a DataPoint where value is None shall be returned.
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if the requested signal doesn't exist
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
+  //   PERMISSION_DENIED if access is denied
+  //   INVALID_ARGUMENT if the request is empty or provided path is too long
+  //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
+  //
+  rpc GetValue(GetValueRequest) returns (GetValueResponse);
+
+  // Get the latest values of a set of signals.
+  // The returned list of data points has the same order as the list of the request.
+  // If a requested signal has no value a DataPoint where value is None will be returned.
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if any of the requested signals doesn't exist.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
+  //   PERMISSION_DENIED if access is denied for any of the requested signals.
+  //   INVALID_ARGUMENT if the request is empty or provided path is too long
+  //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
+  //
+  rpc GetValues(GetValuesRequest) returns (GetValuesResponse);
+
+  // Subscribe to a set of signals using string path parameters
+  // Returns (GRPC error code):
+  //   NOT_FOUND if any of the signals are non-existant.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
+  //   PERMISSION_DENIED if access is denied for any of the signals.
+  //   INVALID_ARGUMENT
+  //       - if the request is empty or provided path is too long
+  //             MAX_REQUEST_PATH_LENGTH: usize = 1000;
+  //       - if buffer_size exceeds the maximum permitted
+  //             MAX_BUFFER_SIZE: usize = 1000;
+  //
+  // When subscribing, Databroker shall immediately return the value for all
+  // subscribed entries.
+  // If a value isn't available when subscribing to a it, it should return None
+  //
+  // If a subscriber is slow to consume signals, messages will be buffered up
+  // to the specified buffer_size before the oldest messages are dropped.
+  //
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
+
+  // Subscribe to a set of signals using i32 id parameters
+  // Returns (GRPC error code):
+  //   NOT_FOUND if any of the signals are non-existant.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
+  //   PERMISSION_DENIED if access is denied for any of the signals.
+  //   INVALID_ARGUMENT
+  //       - if the request is empty or provided path is too long
+  //             MAX_REQUEST_PATH_LENGTH: usize = 1000;
+  //       - if buffer_size exceeds the maximum permitted
+  //             MAX_BUFFER_SIZE: usize = 1000;
+  //
+  // When subscribing, Databroker shall immediately return the value for all
+  // subscribed entries.
+  // If a value isn't available when subscribing to a it, it should return None
+  //
+  // If a subscriber is slow to consume signals, messages will be buffered up
+  // to the specified buffer_size before the oldest messages are dropped.
+  //
+  rpc SubscribeById(SubscribeByIdRequest) returns (stream SubscribeByIdResponse);
+
+  // Actuate a single actuator
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if the actuator does not exist.
+  //   PERMISSION_DENIED if access is denied for the actuator.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
+  //   UNAVAILABLE if there is no provider currently providing the actuator
+  //   DATA_LOSS is there is a internal TransmissionFailure
+  //   INVALID_ARGUMENT
+  //       - if the provided path is not an actuator.
+  //       - if the data type used in the request does not match
+  //            the data type of the addressed signal
+  //       - if the requested value is not accepted,
+  //            e.g. if sending an unsupported enum value
+  //       - if the provided value is out of the min/max range specified
+  //
+  rpc Actuate(ActuateRequest) returns (ActuateResponse);
+
+  // Actuate simultaneously multiple actuators.
+  // If any error occurs, the entire operation will be aborted
+  // and no single actuator value will be forwarded to the provider.
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if any of the actuators are non-existant.
+  //   PERMISSION_DENIED if access is denied for any of the actuators.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
+  //   UNAVAILABLE if there is no provider currently providing an actuator
+  //   DATA_LOSS is there is a internal TransmissionFailure
+  //   INVALID_ARGUMENT
+  //       - if any of the provided path is not an actuator.
+  //       - if the data type used in the request does not match
+  //            the data type of the addressed signal
+  //       - if the requested value is not accepted,
+  //            e.g. if sending an unsupported enum value
+  //       - if any of the provided actuators values are out of the min/max range specified
+  //
+  rpc BatchActuate(BatchActuateRequest) returns (BatchActuateResponse);
+
+  // List metadata of signals matching the request.
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if the specified root branch does not exist.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
+  //   INVALID_ARGUMENT if the provided path or wildcard is wrong.
+  //
+  rpc ListMetadata(ListMetadataRequest) returns (ListMetadataResponse);
+
+  // Publish a signal value. Used for low frequency signals (e.g. attributes).
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if any of the signals are non-existant.
+  //   PERMISSION_DENIED
+  //       - if access is denied for any of the signals.
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
+  //   INVALID_ARGUMENT
+  //       - if the data type used in the request does not match
+  //            the data type of the addressed signal
+  //       - if the published value is not accepted,
+  //            e.g. if sending an unsupported enum value
+  //       - if the published value is out of the min/max range specified
+  //
+  rpc PublishValue(PublishValueRequest) returns (PublishValueResponse);
+
+  // Open a stream used to provide actuation and/or publishing values using
+  // a streaming interface. Used to provide actuators and to enable high frequency
+  // updates of values.
+  //
+  // The open stream is used for request / response type communication between the
+  // provider and server (where the initiator of a request can vary).
+  //
+  // Errors:
+  //    - Provider sends ProvideActuationRequest -> Databroker returns ProvideActuationResponse
+  //        Returns (GRPC error code) and closes the stream call (strict case).
+  //          NOT_FOUND if any of the signals are non-existant.
+  //          PERMISSION_DENIED if access is denied for any of the signals.
+  //          UNAUTHENTICATED if no credentials provided or credentials has expired
+  //          ALREADY_EXISTS if a provider already claimed the ownership of an actuator
+  //
+  //    - Provider sends PublishValuesRequest -> Databroker returns PublishValuesResponse upon error, and nothing upon success
+  //        GRPC errors are returned as messages in the stream
+  //        response with the signal id `map<int32, Error> status = 2;` (permissive case)
+  //          NOT_FOUND if a signal is non-existant.
+  //          PERMISSION_DENIED
+  //              - if access is denied for a signal.
+  //          INVALID_ARGUMENT
+  //              - if the data type used in the request does not match
+  //                   the data type of the addressed signal
+  //              - if the published value is not accepted,
+  //                   e.g. if sending an unsupported enum value
+  //              - if the published value is out of the min/max range specified
+  //
+  //    - Databroker sends BatchActuateStreamRequest -> Provider shall return a BatchActuateStreamResponse,
+  //        for every signal requested to indicate if the request was accepted or not.
+  //        It is up to the provider to decide if the stream shall be closed,
+  //        as of today Databroker will not react on the received error message.
+  //
+  rpc OpenProviderStream(stream OpenProviderStreamRequest) returns (stream OpenProviderStreamResponse);
+
+  // Get server information
+  rpc GetServerInfo(GetServerInfoRequest) returns (GetServerInfoResponse);
+}
+
+message GetValueRequest {
+  SignalID signal_id = 1;
+}
+
+message GetValueResponse {
+  Datapoint data_point = 1;
+}
+
+message GetValuesRequest {
+  repeated SignalID signal_ids = 1;
+}
+
+message GetValuesResponse {
+  repeated Datapoint data_points = 1;
+}
+
+message SubscribeRequest {
+  repeated string signal_paths = 1;
+
+  // Specifies the number of messages that can be buffered for
+  // slow subscribers before the oldest messages are dropped.
+  // Default (0) results in that only latest message is kept.
+  // Maximum value supported is implementation dependent.
+  uint32 buffer_size           = 2;
+}
+
+message SubscribeResponse {
+  map<string, Datapoint> entries = 1;
+}
+
+message SubscribeByIdRequest {
+  repeated int32 signal_ids = 1;
+
+  // Specifies the number of messages that can be buffered for
+  // slow subscribers before the oldest messages are dropped.
+  // Default (0) results in that only latest message is kept.
+  // Maximum value supported is implementation dependent.
+  uint32 buffer_size        = 2;
+}
+
+message SubscribeByIdResponse {
+  map<int32, Datapoint> entries = 1;
+}
+
+message ActuateRequest {
+  SignalID signal_id = 1;
+  Value value        = 2;
+}
+
+message ActuateResponse {
+}
+
+message BatchActuateRequest {
+  repeated ActuateRequest actuate_requests = 1;
+}
+
+message BatchActuateResponse {
+}
+
+message ListMetadataRequest {
+  // Root path to be used when listing metadata
+  // Shall correspond to a VSS branch, e.g. "Vehicle", "Vehicle.Cabin"
+  // Metadata for all signals under that branch will be returned unless filtered by filter.
+  // NOTE: Currently Databroker supports also signals and wildcards in root but that may
+  //       be removed in a future release!
+  string root   = 1;
+  // NOTE : Currently not considered by Databroker, all signals matching root are returned
+  string filter = 2;
+}
+
+message ListMetadataResponse {
+  repeated Metadata metadata = 1;
+}
+
+message PublishValueRequest {
+  SignalID signal_id   = 1;
+  Datapoint data_point = 2;
+}
+
+message PublishValueResponse {
+}
+
+message PublishValuesRequest {
+  int32 request_id                 = 1; /// Unique request id for the stream that can be used to identify the response.
+  map<int32, Datapoint> data_points = 2;
+}
+
+message PublishValuesResponse {
+  int32 request_id         = 1;
+  map<int32, Error> status = 2;
+}
+
+message ProvideActuationRequest {
+  repeated SignalID actuator_identifiers = 1;
+}
+
+message ProvideActuationResponse {
+}
+
+message BatchActuateStreamRequest {
+  repeated ActuateRequest actuate_requests = 1;
+}
+
+// Message that shall be used by provider to indicate if an actuation request was accepted.
+message BatchActuateStreamResponse {
+  SignalID signal_id   = 1;
+  Error error = 2;
+}
+
+message OpenProviderStreamRequest {
+  oneof action {
+    // Inform server of an actuator this provider provides.
+    ProvideActuationRequest provide_actuation_request        = 1;
+    // Publish a value.
+    PublishValuesRequest publish_values_request              = 2;
+    // Sent to acknowledge the acceptance of a batch actuate
+    // request.
+    BatchActuateStreamResponse batch_actuate_stream_response = 3;
+  }
+}
+
+message OpenProviderStreamResponse {
+  oneof action {
+    // Response to a provide actuator request.
+    ProvideActuationResponse provide_actuation_response    = 1;
+    // Acknowledgement that a published value was received.
+    PublishValuesResponse publish_values_response          = 2;
+    // Send a batch actuate request to a provider.
+    BatchActuateStreamRequest batch_actuate_stream_request = 3;
+  }
+}
+
+message GetServerInfoRequest {
+  // Nothing yet
+}
+
+message GetServerInfoResponse {
+  string name        = 1;
+  string version     = 2;
+  string commit_hash = 3;
+}

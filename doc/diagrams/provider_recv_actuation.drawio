@@ -1,0 +1,97 @@
+<mxfile host="65bd71144e">
+    <diagram name="Seite-1" id="DjCrLJOEe4nHxTjUXNSd">
+        <mxGraphModel dx="2138" dy="1169" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="sU0O0qOnpkfrYUOIyIDh-27" value=":DataBroker" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;rounded=1;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="40" width="100" height="550" as="geometry"/>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-17" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" parent="sU0O0qOnpkfrYUOIyIDh-27" vertex="1">
+                    <mxGeometry x="45" y="120" width="10" height="370" as="geometry"/>
+                </mxCell>
+                <mxCell id="sU0O0qOnpkfrYUOIyIDh-39" value=":Provider" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;rounded=1;" parent="1" vertex="1">
+                    <mxGeometry x="565" y="40" width="100" height="550" as="geometry"/>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-18" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" parent="sU0O0qOnpkfrYUOIyIDh-39" vertex="1">
+                    <mxGeometry x="45" y="120" width="10" height="370" as="geometry"/>
+                </mxCell>
+                <mxCell id="THUKiZGTHPrwo03LJUuz-1" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" parent="sU0O0qOnpkfrYUOIyIDh-39" vertex="1">
+                    <mxGeometry x="50" y="250" width="10" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-2" value=":Vehicle Network" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;rounded=1;" parent="1" vertex="1">
+                    <mxGeometry x="798" y="40" width="100" height="550" as="geometry"/>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-5" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" parent="56O69Gt65AHP2GdqeosO-2" vertex="1">
+                    <mxGeometry x="46" y="250" width="10" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-19" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" source="56O69Gt65AHP2GdqeosO-18" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="360" y="161" as="sourcePoint"/>
+                        <mxPoint x="95" y="161" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-20" value="OpenProviderStream(&lt;b&gt;&lt;font color=&quot;#007fff&quot;&gt;stream&lt;/font&gt;&lt;/b&gt;&amp;nbsp;OpenProviderStreamRequest=ProvideActuationRequest(actutators))" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;" parent="56O69Gt65AHP2GdqeosO-19" connectable="0" vertex="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="10" y="-11" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-22" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" edge="1" target="56O69Gt65AHP2GdqeosO-18">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="95.03488372093011" y="188" as="sourcePoint"/>
+                        <mxPoint x="604.9999999999995" y="187.99999999999977" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-23" value="&lt;b&gt;&lt;font color=&quot;#007fff&quot;&gt;stream&lt;/font&gt;&lt;/b&gt;&amp;nbsp;OpenProviderStreamResponse=ProvideActuationResponse" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;" parent="56O69Gt65AHP2GdqeosO-22" connectable="0" vertex="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-10" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-38" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" edge="1" source="THUKiZGTHPrwo03LJUuz-1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="604" y="322" as="sourcePoint"/>
+                        <mxPoint x="94" y="322" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-39" value="&lt;b&gt;&lt;font color=&quot;#007fff&quot;&gt;stream&lt;/font&gt;&lt;/b&gt;&amp;nbsp;OpenProviderStreamRequest=BatchActuateStreamResponse" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;" parent="56O69Gt65AHP2GdqeosO-38" connectable="0" vertex="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-8" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-40" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="95" y="290" as="sourcePoint"/>
+                        <mxPoint x="615" y="290" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="56O69Gt65AHP2GdqeosO-41" value="&lt;b&gt;&lt;font color=&quot;#007fff&quot;&gt;stream&lt;/font&gt;&lt;/b&gt;&amp;nbsp;OpenProviderStreamResponse=BatchActuateStreamRequest(actuator_path, value)" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;" parent="56O69Gt65AHP2GdqeosO-40" connectable="0" vertex="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-8" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="THUKiZGTHPrwo03LJUuz-2" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" target="56O69Gt65AHP2GdqeosO-5" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="625" y="290" as="sourcePoint"/>
+                        <mxPoint x="842.5" y="290" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="THUKiZGTHPrwo03LJUuz-3" value="write_data_frame(data)" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;" parent="THUKiZGTHPrwo03LJUuz-2" connectable="0" vertex="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-8" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="THUKiZGTHPrwo03LJUuz-4" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" edge="1" target="THUKiZGTHPrwo03LJUuz-1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="843.5" y="369.9999999999999" as="sourcePoint"/>
+                        <mxPoint x="626" y="369.9999999999999" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="THUKiZGTHPrwo03LJUuz-5" value="ack_write_operation" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;" parent="THUKiZGTHPrwo03LJUuz-4" connectable="0" vertex="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-8" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

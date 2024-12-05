@@ -60,6 +60,8 @@ impl proto::collector_server::Collector for broker::DataBroker {
                         data_type: None,
                         description: None,
                         allowed: None,
+                        max: None,
+                        min: None,
                         unit: None,
                     },
                 )
@@ -129,6 +131,8 @@ impl proto::collector_server::Collector for broker::DataBroker {
                                                         data_type: None,
                                                         description: None,
                                                         allowed: None,
+                                                        max: None,
+                                                        min: None,
                                                         unit: None,
                                                     }
                                                 )
@@ -207,6 +211,8 @@ impl proto::collector_server::Collector for broker::DataBroker {
                             broker::ChangeType::from(&change_type),
                             broker::types::EntryType::Sensor,
                             metadata.description,
+                            None, // min
+                            None, // max
                             None,
                             None,
                         )
@@ -261,6 +267,88 @@ impl proto::collector_server::Collector for broker::DataBroker {
         match error {
             Some(error) => Err(error),
             None => Ok(Response::new(proto::RegisterDatapointsReply { results })),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{broker::DataBroker, permissions};
+    use proto::collector_server::Collector;
+
+    #[tokio::test]
+    async fn test_publish_value_min_max_not_fulfilled() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let entry_id_1 = authorized_access
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                broker::DataType::Uint8,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                Some(broker::types::DataValue::Uint32(3)), // min
+                Some(broker::types::DataValue::Uint32(26)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let entry_id_2 = authorized_access
+            .add_entry(
+                "test.datapoint1.Speed".to_owned(),
+                broker::DataType::Float,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                Some(broker::types::DataValue::Float(1.0)), // min
+                Some(broker::types::DataValue::Float(100.0)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let datapoint: proto::Datapoint = proto::Datapoint {
+            timestamp: None,
+            value: Some(proto::datapoint::Value::Int32Value(50)),
+        };
+
+        let mut datapoints = HashMap::new();
+        datapoints.insert(entry_id_1, datapoint.clone());
+        datapoints.insert(entry_id_2, datapoint);
+
+        let request = proto::UpdateDatapointsRequest { datapoints };
+
+        // Manually insert permissions
+        let mut publish_value_request = tonic::Request::new(request);
+        publish_value_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match broker.update_datapoints(publish_value_request).await {
+            Ok(response) => {
+                let response = response.into_inner();
+                assert_eq!(response.errors.len(), 2);
+
+                let error_entry_1 = response.errors.get(&entry_id_1);
+                assert_eq!(
+                    error_entry_1.unwrap().clone(),
+                    proto::DatapointError::OutOfBounds as i32
+                );
+
+                let error_entry_2 = response.errors.get(&entry_id_2);
+                assert_eq!(
+                    error_entry_2.unwrap().clone(),
+                    proto::DatapointError::InvalidType as i32
+                );
+            }
+            Err(_) => {
+                panic!("Should not happen!");
+            }
         }
     }
 }

@@ -18,8 +18,9 @@ use crate::query;
 pub use crate::types::{ChangeType, DataType, DataValue, EntryType};
 
 use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_stream::Stream;
+use tokio_stream::{Stream, StreamExt};
 
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -40,11 +41,28 @@ tracing_opentelemetry::OpenTelemetrySpanExt,
 
 use crate::glob;
 
+const MAX_SUBSCRIBE_BUFFER_SIZE: usize = 1000;
+
 #[derive(Debug)]
-pub enum UpdateError {
+pub enum ActuationError {
     NotFound,
     WrongType,
     OutOfBounds,
+    UnsupportedType,
+    PermissionDenied,
+    PermissionExpired,
+    ProviderNotAvailable,
+    ProviderAlreadyExists,
+    TransmissionFailure,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum UpdateError {
+    NotFound,
+    WrongType,
+    OutOfBoundsAllowed,
+    OutOfBoundsMinMax,
+    OutOfBoundsType,
     UnsupportedType,
     PermissionDenied,
     PermissionExpired,
@@ -73,6 +91,9 @@ pub struct Metadata {
     pub entry_type: EntryType,
     pub change_type: ChangeType,
     pub description: String,
+    // Min and Max are typically never arrays
+    pub min: Option<types::DataValue>,
+    pub max: Option<types::DataValue>,
     pub allowed: Option<types::DataValue>,
     pub unit: Option<String>,
 }
@@ -108,6 +129,7 @@ pub struct Database {
 
 #[derive(Default)]
 pub struct Subscriptions {
+    actuation_subscriptions: Vec<ActuationSubscription>,
     query_subscriptions: Vec<QuerySubscription>,
     change_subscriptions: Vec<ChangeSubscription>,
 }
@@ -123,13 +145,14 @@ pub struct QueryField {
     pub value: DataValue,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChangeNotification {
+    pub id: i32,
     pub update: EntryUpdate,
     pub fields: HashSet<Field>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct EntryUpdates {
     pub updates: Vec<ChangeNotification>,
 }
@@ -144,6 +167,7 @@ pub enum QueryError {
 pub enum SubscriptionError {
     NotFound,
     InvalidInput,
+    InvalidBufferSize,
     InternalError,
 }
 
@@ -152,7 +176,29 @@ pub struct DataBroker {
     database: Arc<RwLock<Database>>,
     subscriptions: Arc<RwLock<Subscriptions>>,
     version: String,
+    commit_sha: String,
     shutdown_trigger: broadcast::Sender<()>,
+}
+
+#[async_trait::async_trait]
+pub trait ActuationProvider {
+    async fn actuate(
+        &self,
+        actuation_changes: Vec<ActuationChange>,
+    ) -> Result<(), (ActuationError, String)>;
+    fn is_available(&self) -> bool;
+}
+
+#[derive(Clone)]
+pub struct ActuationChange {
+    pub id: i32,
+    pub data_value: DataValue,
+}
+
+pub struct ActuationSubscription {
+    vss_ids: Vec<i32>,
+    actuation_provider: Box<dyn ActuationProvider + Send + Sync + 'static>,
+    permissions: Permissions,
 }
 
 pub struct QuerySubscription {
@@ -163,7 +209,7 @@ pub struct QuerySubscription {
 
 pub struct ChangeSubscription {
     entries: HashMap<i32, HashSet<Field>>,
-    sender: mpsc::Sender<EntryUpdates>,
+    sender: broadcast::Sender<EntryUpdates>,
     permissions: Permissions,
 }
 
@@ -189,6 +235,8 @@ pub struct EntryUpdate {
     // order to be able to convey "update it to None" which would
     // mean setting it to `Some(None)`.
     pub allowed: Option<Option<types::DataValue>>,
+    pub min: Option<Option<types::DataValue>>,
+    pub max: Option<Option<types::DataValue>>,
     pub unit: Option<String>,
 }
 
@@ -213,6 +261,11 @@ impl Entry {
         update
     }
 
+    pub fn validate_actuator_value(&self, data_value: &DataValue) -> Result<(), UpdateError> {
+        self.validate_value(data_value)?;
+        self.validate_allowed(data_value)?;
+        Ok(())
+    }
     #[cfg_attr(feature="otel", tracing::instrument(name="broker_validate", skip(self, update), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn validate(&self, update: &EntryUpdate) -> Result<(), UpdateError> {
         if let Some(datapoint) = &update.datapoint {
@@ -232,26 +285,42 @@ impl Entry {
     }
 
     #[cfg_attr(feature="otel", tracing::instrument(name="broker_validate_allowed_type", skip(self, allowed), fields(timestamp=chrono::Utc::now().to_string())))]
+    /**
+     * DataType is VSS type, where we have also smaller type based on 8/16 bits
+     * That we do not have for DataValue
+     */
     pub fn validate_allowed_type(&self, allowed: &Option<DataValue>) -> Result<(), UpdateError> {
         if let Some(allowed_values) = allowed {
             match (allowed_values, &self.metadata.data_type) {
                 (DataValue::BoolArray(_allowed_values), DataType::Bool) => Ok(()),
                 (DataValue::StringArray(_allowed_values), DataType::String) => Ok(()),
+                (DataValue::Int32Array(_allowed_values), DataType::Int8) => Ok(()),
+                (DataValue::Int32Array(_allowed_values), DataType::Int16) => Ok(()),
                 (DataValue::Int32Array(_allowed_values), DataType::Int32) => Ok(()),
                 (DataValue::Int64Array(_allowed_values), DataType::Int64) => Ok(()),
+                (DataValue::Uint32Array(_allowed_values), DataType::Uint8) => Ok(()),
+                (DataValue::Uint32Array(_allowed_values), DataType::Uint16) => Ok(()),
                 (DataValue::Uint32Array(_allowed_values), DataType::Uint32) => Ok(()),
                 (DataValue::Uint64Array(_allowed_values), DataType::Uint64) => Ok(()),
                 (DataValue::FloatArray(_allowed_values), DataType::Float) => Ok(()),
                 (DataValue::DoubleArray(_allowed_values), DataType::Double) => Ok(()),
                 (DataValue::BoolArray(_allowed_values), DataType::BoolArray) => Ok(()),
                 (DataValue::StringArray(_allowed_values), DataType::StringArray) => Ok(()),
+                (DataValue::Int32Array(_allowed_values), DataType::Int8Array) => Ok(()),
+                (DataValue::Int32Array(_allowed_values), DataType::Int16Array) => Ok(()),
                 (DataValue::Int32Array(_allowed_values), DataType::Int32Array) => Ok(()),
                 (DataValue::Int64Array(_allowed_values), DataType::Int64Array) => Ok(()),
+                (DataValue::Uint32Array(_allowed_values), DataType::Uint8Array) => Ok(()),
+                (DataValue::Uint32Array(_allowed_values), DataType::Uint16Array) => Ok(()),
                 (DataValue::Uint32Array(_allowed_values), DataType::Uint32Array) => Ok(()),
                 (DataValue::Uint64Array(_allowed_values), DataType::Uint64Array) => Ok(()),
                 (DataValue::FloatArray(_allowed_values), DataType::FloatArray) => Ok(()),
                 (DataValue::DoubleArray(_allowed_values), DataType::DoubleArray) => Ok(()),
-                _ => Err(UpdateError::WrongType {}),
+                _ => {
+                    debug!("Unexpected combination - VSS datatype is {:?}, but list of allowed value use {:?}",
+                        &self.metadata.data_type, allowed_values);
+                    Err(UpdateError::WrongType {})
+                }
             }
         } else {
             // it is allowed to set allowed to None
@@ -267,56 +336,56 @@ impl Entry {
                 (DataValue::BoolArray(allowed_values), DataValue::Bool(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::DoubleArray(allowed_values), DataValue::Double(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::FloatArray(allowed_values), DataValue::Float(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::Int32Array(allowed_values), DataValue::Int32(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::Int64Array(allowed_values), DataValue::Int64(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::StringArray(allowed_values), DataValue::String(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::Uint32Array(allowed_values), DataValue::Uint32(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::Uint64Array(allowed_values), DataValue::Uint64(value)) => {
                     match allowed_values.contains(value) {
                         true => Ok(()),
-                        false => Err(UpdateError::OutOfBounds),
+                        false => Err(UpdateError::OutOfBoundsAllowed),
                     }
                 }
                 (DataValue::BoolArray(allowed_values), DataValue::BoolArray(value)) => {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -325,7 +394,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -334,7 +403,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -343,7 +412,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -352,7 +421,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -361,7 +430,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -370,7 +439,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -379,7 +448,7 @@ impl Entry {
                     for item in value {
                         match allowed_values.contains(item) {
                             true => (),
-                            false => return Err(UpdateError::OutOfBounds),
+                            false => return Err(UpdateError::OutOfBoundsAllowed),
                         }
                     }
                     Ok(())
@@ -391,11 +460,51 @@ impl Entry {
         }
     }
 
+    /// Checks if value fulfils min/max condition
+    /// Returns OutOfBounds if not fulfilled
+    fn validate_value_min_max(&self, value: &DataValue) -> Result<(), UpdateError> {
+        // Validate Min/Max
+        if let Some(min) = &self.metadata.min {
+            debug!("Checking min, comparing value {:?} and {:?}", value, min);
+            match value.greater_than_equal(min) {
+                Ok(true) => {}
+                _ => return Err(UpdateError::OutOfBoundsMinMax),
+            };
+        }
+        if let Some(max) = &self.metadata.max {
+            debug!("Checking max, comparing value {:?} and {:?}", value, max);
+            match value.less_than_equal(max) {
+                Ok(true) => {}
+                _ => return Err(UpdateError::OutOfBoundsMinMax),
+            };
+        }
+        Ok(())
+    }
+    
     #[cfg_attr(feature="otel", tracing::instrument(name="broker_validate_value", skip(self, value), fields(timestamp=chrono::Utc::now().to_string())))]
     fn validate_value(&self, value: &DataValue) -> Result<(), UpdateError> {
         // Not available is always valid
         if value == &DataValue::NotAvailable {
             return Ok(());
+        }
+
+        // For numeric non-arrays check min/max
+        // For arrays we check later on value
+        match self.metadata.data_type {
+            DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::Uint8
+            | DataType::Uint16
+            | DataType::Uint32
+            | DataType::Uint64
+            | DataType::Float
+            | DataType::Double => match self.validate_value_min_max(value) {
+                Ok(_) => {}
+                Err(err) => return Err(err),
+            },
+            _ => {}
         }
 
         // Validate value
@@ -411,14 +520,14 @@ impl Entry {
             DataType::Int8 => match value {
                 DataValue::Int32(value) => match i8::try_from(*value) {
                     Ok(_) => Ok(()),
-                    Err(_) => Err(UpdateError::OutOfBounds),
+                    Err(_) => Err(UpdateError::OutOfBoundsType),
                 },
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Int16 => match value {
                 DataValue::Int32(value) => match i16::try_from(*value) {
                     Ok(_) => Ok(()),
-                    Err(_) => Err(UpdateError::OutOfBounds),
+                    Err(_) => Err(UpdateError::OutOfBoundsType),
                 },
                 _ => Err(UpdateError::WrongType),
             },
@@ -434,14 +543,14 @@ impl Entry {
             DataType::Uint8 => match value {
                 DataValue::Uint32(value) => match u8::try_from(*value) {
                     Ok(_) => Ok(()),
-                    Err(_) => Err(UpdateError::OutOfBounds),
+                    Err(_) => Err(UpdateError::OutOfBoundsType),
                 },
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint16 => match value {
                 DataValue::Uint32(value) => match u16::try_from(*value) {
                     Ok(_) => Ok(()),
-                    Err(_) => Err(UpdateError::OutOfBounds),
+                    Err(_) => Err(UpdateError::OutOfBoundsType),
                 },
                 _ => Err(UpdateError::WrongType),
             },
@@ -471,106 +580,138 @@ impl Entry {
             },
             DataType::Int8Array => match &value {
                 DataValue::Int32Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
                         match i8::try_from(*value) {
-                            Ok(_) => {}
-                            Err(_) => {
-                                out_of_bounds = true;
-                                break;
-                            }
+                            Ok(_) => match self.validate_value_min_max(&DataValue::Int32(*value)) {
+                                Ok(_) => {}
+                                Err(err) => return Err(err),
+                            },
+                            Err(_) => return Err(UpdateError::OutOfBoundsType),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Int16Array => match &value {
                 DataValue::Int32Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
                         match i16::try_from(*value) {
-                            Ok(_) => {}
-                            Err(_) => {
-                                out_of_bounds = true;
-                                break;
-                            }
+                            Ok(_) => match self.validate_value_min_max(&DataValue::Int32(*value)) {
+                                Ok(_) => {}
+                                Err(err) => return Err(err),
+                            },
+                            Err(_) => return Err(UpdateError::OutOfBoundsType),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Int32Array => match value {
-                DataValue::Int32Array(_) => Ok(()),
+                DataValue::Int32Array(array) => {
+                    for value in array {
+                        match self.validate_value_min_max(&DataValue::Int32(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
+                        }
+                    }
+                    Ok(())
+                }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Int64Array => match value {
-                DataValue::Int64Array(_) => Ok(()),
+                DataValue::Int64Array(array) => {
+                    for value in array {
+                        match self.validate_value_min_max(&DataValue::Int64(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
+                        }
+                    }
+                    Ok(())
+                }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint8Array => match &value {
                 DataValue::Uint32Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
                         match u8::try_from(*value) {
-                            Ok(_) => {}
-                            Err(_) => {
-                                out_of_bounds = true;
-                                break;
+                            Ok(_) => {
+                                match self.validate_value_min_max(&DataValue::Uint32(*value)) {
+                                    Ok(_) => {}
+                                    Err(err) => return Err(err),
+                                }
                             }
+                            Err(_) => return Err(UpdateError::OutOfBoundsType),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint16Array => match &value {
                 DataValue::Uint32Array(array) => {
-                    let mut out_of_bounds = false;
                     for value in array {
                         match u16::try_from(*value) {
-                            Ok(_) => {}
-                            Err(_) => {
-                                out_of_bounds = true;
-                                break;
+                            Ok(_) => {
+                                match self.validate_value_min_max(&DataValue::Uint32(*value)) {
+                                    Ok(_) => {}
+                                    Err(err) => return Err(err),
+                                }
                             }
+                            Err(_) => return Err(UpdateError::OutOfBoundsType),
                         }
                     }
-                    if out_of_bounds {
-                        Err(UpdateError::OutOfBounds)
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint32Array => match value {
-                DataValue::Uint32Array(_) => Ok(()),
+                DataValue::Uint32Array(array) => {
+                    for value in array {
+                        match self.validate_value_min_max(&DataValue::Uint32(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
+                        }
+                    }
+                    Ok(())
+                }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::Uint64Array => match value {
-                DataValue::Uint64Array(_) => Ok(()),
+                DataValue::Uint64Array(array) => {
+                    for value in array {
+                        match self.validate_value_min_max(&DataValue::Uint64(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
+                        }
+                    }
+                    Ok(())
+                }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::FloatArray => match value {
-                DataValue::FloatArray(_) => Ok(()),
+                DataValue::FloatArray(array) => {
+                    for value in array {
+                        match self.validate_value_min_max(&DataValue::Float(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
+                        }
+                    }
+                    Ok(())
+                }
                 _ => Err(UpdateError::WrongType),
             },
             DataType::DoubleArray => match value {
-                DataValue::DoubleArray(_) => Ok(()),
+                DataValue::DoubleArray(array) => {
+                    for value in array {
+                        match self.validate_value_min_max(&DataValue::Double(*value)) {
+                            Ok(_) => {}
+                            Err(err) => return Err(err),
+                        }
+                    }
+                    Ok(())
+                }
                 _ => Err(UpdateError::WrongType),
             },
         }
@@ -593,10 +734,6 @@ impl Entry {
             self.actuator_target = actuator_target;
             changed.insert(Field::ActuatorTarget);
         }
-        if let Some(metadata_description) = update.description {
-            self.metadata.description = metadata_description;
-            // changed.insert(Field::ActuatorTarget);
-        }
         if let Some(updated_allowed) = update.allowed {
             if updated_allowed != self.metadata.allowed {
                 self.metadata.allowed = updated_allowed;
@@ -616,6 +753,10 @@ pub enum SuccessfulUpdate {
 }
 
 impl Subscriptions {
+    pub fn add_actuation_subscription(&mut self, subscription: ActuationSubscription) {
+        self.actuation_subscriptions.push(subscription);
+    }
+
     pub fn add_query_subscription(&mut self, subscription: QuerySubscription) {
         self.query_subscriptions.push(subscription)
     }
@@ -667,6 +808,7 @@ impl Subscriptions {
     }
 
     pub fn clear(&mut self) {
+        self.actuation_subscriptions.clear();
         self.query_subscriptions.clear();
         self.change_subscriptions.clear();
     }
@@ -682,21 +824,26 @@ impl Subscriptions {
             }
         });
         self.change_subscriptions.retain(|sub| {
-            if sub.sender.is_closed() {
+            if sub.sender.receiver_count() == 0 {
                 info!("Subscriber gone: removing subscription");
                 false
+            } else if sub.permissions.is_expired() {
+                info!("Permissions of Subscriber expired: removing subscription");
+                false
             } else {
-                match &sub.permissions.expired() {
-                    Ok(()) => true,
-                    Err(PermissionError::Expired) => {
-                        info!("Token expired: removing subscription");
-                        false
-                    }
-                    Err(err) => {
-                        info!("Error: {:?} -> removing subscription", err);
-                        false
-                    }
-                }
+                true
+            }
+        });
+
+        self.actuation_subscriptions.retain(|sub| {
+            if !sub.actuation_provider.is_available() {
+                info!("Provider gone: removing subscription");
+                false
+            } else if sub.permissions.is_expired() {
+                info!("Permissions of Provider expired: removing subscription");
+                false
+            } else {
+                true
             }
         });
     }
@@ -787,20 +934,8 @@ impl ChangeSubscription {
                                             }
                                             // fill unit field always
                                             update.unit.clone_from(&entry.metadata.unit);
-                                            update.description = Some(entry.metadata.description.clone());
-                                            #[cfg(feature = "otel")] // This block will only compile if the "otel" feature is enabled
-                                            {
-                                            let mut metadata = MetadataMap::new();
-                                            //  @TODO: Speak to Kuksa team regarding MetadataMap in proto file
-                                            let mut injector = MetadataMapInjector(&mut metadata);
-                                            opentelemetry::global::get_text_map_propagator(|propagator| {
-                                                propagator.inject_context(&current_span.context(), &mut injector);
-                                            });
-                                            let description = metadatamap_to_string(&metadata);
-
-                                            update.description = Some(description);
-                                            }
                                             notifications.updates.push(ChangeNotification {
+                                                id: *id,
                                                 update,
                                                 fields: notify_fields,
                                             });
@@ -821,9 +956,12 @@ impl ChangeSubscription {
                     if notifications.updates.is_empty() {
                         Ok(())
                     } else {
-                        match self.sender.send(notifications).await {
-                            Ok(()) => Ok(()),
-                            Err(_) => Err(NotificationError {}),
+                        match self.sender.send(notifications) {
+                            Ok(_number_of_receivers) => Ok(()),
+                            Err(err) => {
+                                debug!("Send error for entry{}: ", err);
+                                Err(NotificationError {})
+                            }
                         }
                     }
                 } else {
@@ -841,7 +979,6 @@ impl ChangeSubscription {
                                 let mut notify_fields = HashSet::new();
                                 // TODO: Perhaps make path optional
                                 update.path = Some(entry.metadata.path.clone());
-                                update.description = Some(entry.metadata.description.clone());
                                 if fields.contains(&Field::Datapoint) {
                                     update.datapoint = Some(entry.datapoint.clone());
                                     notify_fields.insert(Field::Datapoint);
@@ -851,6 +988,7 @@ impl ChangeSubscription {
                                     notify_fields.insert(Field::ActuatorTarget);
                                 }
                                 notifications.updates.push(ChangeNotification {
+                                    id: *id,
                                     update,
                                     fields: notify_fields,
                                 });
@@ -862,9 +1000,12 @@ impl ChangeSubscription {
                     }
                     notifications
                 };
-                match self.sender.send(notifications).await {
-                    Ok(()) => Ok(()),
-                    Err(_) => Err(NotificationError {}),
+                match self.sender.send(notifications) {
+                    Ok(_number_of_receivers) => Ok(()),
+                    Err(err) => {
+                        debug!("Send error for entry{}: ", err);
+                        Err(NotificationError {})
+                    }
                 }
             }
         }
@@ -1028,8 +1169,8 @@ pub enum EntryReadAccess<'a> {
     Entry(&'a Entry),
     Err(&'a Metadata, ReadError),
 }
-
-impl<'a> EntryReadAccess<'a> {
+    
+impl EntryReadAccess<'_> {
     #[cfg_attr(feature="otel", tracing::instrument(name="broker_datapoint", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn datapoint(&self) -> Result<&Datapoint, ReadError> {
         match self {
@@ -1071,7 +1212,7 @@ pub struct EntryReadIterator<'a, 'b> {
     permissions: &'b Permissions,
 }
 
-impl<'a, 'b> Iterator for EntryReadIterator<'a, 'b> {
+impl<'a> Iterator for EntryReadIterator<'a, '_> {
     type Item = EntryReadAccess<'a>;
 
     #[inline]
@@ -1087,7 +1228,7 @@ impl<'a, 'b> Iterator for EntryReadIterator<'a, 'b> {
     }
 }
 
-impl<'a, 'b> DatabaseReadAccess<'a, 'b> {
+impl DatabaseReadAccess<'_, '_> {
     #[cfg_attr(feature="otel", tracing::instrument(name="get_entry_by_id", skip(self, id), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn get_entry_by_id(&self, id: i32) -> Result<&Entry, ReadError> {
         match self.db.entries.get(&id) {
@@ -1127,7 +1268,7 @@ impl<'a, 'b> DatabaseReadAccess<'a, 'b> {
     }
 }
 
-impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
+impl DatabaseWriteAccess<'_, '_> {
     pub fn update_by_path(
         &mut self,
         path: &str,
@@ -1160,7 +1301,6 @@ impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
                 if update.path.is_some()
                     || update.entry_type.is_some()
                     || update.data_type.is_some()
-                    // || update.description.is_some()
                 {
                     return Err(UpdateError::PermissionDenied);
                 }
@@ -1216,6 +1356,8 @@ impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
         change_type: ChangeType,
         entry_type: EntryType,
         description: String,
+        min: Option<types::DataValue>,
+        max: Option<types::DataValue>,
         allowed: Option<types::DataValue>,
         datapoint: Option<Datapoint>,
         unit: Option<String>,
@@ -1248,6 +1390,8 @@ impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
                 entry_type,
                 description,
                 allowed,
+                min,
+                max,
                 unit,
             },
             datapoint: match datapoint.clone() {
@@ -1321,7 +1465,7 @@ impl Database {
     }
 }
 
-impl<'a, 'b> query::CompilationInput for DatabaseReadAccess<'a, 'b> {
+impl query::CompilationInput for DatabaseReadAccess<'_, '_> {
     fn get_datapoint_type(&self, path: &str) -> Result<DataType, query::CompilationError> {
         match self.get_metadata_by_path(path) {
             Some(metadata) => Ok(metadata.data_type.to_owned()),
@@ -1344,6 +1488,8 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
         change_type: ChangeType,
         entry_type: EntryType,
         description: String,
+        min: Option<types::DataValue>,
+        max: Option<types::DataValue>,
         allowed: Option<types::DataValue>,
         unit: Option<String>,
     ) -> Result<i32, RegistrationError> {
@@ -1358,6 +1504,8 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
                 change_type,
                 entry_type,
                 description,
+                min,
+                max,
                 allowed,
                 None,
                 unit,
@@ -1557,12 +1705,24 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
     pub async fn subscribe(
         &self,
         valid_entries: HashMap<i32, HashSet<Field>>,
+        buffer_size: Option<usize>,
     ) -> Result<impl Stream<Item = EntryUpdates>, SubscriptionError> {
         if valid_entries.is_empty() {
             return Err(SubscriptionError::InvalidInput);
         }
 
-        let (sender, receiver) = mpsc::channel(10);
+        let channel_capacity = if let Some(cap) = buffer_size {
+            if cap > MAX_SUBSCRIBE_BUFFER_SIZE {
+                return Err(SubscriptionError::InvalidBufferSize);
+            }
+            // Requested capacity for old messages plus 1 for latest
+            cap + 1
+        } else {
+            // Just latest message
+            1
+        };
+
+        let (sender, receiver) = broadcast::channel(channel_capacity);
         let subscription = ChangeSubscription {
             entries: valid_entries,
             sender,
@@ -1583,7 +1743,13 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .await
             .add_change_subscription(subscription);
 
-        let stream = ReceiverStream::new(receiver);
+        let stream = BroadcastStream::new(receiver).filter_map(|result| match result {
+            Ok(message) => Some(message),
+            Err(err) => {
+                debug!("Lagged entries: {}", err);
+                None
+            }
+        });
         Ok(stream)
     }
 
@@ -1623,16 +1789,309 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             Err(e) => Err(QueryError::CompilationError(format!("{e:?}"))),
         }
     }
+
+    pub async fn provide_actuation(
+        &self,
+        vss_ids: Vec<i32>,
+        actuation_provider: Box<dyn ActuationProvider + Send + Sync + 'static>,
+    ) -> Result<(), (ActuationError, String)> {
+        for vss_id in vss_ids.clone() {
+            self.can_write_actuator_target(&vss_id).await?;
+        }
+
+        let provided_vss_ids: Vec<i32> = self
+            .broker
+            .subscriptions
+            .read()
+            .await
+            .actuation_subscriptions
+            .iter()
+            .flat_map(|subscription| subscription.vss_ids.clone())
+            .collect();
+        let intersection: Vec<&i32> = vss_ids
+            .iter()
+            .filter(|&x| provided_vss_ids.contains(x))
+            .collect();
+        if !intersection.is_empty() {
+            let message = format!(
+                "Providers for the following vss_ids already registered: {:?}",
+                intersection
+            );
+            return Err((ActuationError::ProviderAlreadyExists, message));
+        }
+
+        let actuation_subscription: ActuationSubscription = ActuationSubscription {
+            vss_ids,
+            actuation_provider,
+            permissions: self.permissions.clone(),
+        };
+        self.broker
+            .subscriptions
+            .write()
+            .await
+            .add_actuation_subscription(actuation_subscription);
+
+        Ok(())
+    }
+
+    async fn map_actuation_changes_by_vss_id(
+        &self,
+        actuation_changes: Vec<ActuationChange>,
+    ) -> HashMap<i32, Vec<ActuationChange>> {
+        let mut actuation_changes_per_vss_id: HashMap<i32, Vec<ActuationChange>> =
+            HashMap::with_capacity(actuation_changes.len());
+        for actuation_change in actuation_changes {
+            let vss_id = actuation_change.id;
+
+            let opt_vss_ids = actuation_changes_per_vss_id.get_mut(&vss_id);
+            match opt_vss_ids {
+                Some(vss_ids) => {
+                    vss_ids.push(actuation_change.clone());
+                }
+                None => {
+                    let vec = vec![actuation_change.clone()];
+                    actuation_changes_per_vss_id.insert(vss_id, vec);
+                }
+            }
+        }
+        actuation_changes_per_vss_id
+    }
+
+    pub async fn batch_actuate(
+        &self,
+        actuation_changes: Vec<ActuationChange>,
+    ) -> Result<(), (ActuationError, String)> {
+        let read_subscription_guard = self.broker.subscriptions.read().await;
+        let actuation_subscriptions = &read_subscription_guard.actuation_subscriptions;
+
+        for actuation_change in &actuation_changes {
+            let vss_id = actuation_change.id;
+            self.can_write_actuator_target(&vss_id).await?;
+            self.validate_actuator_update(&vss_id, &actuation_change.data_value)
+                .await?;
+        }
+
+        let actuation_changes_per_vss_id = &self
+            .map_actuation_changes_by_vss_id(actuation_changes)
+            .await;
+        for actuation_change_per_vss_id in actuation_changes_per_vss_id {
+            let vss_id = *actuation_change_per_vss_id.0;
+            let actuation_changes = actuation_change_per_vss_id.1.clone();
+
+            let opt_actuation_subscription = actuation_subscriptions
+                .iter()
+                .find(|subscription| subscription.vss_ids.contains(&vss_id));
+            match opt_actuation_subscription {
+                Some(actuation_subscription) => {
+                    let is_expired = actuation_subscription.permissions.is_expired();
+                    if is_expired {
+                        let message = format!(
+                            "Permission for vss_ids {:?} expired",
+                            actuation_subscription.vss_ids
+                        );
+                        return Err((ActuationError::PermissionExpired, message));
+                    }
+
+                    if !actuation_subscription.actuation_provider.is_available() {
+                        let message = format!("Provider for vss_id {} does not exist", vss_id);
+                        return Err((ActuationError::ProviderNotAvailable, message));
+                    }
+
+                    actuation_subscription
+                        .actuation_provider
+                        .actuate(actuation_changes)
+                        .await?
+                }
+                None => {
+                    let message = format!("Provider for vss_id {} not available", vss_id);
+                    return Err((ActuationError::ProviderNotAvailable, message));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn actuate(
+        &self,
+        vss_id: &i32,
+        data_value: &DataValue,
+    ) -> Result<(), (ActuationError, String)> {
+        let vss_id = *vss_id;
+
+        self.can_write_actuator_target(&vss_id).await?;
+        self.validate_actuator_update(&vss_id, data_value).await?;
+
+        let read_subscription_guard = self.broker.subscriptions.read().await;
+        let opt_actuation_subscription = &read_subscription_guard
+            .actuation_subscriptions
+            .iter()
+            .find(|subscription| subscription.vss_ids.contains(&vss_id));
+        match opt_actuation_subscription {
+            Some(actuation_subscription) => {
+                let is_expired = actuation_subscription.permissions.is_expired();
+                if is_expired {
+                    let message = format!(
+                        "Permission for vss_ids {:?} expired",
+                        actuation_subscription.vss_ids
+                    );
+                    return Err((ActuationError::PermissionExpired, message));
+                }
+
+                if !actuation_subscription.actuation_provider.is_available() {
+                    let message = format!("Provider for vss_id {} does not exist", vss_id);
+                    return Err((ActuationError::ProviderNotAvailable, message));
+                }
+
+                actuation_subscription
+                    .actuation_provider
+                    .actuate(vec![ActuationChange {
+                        id: vss_id,
+                        data_value: data_value.clone(),
+                    }])
+                    .await
+            }
+            None => {
+                let message = format!("Provider for vss_id {} does not exist", vss_id);
+                Err((ActuationError::ProviderNotAvailable, message))
+            }
+        }
+    }
+
+    async fn can_write_actuator_target(
+        &self,
+        vss_id: &i32,
+    ) -> Result<(), (ActuationError, String)> {
+        let result_entry = self.get_entry_by_id(*vss_id).await;
+        match result_entry {
+            Ok(entry) => {
+                let vss_path = entry.metadata.path;
+                let result_can_write_actuator =
+                    self.permissions.can_write_actuator_target(&vss_path);
+                match result_can_write_actuator {
+                    Ok(_) => Ok(()),
+                    Err(PermissionError::Denied) => {
+                        let message = format!("Permission denied for vss_path {}", vss_path);
+                        Err((ActuationError::PermissionDenied, message))
+                    }
+                    Err(PermissionError::Expired) => Err((
+                        ActuationError::PermissionExpired,
+                        "Permission expired".to_string(),
+                    )),
+                }
+            }
+            Err(ReadError::NotFound) => {
+                let message = format!("Could not resolve vss_path of vss_id {}", vss_id);
+                Err((ActuationError::NotFound, message))
+            }
+            Err(ReadError::PermissionDenied) => {
+                let message = format!("Permission denied for vss_id {}", vss_id);
+                Err((ActuationError::PermissionDenied, message))
+            }
+            Err(ReadError::PermissionExpired) => Err((
+                ActuationError::PermissionExpired,
+                "Permission expired".to_string(),
+            )),
+        }
+    }
+
+    async fn validate_actuator_update(
+        &self,
+        vss_id: &i32,
+        data_value: &DataValue,
+    ) -> Result<(), (ActuationError, String)> {
+        let result_entry = self.get_entry_by_id(*vss_id).await;
+        match result_entry {
+            Ok(entry) => {
+                let metadata = entry.metadata.clone();
+                let vss_path = metadata.path;
+                if metadata.entry_type != EntryType::Actuator {
+                    let message = format!("Tried to set a value for a non-actuator: {}", vss_path);
+                    return Err((ActuationError::WrongType, message));
+                }
+                let validation = entry.validate_actuator_value(data_value);
+                match validation {
+                    Ok(_) => Ok(()),
+                    Err(UpdateError::OutOfBoundsMinMax) => {
+                        let message = format!(
+                            "Out of bounds min/max value provided for {}: {} | Expected range [min: {}, max: {}]",
+                            vss_path,
+                            data_value,
+                            metadata.min.map_or("None".to_string(), |value| value.to_string()),
+                            metadata.max.map_or("None".to_string(), |value| value.to_string()),
+                        );
+                        Err((ActuationError::OutOfBounds, message.to_string()))
+                    }
+                    Err(UpdateError::OutOfBoundsAllowed) => {
+                        let message = format!(
+                            "Out of bounds allowed value provided for {}: {} | Expected values [{}]",
+                            vss_path,
+                            data_value,
+                            metadata.allowed.map_or("None".to_string(), |value| value.to_string())
+                        );
+                        Err((ActuationError::OutOfBounds, message.to_string()))
+                    }
+                    Err(UpdateError::OutOfBoundsType) => {
+                        let message = format!(
+                            "Out of bounds type value provided for {}: {} | overflow for {}",
+                            vss_path, data_value, metadata.data_type,
+                        );
+                        Err((ActuationError::OutOfBounds, message.to_string()))
+                    }
+                    Err(UpdateError::UnsupportedType) => {
+                        let message = format!(
+                            "Unsupported type for vss_path {}. Expected type: {}",
+                            vss_path, metadata.data_type
+                        );
+                        Err((ActuationError::UnsupportedType, message))
+                    }
+                    Err(UpdateError::WrongType) => {
+                        let message = format!(
+                            "Wrong type for vss_path {}. Expected type: {}",
+                            vss_path, metadata.data_type
+                        );
+                        Err((ActuationError::WrongType, message))
+                    }
+                    // Redundant errors in case UpdateError includes new errors in the future
+                    Err(UpdateError::NotFound) => {
+                        let message = format!("Could not resolve vss_path {}", vss_path);
+                        Err((ActuationError::NotFound, message))
+                    }
+                    Err(UpdateError::PermissionDenied) => {
+                        let message = format!("Permission denied for vss_path {}", vss_path);
+                        Err((ActuationError::PermissionDenied, message))
+                    }
+                    Err(UpdateError::PermissionExpired) => Err((
+                        ActuationError::PermissionExpired,
+                        "Permission expired".to_string(),
+                    )),
+                }
+            }
+            Err(ReadError::NotFound) => {
+                let message = format!("Could not resolve vss_path of vss_id {}", vss_id);
+                Err((ActuationError::NotFound, message))
+            }
+            Err(ReadError::PermissionDenied) => {
+                let message = format!("Permission denied for vss_id {}", vss_id);
+                Err((ActuationError::PermissionDenied, message))
+            }
+            Err(ReadError::PermissionExpired) => Err((
+                ActuationError::PermissionExpired,
+                "Permission expired".to_string(),
+            )),
+        }
+    }
 }
 
 impl DataBroker {
-    pub fn new(version: impl Into<String>) -> Self {
+    pub fn new(version: impl Into<String>, commit_sha: impl Into<String>) -> Self {
         let (shutdown_trigger, _) = broadcast::channel::<()>(1);
 
         DataBroker {
             database: Default::default(),
             subscriptions: Default::default(),
             version: version.into(),
+            commit_sha: commit_sha.into(),
             shutdown_trigger,
         }
     }
@@ -1651,13 +2110,14 @@ impl DataBroker {
     pub fn start_housekeeping_task(&self) {
         info!("Starting housekeeping task");
         let subscriptions = self.subscriptions.clone();
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
 
             loop {
                 interval.tick().await;
-                // Cleanup dropped subscriptions
-                subscriptions.write().await.cleanup();
+
+                subscriptions.write().await.cleanup(); // Cleanup dropped subscriptions
             }
         });
     }
@@ -1678,20 +2138,34 @@ impl DataBroker {
     pub fn get_version(&self) -> &str {
         &self.version
     }
+
+    pub fn get_commit_sha(&self) -> &str {
+        &self.commit_sha
+    }
 }
 
 impl Default for DataBroker {
     fn default() -> Self {
-        Self::new("")
+        Self::new("", "")
     }
 }
 
 #[cfg(test)]
-mod tests {
+/// Public test module to allow other files to reuse helper functions
+pub mod tests {
     use crate::permissions;
 
     use super::*;
     use tokio_stream::StreamExt;
+
+    #[tokio::test]
+    async fn test_databroker_version_and_commit_sha() {
+        let version = "1.1.1";
+        let commit_sha = "3a3c332f5427f2db7a0b8582262c9f5089036c23";
+        let databroker = DataBroker::new(version, commit_sha);
+        assert_eq!(databroker.get_version(), version);
+        assert_eq!(databroker.get_commit_sha(), commit_sha);
+    }
 
     #[tokio::test]
     async fn test_register_datapoint() {
@@ -1705,6 +2179,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::BoolArray(Vec::from([true]))),
                 Some("kg".to_string()),
             )
@@ -1737,6 +2213,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 2".to_owned(),
+                None, // min
+                None, // max
                 None,
                 Some("km".to_string()),
             )
@@ -1766,6 +2244,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1 (modified)".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1787,6 +2267,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test signal 3".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::Int32Array(Vec::from([1, 2, 3, 4]))),
                 None,
             )
@@ -1811,6 +2293,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1824,6 +2308,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Actuator,
                 "Test datapoint 2".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -1867,6 +2353,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -1899,6 +2387,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -1921,6 +2411,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -1972,6 +2464,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::Int32Array(vec![100])),
                 None,
             )
@@ -1993,6 +2487,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: Some(Some(DataValue::Int32Array(vec![100]))),
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2015,6 +2511,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: Some(Some(DataValue::BoolArray(vec![true]))),
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2037,6 +2535,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: Some(None),
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2060,6 +2560,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2080,6 +2582,696 @@ mod tests {
         }
     }
 
+    // Helper for adding an int8 signal and adding value
+    async fn helper_add_int8(
+        broker: &DataBroker,
+        name: &str,
+        value: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Int8,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Int32(-5)), // min
+                Some(types::DataValue::Int32(10)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Int32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_int8() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int8(&broker, "test.datapoint1", -6, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int8(&broker, "test.datapoint2", -5, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_int8(&broker, "test.datapoint3", 11, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int8(&broker, "test.datapoint4", 10, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an int8 signal and adding value
+    async fn helper_add_int16(
+        broker: &DataBroker,
+        name: &str,
+        value: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Int16,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Int32(-5)), // min
+                Some(types::DataValue::Int32(10)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Int32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_int16() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int16(&broker, "test.datapoint1", -6, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int16(&broker, "test.datapoint2", -5, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_int16(&broker, "test.datapoint3", 11, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int16(&broker, "test.datapoint4", 10, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an int32 signal and adding value
+    pub async fn helper_add_int32(
+        broker: &DataBroker,
+        name: &str,
+        value: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Int32,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Int32(-500)), // min
+                Some(types::DataValue::Int32(1000)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Int32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_exceeded() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32(&broker, "test.datapoint1", -501, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_equal() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        if helper_add_int32(&broker, "test.datapoint1", -500, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_exceeded() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32(&broker, "test.datapoint1", 1001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_equal() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        if helper_add_int32(&broker, "test.datapoint1", 1000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    /// Helper for adding an int64 signal and adding value
+    async fn helper_add_int64(
+        broker: &DataBroker,
+        name: &str,
+        value: i64,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Int64,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Int64(-500000)),  // min
+                Some(types::DataValue::Int64(10000000)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Int64(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_int64() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int64(&broker, "test.datapoint1", -500001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int64(&broker, "test.datapoint2", -500000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_int64(&broker, "test.datapoint3", 10000001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_int64(&broker, "test.datapoint4", 10000000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    /// Helper for adding an uint8 signal and adding value
+    async fn helper_add_uint8(
+        broker: &DataBroker,
+        name: &str,
+        value: u32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Uint8,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Uint32(3)),  // min
+                Some(types::DataValue::Uint32(26)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Uint32(value),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_uint8() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_uint8(&broker, "test.datapoint1", 2, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_uint8(&broker, "test.datapoint2", 3, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        match helper_add_uint8(&broker, "test.datapoint3", 27, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        if helper_add_uint8(&broker, "test.datapoint4", 26, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an int32 signal and adding value
+    async fn helper_add_int32array(
+        broker: &DataBroker,
+        name: &str,
+        value1: i32,
+        value2: i32,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::Int32Array,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Int32(-500)), // min
+                Some(types::DataValue::Int32(1000)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::Int32Array(Vec::from([value1, value2])),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_exceeded_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        // First item out of bound
+        match helper_add_int32array(&broker, "test.datapoint1", -501, -500, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+        // Second item out of bound
+        match helper_add_int32array(&broker, "test.datapoint2", -500, -501, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_equal_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        if helper_add_int32array(&broker, "test.datapoint1", -500, -500, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_exceeded_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        match helper_add_int32array(&broker, "test.datapoint1", 1001, 1000, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+        match helper_add_int32array(&broker, "test.datapoint2", 100, 1001, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_max_equal_int32array() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        if helper_add_int32array(&broker, "test.datapoint1", 1000, 1000, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
+    // Helper for adding an double array signal and adding value
+    async fn helper_add_doublearray(
+        broker: &DataBroker,
+        name: &str,
+        value1: f64,
+        value2: f64,
+        timestamp: std::time::SystemTime,
+    ) -> Result<i32, Vec<(i32, UpdateError)>> {
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entry_id = authorized_access
+            .add_entry(
+                name.to_owned(),
+                DataType::DoubleArray,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Some Description That Does Not Matter".to_owned(),
+                Some(types::DataValue::Double(-500.2)), // min
+                Some(types::DataValue::Double(1000.2)), // max
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        match authorized_access
+            .update_entries([(
+                entry_id,
+                EntryUpdate {
+                    path: None,
+                    datapoint: Some(Datapoint {
+                        ts: timestamp,
+                        source_ts: None,
+                        value: types::DataValue::DoubleArray(Vec::from([value1, value2])),
+                    }),
+                    actuator_target: None,
+                    entry_type: None,
+                    data_type: None,
+                    description: None,
+                    allowed: None,
+                    min: None,
+                    max: None,
+                    unit: None,
+                },
+            )])
+            .await
+        {
+            Ok(_) => Ok(entry_id),
+            Err(details) => Err(details),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_entries_min_max_doublearray() {
+        let broker = DataBroker::default();
+
+        let timestamp = std::time::SystemTime::now();
+
+        // First item out of bound
+        match helper_add_doublearray(&broker, "test.datapoint1", -500.3, -500.0, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+        // Second item out of bound
+        match helper_add_doublearray(&broker, "test.datapoint2", -500.0, -500.3, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        // Both on min
+        if helper_add_doublearray(&broker, "test.datapoint3", -500.2, -500.2, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+
+        // First tto large
+        match helper_add_doublearray(&broker, "test.datapoint4", 1000.3, 1000.0, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        // Second too large
+        match helper_add_doublearray(&broker, "test.datapoint5", 1000.0, 1000.3, timestamp).await {
+            Err(err_vec) => {
+                assert_eq!(err_vec.len(), 1);
+                assert_eq!(err_vec.first().expect("").1, UpdateError::OutOfBoundsMinMax)
+            }
+            _ => panic!("Failure expected"),
+        }
+
+        // Both on max
+        if helper_add_doublearray(&broker, "test.datapoint6", 1000.2, 1000.2, timestamp)
+            .await
+            .is_err()
+        {
+            panic!("Success expected")
+        }
+    }
+
     #[tokio::test]
     async fn test_subscribe_query_and_get() {
         let broker = DataBroker::default();
@@ -2092,6 +3284,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2131,6 +3325,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2175,6 +3371,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2233,6 +3431,8 @@ mod tests {
                         data_type: None,
                         description: None,
                         allowed: None,
+                        min: None,
+                        max: None,
                         unit: None,
                     },
                 )])
@@ -2277,6 +3477,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2316,6 +3518,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2352,6 +3556,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1 (new description)".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2375,6 +3581,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2417,6 +3625,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2430,6 +3640,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 2".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2473,6 +3685,8 @@ mod tests {
                             data_type: None,
                             description: None,
                             allowed: None,
+                            min: None,
+                            max: None,
                             unit: None,
                         },
                     ),
@@ -2490,6 +3704,8 @@ mod tests {
                             data_type: None,
                             description: None,
                             allowed: None,
+                            min: None,
+                            max: None,
                             unit: None,
                         },
                     ),
@@ -2531,6 +3747,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2553,6 +3771,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2596,6 +3816,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2623,6 +3845,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2671,6 +3895,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::StringArray(vec![
                     String::from("yes"),
                     String::from("no"),
@@ -2703,6 +3929,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2760,6 +3988,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2815,6 +4045,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2839,6 +4071,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2861,6 +4095,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2890,6 +4126,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2925,6 +4163,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -2947,6 +4187,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -2976,6 +4218,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -3014,6 +4258,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test array".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -3036,6 +4282,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -3067,8 +4315,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_subscribe_and_get() {
+    async fn test_subscribe_and_get_buffer_size(buffer_size: Option<usize>) {
         let broker = DataBroker::default();
         let broker = broker.authorized_access(&permissions::ALLOW_ALL);
 
@@ -3079,6 +4326,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -3086,20 +4335,23 @@ mod tests {
             .expect("Register datapoint should succeed");
 
         let mut stream = broker
-            .subscribe(HashMap::from([(id1, HashSet::from([Field::Datapoint]))]))
+            .subscribe(
+                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
+                buffer_size,
+            )
             .await
             .expect("subscription should succeed");
 
         // Stream should yield initial notification with current values i.e. NotAvailable
         match stream.next().await {
-            Some(next) => {
-                assert_eq!(next.updates.len(), 1);
+            Some(entry) => {
+                assert_eq!(entry.updates.len(), 1);
                 assert_eq!(
-                    next.updates[0].update.path,
+                    entry.updates[0].update.path,
                     Some("test.datapoint1".to_string())
                 );
                 assert_eq!(
-                    next.updates[0].update.datapoint.as_ref().unwrap().value,
+                    entry.updates[0].update.datapoint.as_ref().unwrap().value,
                     DataValue::NotAvailable
                 );
             }
@@ -3123,6 +4375,8 @@ mod tests {
                     data_type: None,
                     description: None,
                     allowed: None,
+                    min: None,
+                    max: None,
                     unit: None,
                 },
             )])
@@ -3131,14 +4385,14 @@ mod tests {
 
         // Value has been set, expect the next item in stream to match.
         match stream.next().await {
-            Some(next) => {
-                assert_eq!(next.updates.len(), 1);
+            Some(entry) => {
+                assert_eq!(entry.updates.len(), 1);
                 assert_eq!(
-                    next.updates[0].update.path,
+                    entry.updates[0].update.path,
                     Some("test.datapoint1".to_string())
                 );
                 assert_eq!(
-                    next.updates[0].update.datapoint.as_ref().unwrap().value,
+                    entry.updates[0].update.datapoint.as_ref().unwrap().value,
                     DataValue::Int32(101)
                 );
             }
@@ -3162,6 +4416,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_subscribe_and_get() {
+        // None and 0-1000 is valid range
+        test_subscribe_and_get_buffer_size(None).await;
+        test_subscribe_and_get_buffer_size(Some(0)).await;
+        test_subscribe_and_get_buffer_size(Some(1000)).await;
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_buffersize_out_of_range() {
+        let broker = DataBroker::default();
+        let broker = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let id1 = broker
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                DataType::Int32,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Test datapoint 1".to_owned(),
+                None, // min
+                None, // max
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        match broker
+            .subscribe(
+                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
+                // 1001 is just outside valid range 0-1000
+                Some(1001),
+            )
+            .await
+        {
+            Err(SubscriptionError::InvalidBufferSize) => {}
+            _ => {
+                panic!("expected it to fail with InvalidBufferSize");
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn test_metadata_for_each() {
         let db = DataBroker::default();
         let broker = db.authorized_access(&permissions::ALLOW_ALL);
@@ -3173,6 +4470,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test signal".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -3185,6 +4484,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Run of the mill test signal".to_owned(),
+                None, // min
+                None, // max
                 None,
                 None,
             )
@@ -3216,6 +4517,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test signal 3".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::Int32Array(Vec::from([1, 2, 3, 4]))),
                 None,
             )
@@ -3230,6 +4533,8 @@ mod tests {
                 ChangeType::OnChange,
                 EntryType::Sensor,
                 "Test datapoint".to_owned(),
+                None, // min
+                None, // max
                 Some(DataValue::BoolArray(Vec::from([true]))),
                 None,
             )

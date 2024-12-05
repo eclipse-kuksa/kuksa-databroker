@@ -333,7 +333,6 @@ impl From<broker::EntryUpdate> for proto::DataEntry {
             metadata: {
                 let metadata = proto::Metadata {
                     unit: from.unit,
-                    description: from.description,
                     ..Default::default()
                 };
                 Some(metadata)

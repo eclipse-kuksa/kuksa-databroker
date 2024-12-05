@@ -11,7 +11,7 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, fmt};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataType {
@@ -39,6 +39,37 @@ pub enum DataType {
     Uint64Array,
     FloatArray,
     DoubleArray,
+}
+
+impl fmt::Display for DataType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DataType::String => write!(f, "String"),
+            DataType::Bool => write!(f, "Bool"),
+            DataType::Int8 => write!(f, "Int8"),
+            DataType::Int16 => write!(f, "Int16"),
+            DataType::Int32 => write!(f, "Int32"),
+            DataType::Int64 => write!(f, "Int64"),
+            DataType::Uint8 => write!(f, "Uint8"),
+            DataType::Uint16 => write!(f, "Uint16"),
+            DataType::Uint32 => write!(f, "Uint32"),
+            DataType::Uint64 => write!(f, "Uint64"),
+            DataType::Float => write!(f, "Float"),
+            DataType::Double => write!(f, "Double"),
+            DataType::StringArray => write!(f, "StringArray"),
+            DataType::BoolArray => write!(f, "BoolArray"),
+            DataType::Int8Array => write!(f, "Int8Array"),
+            DataType::Int16Array => write!(f, "Int16Array"),
+            DataType::Int32Array => write!(f, "Int32Array"),
+            DataType::Int64Array => write!(f, "Int64Array"),
+            DataType::Uint8Array => write!(f, "Uint8Array"),
+            DataType::Uint16Array => write!(f, "Uint16Array"),
+            DataType::Uint32Array => write!(f, "Uint32Array"),
+            DataType::Uint64Array => write!(f, "Uint64Array"),
+            DataType::FloatArray => write!(f, "FloatArray"),
+            DataType::DoubleArray => write!(f, "DoubleArray"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +109,29 @@ pub enum DataValue {
 
 #[derive(Debug)]
 pub struct CastError {}
+impl fmt::Display for DataValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DataValue::NotAvailable => write!(f, "Not Available"),
+            DataValue::Bool(value) => write!(f, "{}", value),
+            DataValue::String(value) => write!(f, "{}", value),
+            DataValue::Int32(value) => write!(f, "{}", value),
+            DataValue::Int64(value) => write!(f, "{}", value),
+            DataValue::Uint32(value) => write!(f, "{}", value),
+            DataValue::Uint64(value) => write!(f, "{}", value),
+            DataValue::Float(value) => write!(f, "{}", value),
+            DataValue::Double(value) => write!(f, "{}", value),
+            DataValue::BoolArray(values) => write!(f, "{:?}", values),
+            DataValue::StringArray(values) => write!(f, "{:?}", values),
+            DataValue::Int32Array(values) => write!(f, "{:?}", values),
+            DataValue::Int64Array(values) => write!(f, "{:?}", values),
+            DataValue::Uint32Array(values) => write!(f, "{:?}", values),
+            DataValue::Uint64Array(values) => write!(f, "{:?}", values),
+            DataValue::FloatArray(values) => write!(f, "{:?}", values),
+            DataValue::DoubleArray(values) => write!(f, "{:?}", values),
+        }
+    }
+}
 
 impl DataValue {
     pub fn greater_than(&self, other: &DataValue) -> Result<bool, CastError> {
@@ -233,158 +287,21 @@ impl DataValue {
         }
     }
 
+    pub fn greater_than_equal(&self, other: &DataValue) -> Result<bool, CastError> {
+        match self.greater_than(other) {
+            Ok(true) => Ok(true),
+            _ => self.equals(other),
+        }
+    }
+
     pub fn less_than(&self, other: &DataValue) -> Result<bool, CastError> {
-        match (&self, other) {
-            (DataValue::Int32(value), DataValue::Int32(other_value)) => Ok(value < other_value),
-            (DataValue::Int32(value), DataValue::Int64(other_value)) => {
-                Ok(i64::from(*value) < *other_value)
-            }
-            (DataValue::Int32(value), DataValue::Uint32(other_value)) => {
-                Ok(i64::from(*value) < i64::from(*other_value))
-            }
-            (DataValue::Int32(value), DataValue::Uint64(other_value)) => {
-                if *value < 0 {
-                    Ok(true) // Negative value must be less than unsigned
-                } else {
-                    match u64::try_from(*value) {
-                        Ok(value) => Ok(value < *other_value),
-                        Err(_) => Err(CastError {}),
-                    }
-                }
-            }
-            (DataValue::Int32(value), DataValue::Float(other_value)) => {
-                Ok(f64::from(*value) < f64::from(*other_value))
-            }
-            (DataValue::Int32(value), DataValue::Double(other_value)) => {
-                Ok(f64::from(*value) < *other_value)
-            }
+        other.greater_than(self)
+    }
 
-            (DataValue::Int64(value), DataValue::Int32(other_value)) => {
-                Ok(*value < i64::from(*other_value))
-            }
-            (DataValue::Int64(value), DataValue::Int64(other_value)) => Ok(value < other_value),
-            (DataValue::Int64(value), DataValue::Uint32(other_value)) => {
-                Ok(*value < i64::from(*other_value))
-            }
-            (DataValue::Int64(value), DataValue::Uint64(other_value)) => {
-                if *value < 0 {
-                    Ok(true) // Negative value must be less than unsigned
-                } else {
-                    match u64::try_from(*value) {
-                        Ok(value) => Ok(value < *other_value),
-                        Err(_) => Err(CastError {}),
-                    }
-                }
-            }
-            (DataValue::Int64(value), DataValue::Float(other_value)) => match i32::try_from(*value)
-            {
-                Ok(value) => Ok(f64::from(value) < f64::from(*other_value)),
-                Err(_) => Err(CastError {}),
-            },
-            (DataValue::Int64(value), DataValue::Double(other_value)) => {
-                match i32::try_from(*value) {
-                    Ok(value) => Ok(f64::from(value) < *other_value),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-
-            (DataValue::Uint32(value), DataValue::Int32(other_value)) => {
-                Ok(i64::from(*value) < i64::from(*other_value))
-            }
-            (DataValue::Uint32(value), DataValue::Int64(other_value)) => {
-                Ok(i64::from(*value) < *other_value)
-            }
-            (DataValue::Uint32(value), DataValue::Uint32(other_value)) => Ok(value < other_value),
-            (DataValue::Uint32(value), DataValue::Uint64(other_value)) => {
-                Ok(u64::from(*value) < *other_value)
-            }
-            (DataValue::Uint32(value), DataValue::Float(other_value)) => {
-                Ok(f64::from(*value) < f64::from(*other_value))
-            }
-            (DataValue::Uint32(value), DataValue::Double(other_value)) => {
-                Ok(f64::from(*value) < *other_value)
-            }
-            (DataValue::Uint64(value), DataValue::Int32(other_value)) => {
-                if *other_value < 0 {
-                    Ok(false) // Unsigned cannot be less than a negative value
-                } else {
-                    match u64::try_from(*other_value) {
-                        Ok(other_value) => Ok(*value < other_value),
-                        Err(_) => Err(CastError {}),
-                    }
-                }
-            }
-            (DataValue::Uint64(value), DataValue::Int64(other_value)) => {
-                if *other_value < 0 {
-                    Ok(false) // Unsigned cannot be less than a negative value
-                } else {
-                    match u64::try_from(*other_value) {
-                        Ok(other_value) => Ok(*value < other_value),
-                        Err(_) => Err(CastError {}),
-                    }
-                }
-            }
-            (DataValue::Uint64(value), DataValue::Uint32(other_value)) => {
-                Ok(*value < u64::from(*other_value))
-            }
-            (DataValue::Uint64(value), DataValue::Uint64(other_value)) => Ok(value < other_value),
-            (DataValue::Uint64(value), DataValue::Float(other_value)) => {
-                match u32::try_from(*value) {
-                    Ok(value) => Ok(f64::from(value) < f64::from(*other_value)),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Uint64(value), DataValue::Double(other_value)) => {
-                match u32::try_from(*value) {
-                    Ok(value) => Ok(f64::from(value) < *other_value),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Float(value), DataValue::Int32(other_value)) => {
-                Ok(f64::from(*value) < f64::from(*other_value))
-            }
-            (DataValue::Float(value), DataValue::Int64(other_value)) => {
-                match i32::try_from(*other_value) {
-                    Ok(other_value) => Ok(f64::from(*value) < f64::from(other_value)),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Float(value), DataValue::Uint32(other_value)) => {
-                Ok(f64::from(*value) < f64::from(*other_value))
-            }
-            (DataValue::Float(value), DataValue::Uint64(other_value)) => {
-                match u32::try_from(*other_value) {
-                    Ok(other_value) => Ok(f64::from(*value) < f64::from(other_value)),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Float(value), DataValue::Float(other_value)) => Ok(value < other_value),
-            (DataValue::Float(value), DataValue::Double(other_value)) => {
-                Ok(f64::from(*value) < *other_value)
-            }
-            (DataValue::Double(value), DataValue::Int32(other_value)) => {
-                Ok(*value < f64::from(*other_value))
-            }
-            (DataValue::Double(value), DataValue::Int64(other_value)) => {
-                match i32::try_from(*other_value) {
-                    Ok(other_value) => Ok(*value < f64::from(other_value)),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Double(value), DataValue::Uint32(other_value)) => {
-                Ok(*value < f64::from(*other_value))
-            }
-            (DataValue::Double(value), DataValue::Uint64(other_value)) => {
-                match u32::try_from(*other_value) {
-                    Ok(other_value) => Ok(*value < f64::from(other_value)),
-                    Err(_) => Err(CastError {}),
-                }
-            }
-            (DataValue::Double(value), DataValue::Float(other_value)) => {
-                Ok(*value < f64::from(*other_value))
-            }
-            (DataValue::Double(value), DataValue::Double(other_value)) => Ok(value < other_value),
-            _ => Err(CastError {}),
+    pub fn less_than_equal(&self, other: &DataValue) -> Result<bool, CastError> {
+        match self.less_than(other) {
+            Ok(true) => Ok(true),
+            _ => self.equals(other),
         }
     }
 

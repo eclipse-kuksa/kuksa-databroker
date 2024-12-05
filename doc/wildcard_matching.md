@@ -1,4 +1,8 @@
-### Matching rules
+# Wildcard Matching rules
+
+*Note! This document applies to `sdv.databroker.v1` and `kuksa.val.v1`!*
+*It also currently applies to `root` in `ListMetadata` in `kuksa.val.v2` but that may change in the future.*
+
 
 * An empty pattern "" will match any signal.
 * A pattern without any asterisk - a path in other words - matches either a signal directly or any signal that is a direct or indirect child of the branch with that path.

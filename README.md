@@ -46,6 +46,8 @@
     </li>
     <li><a href="#usage">Usage</a></li>
     <li><a href="#building">Building</a></li>
+    <li><a href="#performance">Performance</a></li>
+    <li><a href="#additional-documentation">Additional Documentation</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -60,7 +62,7 @@ The [COVESA Vehicle Signal Specification](https://covesa.github.io/vehicle_signa
 
 However, VSS does not define how these signals are to be collected and managed within a vehicle, nor does it prescribe how other components in the vehicle can read or write signal values from and to the tree.
 
-**Kuksa Databroker** is a resource efficient implementation of the VSS signal tree and is intended to be run within a vehicle on a microprocessor based platform. It allows applications in the vehicle to interact with the vehicle's sensors and actuators using a uniform, high level gRPC API for querying signals, updating current and target values of sensors and actuators and getting notified about changes to signals of interest.
+**Kuksa Databroker** is a resource efficient implementation of the VSS signal tree and is intended to be run within a vehicle on a microprocessor based platform. It allows applications in the vehicle to interact with the vehicle's sensors and actuators using a uniform, high level gRPC API for querying signals, updating values of sensors and actuators and getting notified about changes to signals of interest.
 
 <!-- black box diagram -- inputs/outputs -->
 
@@ -85,6 +87,33 @@ Data is usually exchanged with ECUs by means of a CAN bus or Ethernet based prot
 - 100% Open Source (Apache 2.0 license)
 - Written in Rust with an easy-to-use language agnostic gRPC interface
 - Lightweight (<4 MB statically compiled), allowing it to run on even small vehicle computers
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+### APIs supported by Databroker
+
+Kuksa Databroker provides [gRPC](https://grpc.io/) based API endpoints which can be used by
+clients to interact with the server. gRPC services are specified by means of `.proto` files which define the services and the data
+exchanged between server and client.
+[Tooling](https://grpc.io/docs/languages/) is available for most popular programming languages to create
+client stubs for invoking the services.
+The Databroker uses gRPC's default HTTP/2 transport and [protocol buffers](https://developers.google.com/protocol-buffers) for message serialization.
+The same `.proto` file can be used to generate server skeleton and client stubs for other transports and serialization formats as well.
+
+HTTP/2 is a binary replacement for HTTP/1.1 used for handling connections, multiplexing (channels) and providing a standardized way to add headers for authorization and TLS for encryption/authentication.
+It also supports bi-directional streaming between client and server.
+
+Kuksa Databroker implements the following gRPC service interfaces:
+
+- Enabled on Databroker by default [kuksa.val.v2.VAL](proto/kuksa/val/v2/val.proto)
+- Enabled on Databroker by default [kuksa.val.v1.VAL](proto/kuksa/val/v1/val.proto) (Deprecated!)
+- Disabled on Databroker by default [sdv.databroker.v1.Broker](proto/sdv/databroker/v1/broker.proto) (Deprecated!)
+- Disabled on Databroker by default [sdv.databroker.v1.Collector](proto/sdv/databroker/v1/collector.proto) (Deprecated!)
+
+In addition to the gRPC interfaces the Kuksa Databroker also supports a subset of the [COVESA VISS v2 Protocol[(https://github.com/COVESA/vehicle-information-service-specification)
+using WebSocket.
+Please visit the [user guide](doc/user_guide.md) for more information on how the interfaces can be enabled and configured in the Databroker.
+Please visit the [protocol documentation](doc/protocol.md) for more information on the APIs.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -114,10 +143,14 @@ The quickest possible way to get Kuksa Databroker up and running.
 
    > :bulb: **Tip:** You can stop the container using `ctrl-c`.
 
+*Note that not all APIs are enabled by default, see [user guide](doc/user_guide.md) and*
+*[protocols](doc/protocol.md) for more information!*
+
 ### Reading and writing VSS data using the CLI
 
 1. Start the CLI in a container attached to the _kuksa_ bridge network and connect to the Databroker container:
-   The databroker supports both of `sdv.databroker.v1` and `kuksa.val.v1` as an API. Per default the databroker-cli uses the `sdv.databroker.v1` interface. To change it use `--protocol` option when starting. Chosse eihter one of `kuksa-val-v1` and `sdv-databroker-v1`.
+
+   The databroker supports the lastest new API `kuksa.val.v2` and `kuksa.val.v1` by default, `sdv.databroker.v1` must be enabled using `--enable-databroker-v1`. Per default the databroker-cli uses the `kuksa.val.v1` interface, which can be changed by supplying the `--protocol` option when starting. Choose either `kuksa.val.v1` or `sdv.databroker.v1`, as databroker-cli still does not support  `kuksa.val.v2`.
 
    ```sh
    # in a new terminal
@@ -249,11 +282,31 @@ cargo test --all-targets
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+## Performance
+The Kuksa team has released an official tool to measure the latency and throughput of the Databroker for all supported APIs:
+[kuksa-perf](https://github.com/eclipse-kuksa/kuksa-perf)
+
+The use case measures the time it takes for a signal to be transferred from the Provider to the Signal Consumer
+Signal Consumer(stream subscribe) <- Databroker <- Provider(stream publish)
+
+Feel free to use it and share your results with us!
+
+## Additional Documentation
+
+Additional documentation is available in the [repository documentation folder](doc).
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 ## Contributing
 
 Please refer to the [Kuksa Contributing Guide](CONTRIBUTING.md).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+<!-- KUKSA ANALYSIS -->
+## Kuksa analysis
+Extended [Kuksa analysis](./doc/kuksa_analysis.md) containing functional requirements, use cases diagrams, latest and new API definition `kuksa.val.v2` as well as new design discussions for future developments and improvements.
 
 ## License
 
