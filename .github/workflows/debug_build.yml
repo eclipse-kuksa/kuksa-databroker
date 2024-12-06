@@ -207,9 +207,9 @@ jobs:
     - name: Unpack binaries
       run: |
         mkdir -p dist/amd64 dist/arm64 dist/riscv64
-        tar xf artifacts/databroker-arm64.tar.gz -C dist/arm64
-        tar xf artifacts/databroker-amd64.tar.gz -C dist/amd64
-        tar xf artifacts/databroker-riscv64.tar.gz -C dist/riscv64
+        tar xf artifacts/databroker-arm64-release-with-debug.tar.gz -C dist/arm64
+        tar xf artifacts/databroker-amd64-release-with-debug.tar.gz -C dist/amd64
+        tar xf artifacts/databroker-riscv64-release-with-debug.tar.gz -C dist/riscv64
 
     - name: Set container metadata
       id: meta
