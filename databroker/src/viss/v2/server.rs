@@ -11,13 +11,7 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use std::{
-    collections::HashMap,
-    convert::TryFrom,
-    pin::Pin,
-    sync::Arc,
-    time::SystemTime,
-};
+use std::{collections::HashMap, convert::TryFrom, pin::Pin, sync::Arc, time::SystemTime};
 
 use crate::broker::StackVecField;
 
