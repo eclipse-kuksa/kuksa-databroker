@@ -865,9 +865,9 @@ async fn get_signal(
                     None => Err(tonic::Status::not_found("Path not found")),
                 }
             }
-            proto::signal_id::Signal::Id(id) => match broker.get_metadata(id).await {
-                Some(_metadata) => Ok(id),
-                None => Err(tonic::Status::not_found("Path not found")),
+            proto::signal_id::Signal::Id(id) => match broker.contains_id(id).await {
+                true => Ok(id),
+                false => Err(tonic::Status::not_found("Path not found")),
             },
         }
     } else {

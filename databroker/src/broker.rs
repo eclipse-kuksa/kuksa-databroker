@@ -1259,6 +1259,11 @@ impl<'a, 'b> DatabaseReadAccess<'a, 'b> {
         self.db.entries.get(&id).map(|entry| &entry.metadata)
     }
 
+    #[inline]
+    pub fn contains_id(&self, id: i32) -> bool {
+        self.db.entries.contains_key(&id)
+    }
+
     pub fn get_metadata_by_path(&self, path: &str) -> Option<&Metadata> {
         let id = self.db.path_to_id.get(path)?;
         self.get_metadata_by_id(*id)
@@ -1560,6 +1565,15 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .authorized_read_access(self.permissions)
             .get_metadata_by_id(id)
             .cloned()
+    }
+
+    pub async fn contains_id(&self, id: i32) -> bool {
+        self.broker
+            .database
+            .read()
+            .await
+            .authorized_read_access(self.permissions)
+            .contains_id(id)
     }
 
     pub async fn get_metadata_by_path(&self, path: &str) -> Option<Metadata> {
