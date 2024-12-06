@@ -223,12 +223,8 @@ impl Permissions {
 
     #[inline]
     pub fn is_expired(&self) -> bool {
-        if let Some(expires_at) = self.expires_at {
-            if expires_at < SystemTime::now() {
-                return true;
-            }
-        }
-        false
+        self.expires_at
+            .map_or(false, |expires_at| expires_at < SystemTime::now())
     }
 }
 
