@@ -11,7 +11,7 @@
 # * SPDX-License-Identifier: Apache-2.0
 # ********************************************************************************/
 
-name: Build kuksa-databroker
+name: Debug build databroker
 
 on:
   push:
@@ -96,7 +96,7 @@ jobs:
         working-directory: ${{github.workspace}}
         run: |
           cd lib
-          cargo build --profile release-with-debug
+          cargo build --release
 
   test:
     name: Run unit tests

@@ -122,8 +122,10 @@ function build_target() {
     #  /target/release/build/libc-2dd22ab6b5fb9fd2/build-script-build: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.29' not found (required by /target/release/build/libc-2dd22ab6b5fb9fd2/build-script-build)
     #
     # this is solved by using different target-dirs for each platform
+    echo "Environmant variables related to the build:"
+    env | grep -i -E 'cargo|cross|kuksa'
+
     echo "Building databroker for target $target_rust"
-    env
     cross build --target $target_rust --target-dir ./target-$target_docker --features $KUKSA_DATABROKER_FEATURES --bin databroker --profile ${KUKSA_DATABROKER_PROFILE}
 
     echo "Prepare $target_docker dist folder"
