@@ -173,7 +173,7 @@ jobs:
 
     - name: Find debug symbol for receiving signal updates
       run: |
-        DEBUGSYMBOL=$(nm target/release-with-debug/databroker | grep -E 'DatabaseWriteAccess.*update[^_]+' | cut -d' ' -f3)
+        export DEBUGSYMBOL=$(nm target/release-with-debug/databroker | grep -E 'DatabaseWriteAccess.*update[^_]+' | cut -d' ' -f3)
         echo ${DEBUGSYMBOL} > ${{github.workspace}}/dist/${{ matrix.platform.name }}/debugsymbols.txt
         echo "Debug Symbol for eBPF Tracing: ${DEBUGSYMBOL}" >> $GITHUB_STEP_SUMMARY
 
