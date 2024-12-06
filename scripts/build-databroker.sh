@@ -51,9 +51,6 @@
 # exit on error, to not waste any time
 set -e
 
-# Source the environment file, so that /usr/local/cargo/bin is added to the PATH env variable and 'cross' can be found
-. /etc/environment
-
 SCRIPT_PATH=$(realpath "$0")
 SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
 
