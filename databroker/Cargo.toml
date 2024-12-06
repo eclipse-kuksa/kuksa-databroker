@@ -62,6 +62,7 @@ lazy_static = "1.4.0"
 thiserror = "1.0.47"
 futures = { version = "0.3.28" }
 async-trait = "0.1.82"
+smallvec = "1.13.2"
 
 # VISS
 axum = { version = "0.6.20", optional = true, features = ["ws"] }

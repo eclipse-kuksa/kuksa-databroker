@@ -29,6 +29,7 @@ use tracing::info;
 
 use crate::broker;
 use crate::broker::ReadError;
+use crate::broker::StackVecField;
 use crate::broker::SubscriptionError;
 use crate::broker::{AuthorizedAccess, EntryReadAccess};
 use crate::glob::Matcher;
@@ -494,7 +495,7 @@ impl proto::val_server::Val for broker::DataBroker {
             ));
         }
 
-        let mut valid_requests: HashMap<String, (Matcher, HashSet<broker::Field>)> = HashMap::new();
+        let mut valid_requests: HashMap<String, (Matcher, StackVecField)> = HashMap::new();
 
         for entry in &request.entries {
             if entry.path.len() > MAX_REQUEST_PATH_LENGTH {
@@ -507,18 +508,18 @@ impl proto::val_server::Val for broker::DataBroker {
 
             match Matcher::new(&entry.path) {
                 Ok(matcher) => {
-                    let mut fields = HashSet::new();
+                    let mut fields = StackVecField::new();
                     for id in &entry.fields {
                         if let Ok(field) = proto::Field::try_from(*id) {
                             match field {
                                 proto::Field::Value => {
-                                    fields.insert(broker::Field::Datapoint);
+                                    fields.push(broker::Field::Datapoint);
                                 }
                                 proto::Field::ActuatorTarget => {
-                                    fields.insert(broker::Field::ActuatorTarget);
+                                    fields.push(broker::Field::ActuatorTarget);
                                 }
                                 proto::Field::MetadataUnit => {
-                                    fields.insert(broker::Field::MetadataUnit);
+                                    fields.push(broker::Field::MetadataUnit);
                                 }
                                 _ => {
                                     // Just ignore other fields for now
@@ -535,7 +536,7 @@ impl proto::val_server::Val for broker::DataBroker {
             }
         }
 
-        let mut entries: HashMap<i32, HashSet<broker::Field>> = HashMap::new();
+        let mut entries: HashMap<i32, StackVecField> = HashMap::new();
 
         if !valid_requests.is_empty() {
             for (path, (matcher, fields)) in valid_requests {
@@ -549,7 +550,7 @@ impl proto::val_server::Val for broker::DataBroker {
                             entries
                                 .entry(entry.metadata().id)
                                 .and_modify(|existing_fields| {
-                                    existing_fields.extend(fields.clone());
+                                    existing_fields.extend_from_stack(&fields);
                                 })
                                 .or_insert(fields.clone());
 
@@ -575,7 +576,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                         entries
                                             .entry(entry.metadata().id)
                                             .and_modify(|existing_fields| {
-                                                existing_fields.extend(fields.clone());
+                                                existing_fields.extend_from_stack(&fields);
                                             })
                                             .or_insert(fields.clone());
 

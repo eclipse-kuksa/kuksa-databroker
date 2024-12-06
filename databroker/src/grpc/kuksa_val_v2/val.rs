@@ -15,7 +15,8 @@ use std::{collections::HashMap, pin::Pin};
 
 use crate::{
     broker::{
-        self, ActuationChange, ActuationProvider, AuthorizedAccess, ReadError, SubscriptionError,
+        self, ActuationChange, ActuationProvider, AuthorizedAccess, ReadError, StackVecField,
+        SubscriptionError,
     },
     glob::Matcher,
     permissions::Permissions,
@@ -34,7 +35,6 @@ use kuksa::proto::v2::{
     signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ErrorCode,
     ListMetadataResponse, ProvideActuationResponse,
 };
-use std::collections::HashSet;
 use tokio::{select, sync::mpsc};
 use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
 use tracing::debug;
@@ -228,7 +228,7 @@ impl proto::val_server::Val for broker::DataBroker {
         let signal_paths = request.signal_paths;
         let size = signal_paths.len();
 
-        let mut valid_requests: HashMap<i32, HashSet<broker::Field>> = HashMap::with_capacity(size);
+        let mut valid_requests: HashMap<i32, StackVecField> = HashMap::with_capacity(size);
 
         for path in signal_paths {
             valid_requests.insert(
@@ -243,7 +243,7 @@ impl proto::val_server::Val for broker::DataBroker {
                     Ok(signal_id) => signal_id,
                     Err(err) => return Err(err),
                 },
-                vec![broker::Field::Datapoint].into_iter().collect(),
+                StackVecField::with_elements(smallvec::smallvec![broker::Field::Datapoint]),
             );
         }
 
@@ -301,7 +301,7 @@ impl proto::val_server::Val for broker::DataBroker {
         let signal_ids = request.signal_ids;
         let size = signal_ids.len();
 
-        let mut valid_requests: HashMap<i32, HashSet<broker::Field>> = HashMap::with_capacity(size);
+        let mut valid_requests: HashMap<i32, StackVecField> = HashMap::with_capacity(size);
 
         for id in signal_ids {
             valid_requests.insert(
@@ -316,7 +316,7 @@ impl proto::val_server::Val for broker::DataBroker {
                     Ok(signal_id) => signal_id,
                     Err(err) => return Err(err),
                 },
-                vec![broker::Field::Datapoint].into_iter().collect(),
+                StackVecField::with_elements(smallvec::smallvec![broker::Field::Datapoint]),
             );
         }
 
@@ -653,19 +653,19 @@ impl proto::val_server::Val for broker::DataBroker {
                                 match request {
                                     Some(req) => {
                                         match req.action {
-                                            Some(ProvideActuationRequest(provided_actuation)) => {
-                                                let response = provide_actuation(&broker, &provided_actuation, response_stream_sender.clone()).await;
-                                                if let Err(err) = response_stream_sender.send(response).await
-                                                {
-                                                    debug!("Failed to send response: {}", err)
-                                                }
-                                            },
                                             Some(PublishValuesRequest(publish_values_request)) => {
                                                 let response = publish_values(&broker, &publish_values_request).await;
                                                 if let Some(value) = response {
                                                     if let Err(err) = response_stream_sender.send(Ok(value)).await {
                                                         debug!("Failed to send error response: {}", err);
                                                     }
+                                                }
+                                            },
+                                            Some(ProvideActuationRequest(provided_actuation)) => {
+                                                let response = provide_actuation(&broker, &provided_actuation, response_stream_sender.clone()).await;
+                                                if let Err(err) = response_stream_sender.send(response).await
+                                                {
+                                                    debug!("Failed to send response: {}", err)
                                                 }
                                             },
                                             Some(BatchActuateStreamResponse(batch_actuate_stream_response)) => {
@@ -804,31 +804,29 @@ async fn provide_actuation(
     }
 }
 
+#[inline]
 async fn publish_values(
     broker: &AuthorizedAccess<'_, '_>,
     request: &databroker_proto::kuksa::val::v2::PublishValuesRequest,
 ) -> Option<OpenProviderStreamResponse> {
-    let ids: Vec<(i32, broker::EntryUpdate)> = request
-        .data_points
-        .iter()
-        .map(|(id, datapoint)| {
-            (
-                *id,
-                broker::EntryUpdate {
-                    path: None,
-                    datapoint: Some(broker::Datapoint::from(datapoint)),
-                    actuator_target: None,
-                    entry_type: None,
-                    data_type: None,
-                    description: None,
-                    allowed: None,
-                    min: None,
-                    max: None,
-                    unit: None,
-                },
-            )
-        })
-        .collect();
+    let mut ids = Vec::with_capacity(request.data_points.len());
+    ids.extend(request.data_points.iter().map(|(id, datapoint)| {
+        (
+            *id,
+            broker::EntryUpdate {
+                path: None,
+                datapoint: Some(broker::Datapoint::from(datapoint)),
+                actuator_target: None,
+                entry_type: None,
+                data_type: None,
+                description: None,
+                allowed: None,
+                min: None,
+                max: None,
+                unit: None,
+            },
+        )
+    }));
 
     // TODO check if provider is allowed to update the entries for the provided signals?
     match broker.update_entries(ids).await {
@@ -849,6 +847,7 @@ async fn publish_values(
     }
 }
 
+#[inline]
 async fn get_signal(
     signal_id: Option<proto::SignalId>,
     broker: &AuthorizedAccess<'_, '_>,
@@ -902,6 +901,7 @@ fn convert_to_proto_stream(
     })
 }
 
+#[inline]
 fn convert_to_proto_stream_id(
     input: impl Stream<Item = broker::EntryUpdates>,
     size: usize,
