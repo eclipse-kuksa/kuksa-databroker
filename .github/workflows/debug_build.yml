@@ -27,7 +27,7 @@ on:
 
 # suffix to avoid cancellation when running from release workflow
 concurrency:
-      group: ${{ github.ref }}-${{ github.workflow }}-databroker
+      group: ${{ github.ref }}-${{ github.workflow }}-databroker-debug
       cancel-in-progress: true
 
 # Needed as default_workflow_permissions is "read"
