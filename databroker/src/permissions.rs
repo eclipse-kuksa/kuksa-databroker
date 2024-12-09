@@ -229,6 +229,7 @@ impl Permissions {
 }
 
 impl PathMatcher {
+    #[inline]
     pub fn is_match(&self, path: &str) -> bool {
         match self {
             PathMatcher::Nothing => false,
