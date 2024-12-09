@@ -4,7 +4,8 @@ resolver = "2"
 members = [
     "common",
     "kuksa",
-    "sdv"
+    "sdv",
+    "databroker-examples"
 ]
 
 [workspace.dependencies]
