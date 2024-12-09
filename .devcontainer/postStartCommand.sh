@@ -12,3 +12,4 @@
 # SPDX-License-Identifier: Apache-2.0
 
 pip install "git+https://github.com/eclipse-kuksa/kuksa-common.git@v1#subdirectory=sbom-tools"
+pip install pre-commit
