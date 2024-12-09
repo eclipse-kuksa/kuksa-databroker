@@ -603,7 +603,7 @@ checksum = "e8566979429cf69b49a5c740c60791108e86440e8be149bbea4fe54d2c32d6e2"
 
 [[package]]
 name = "databroker"
-version = "0.6.0-dev.0"
+version = "0.5.0-dev.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "databroker-cli"
-version = "0.6.0-dev.0"
+version = "0.5.0-dev.1"
 dependencies = [
  "ansi_term",
  "clap",
@@ -660,7 +660,7 @@ dependencies = [
 
 [[package]]
 name = "databroker-proto"
-version = "0.6.0-dev.0"
+version = "0.5.0-dev.1"
 dependencies = [
  "prost",
  "prost-types",
@@ -1940,7 +1940,7 @@ dependencies = [
 
 [[package]]
 name = "kuksa"
-version = "0.6.0-dev.0"
+version = "0.5.0-dev.1"
 dependencies = [
  "databroker-proto",
  "http",
@@ -1952,7 +1952,7 @@ dependencies = [
 
 [[package]]
 name = "kuksa-common"
-version = "0.6.0-dev.0"
+version = "0.5.0-dev.1"
 dependencies = [
  "databroker-proto",
  "http",
@@ -1963,7 +1963,7 @@ dependencies = [
 
 [[package]]
 name = "kuksa-sdv"
-version = "0.6.0-dev.0"
+version = "0.5.0-dev.1"
 dependencies = [
  "databroker-proto",
  "http",
