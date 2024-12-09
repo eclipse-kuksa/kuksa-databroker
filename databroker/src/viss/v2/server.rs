@@ -11,13 +11,9 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use std::{
-    collections::{HashMap, HashSet},
-    convert::TryFrom,
-    pin::Pin,
-    sync::Arc,
-    time::SystemTime,
-};
+use std::{collections::HashMap, convert::TryFrom, pin::Pin, sync::Arc, time::SystemTime};
+
+use crate::broker::StackVecField;
 
 use futures::{
     stream::{AbortHandle, Abortable},
@@ -262,7 +258,12 @@ impl Viss for Server {
         let Some(entries) = broker
             .get_id_by_path(request.path.as_ref())
             .await
-            .map(|id| HashMap::from([(id, HashSet::from([broker::Field::Datapoint]))]))
+            .map(|id| {
+                HashMap::from([(
+                    id,
+                    StackVecField::with_elements(smallvec::smallvec![broker::Field::Datapoint]),
+                )])
+            })
         else {
             return Err(SubscribeErrorResponse {
                 request_id,
