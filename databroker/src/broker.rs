@@ -825,7 +825,7 @@ impl Subscriptions {
                 info!("Provider gone: removing provided actuation");
                 false
             } else if sub.permissions.is_expired() {
-                info!("Permissions of Provider expired: removing subscription");
+                info!("Permissions of Provider expired: removing provided actuation");
                 false
             } else {
                 true
