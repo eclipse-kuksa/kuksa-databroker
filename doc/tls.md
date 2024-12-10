@@ -1,4 +1,4 @@
-# KUKSA TLS concept
+# Kuksa TLS concept
 
 This page describes the TLS support in KUKSA
 

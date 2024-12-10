@@ -31,8 +31,8 @@ use databroker_proto::kuksa::val::v2::{
 };
 
 use kuksa::proto::v2::{
-    signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ListMetadataResponse,
-    ProvideActuationResponse,
+    signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ErrorCode,
+    ListMetadataResponse, ProvideActuationResponse,
 };
 use std::collections::HashSet;
 use tokio::{select, sync::mpsc};
@@ -222,12 +222,6 @@ impl proto::val_server::Val for broker::DataBroker {
         };
 
         let request = request.into_inner();
-        if request.buffer_size == 0 {
-            return Err(tonic::Status::invalid_argument(format!(
-                "Provided buffer_size {} should be greater than zero.",
-                request.buffer_size
-            )));
-        }
 
         let broker = self.authorized_access(&permissions);
 
@@ -301,12 +295,6 @@ impl proto::val_server::Val for broker::DataBroker {
         };
 
         let request = request.into_inner();
-        if request.buffer_size == 0 {
-            return Err(tonic::Status::invalid_argument(format!(
-                "Provided lag_buffer_capacity {} should be greater than zero.",
-                request.buffer_size
-            )));
-        }
 
         let broker = self.authorized_access(&permissions);
 
@@ -626,8 +614,10 @@ impl proto::val_server::Val for broker::DataBroker {
     //                   e.g. if sending an unsupported enum value
     //              - if the published value is out of the min/max range specified
     //
-    //    - Provider returns BatchActuateStreamResponse <- Databroker sends BatchActuateStreamRequest
-    //        No error definition, a BatchActuateStreamResponse is expected from provider.
+    //    - Databroker sends BatchActuateStreamRequest -> Provider shall return a BatchActuateStreamResponse,
+    //        for every signal requested to indicate if the request was accepted or not.
+    //        It is up to the provider to decide if the stream shall be closed,
+    //        as of today Databroker will not react on the received error message.
     //
     async fn open_provider_stream(
         &self,
@@ -678,8 +668,30 @@ impl proto::val_server::Val for broker::DataBroker {
                                                     }
                                                 }
                                             },
-                                            Some(BatchActuateStreamResponse(_batch_actuate_stream_response)) => {
-                                                // TODO discuss and implement
+                                            Some(BatchActuateStreamResponse(batch_actuate_stream_response)) => {
+
+                                                if let Some(error) = batch_actuate_stream_response.error {
+                                                    match error.code() {
+                                                        ErrorCode::Ok  => {},
+                                                        _ => {
+                                                            let mut msg : String = "Batch actuate stream response error".to_string();
+                                                            if let Some(signal_id) = batch_actuate_stream_response.signal_id {
+                                                                match signal_id.signal {
+                                                                    Some(proto::signal_id::Signal::Path(path)) => {
+                                                                        msg = format!("{}, path: {}", msg, &path);
+                                                                    }
+                                                                    Some(proto::signal_id::Signal::Id(id)) => {
+                                                                        msg = format!("{}, id: {}",msg, &id.to_string());
+                                                                    }
+                                                                    None => {}
+                                                                }
+                                                            }
+                                                            msg = format!("{}, error code: {}, error message: {}", msg, &error.code.to_string(), &error.message);
+                                                            debug!(msg)
+                                                        }
+                                                    }
+                                                }
+
                                             },
                                             None => {
 
@@ -797,7 +809,7 @@ async fn publish_values(
     request: &databroker_proto::kuksa::val::v2::PublishValuesRequest,
 ) -> Option<OpenProviderStreamResponse> {
     let ids: Vec<(i32, broker::EntryUpdate)> = request
-        .datapoints
+        .data_points
         .iter()
         .map(|(id, datapoint)| {
             (
@@ -2120,7 +2132,7 @@ mod tests {
             action: Some(open_provider_stream_request::Action::PublishValuesRequest(
                 PublishValuesRequest {
                     request_id,
-                    datapoints: {
+                    data_points: {
                         let timestamp = Some(std::time::SystemTime::now().into());
 
                         let value = proto::Value {
@@ -2356,7 +2368,9 @@ mod tests {
             .await
             .map(|res| res.into_inner())
         {
-            Ok(_) => {}
+            Ok(_) => {
+                panic!("We shall not succeed with a blank before *")
+            }
             Err(error) => {
                 assert_eq!(
                     error.code(),
@@ -2385,7 +2399,9 @@ mod tests {
             .await
             .map(|res| res.into_inner())
         {
-            Ok(_) => {}
+            Ok(_) => {
+                panic!("Success not expected!")
+            }
             Err(error) => {
                 assert_eq!(error.code(), tonic::Code::NotFound, "unexpected error code");
                 assert_eq!(

@@ -1,4 +1,4 @@
-# Mapping data types
+# Mapping VSS data types to Protobuf Types
 
 This is how [VSS data types](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_types/)
 defined by [COVESA VSS](https://covesa.github.io/vehicle_signal_specification/) are mapped to the data types used by

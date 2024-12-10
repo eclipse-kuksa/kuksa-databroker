@@ -1,6 +1,5 @@
 # Deployment Blueprints
 
-
 - [Deployment Blueprints](#deployment-blueprints)
 - [Deployed Elements](#deployed-elements)
   - [KUKSA.val databroker (or server)](#kuksaval-databroker-or-server)
@@ -45,37 +44,37 @@ Intuitively, it can be seen that the security and safety requirements in an end-
 
 # Deployment Blueprint 1: Internal API
 
-You are using VSS and KUKSA.val as an internal API in your system to ease system development. You control the whole system/system integration. 
+You are using VSS and KUKSA.val as an internal API in your system to ease system development. You control the whole system/system integration.
 
 ![Deployment Blueprint 1: Internal API](./pictures/deployment_blueprint1.svg)
 
 | Aspect           | Design Choice |
 | ---------------- | ------------- |
-| Users            | You           | 
-| System Updates   | Complete      | 
-| Security         | None/Fixed    | 
-| VSS model        | Static        | 
-| KUKSA deployment | Firmware      | 
+| Users            | You           |
+| System Updates   | Complete      |
+| Security         | None/Fixed    |
+| VSS model        | Static        |
+| KUKSA deployment | Firmware      |
 
 You are not exposing any VSS API to external parties, you control all components interacting with VSS, the system state/composition is under your control. In this case you make KUKSA APIs available only within your system. You might even opt to disabling encryption for higher performance and not using any tokens for authentication. We would still recommend leaving basic security measures intact, but this deployment does not need fine-grained control of permission rights or fast rotation/revocation of tokens.
 
 # Deployment Blueprint 2: Exposing a subset of VSS to another system
 
-You control the system (e.g. Vehicle Computer), that has KUKSA.val deployed. You want to make a subset of capabilities available to another system or middleware, that may have its own API/security mechanisms. An example would be an Android Automotive based IVI system, 
+You control the system (e.g. Vehicle Computer), that has KUKSA.val deployed. You want to make a subset of capabilities available to another system or middleware, that may have its own API/security mechanisms. An example would be an Android Automotive based IVI system,
 
 ![Deployment Blueprint 2: Exposing a subset of VSS to another system](./pictures/deployment_blueprint2.svg)
 
 | Aspect            | Design Choice |
 | ----------------- | ------------- |
 | Users             | Other trusted platforms             |
-| System Updates    | Firmware on controlled system, unknown on third party system      | 
-| Security          | TLS+Foreign platform token    | 
-| VSS model         | Static        | 
-| KUKSA deployment | Firmware or Software package       | 
+| System Updates    | Firmware on controlled system, unknown on third party system      |
+| Security          | TLS+Foreign platform token    |
+| VSS model         | Static        |
+| KUKSA deployment | Firmware or Software package       |
 
 In this deployment the foreign system is treated as a single client, which has a certain level of access and trust. Whether that system restricts access further for certain hosted apps is opaque to KUKSA.val. In this deployment you need to enable and configure TLS to provide confidentiality, as well as providing a single token limiting the access of the foreign platform.
 
-If the token is time limited, the foreign platform needs to be provided with a new token in time. In case certificates on the KUKSA.val side are changed, the foreign system needs to be updated accordingly. 
+If the token is time limited, the foreign platform needs to be provided with a new token in time. In case certificates on the KUKSA.val side are changed, the foreign system needs to be updated accordingly.
 
 Doing so, you are using KUKSA to enable other ecosystems, while making the usage of KUKSA transparent to application in that ecosystem.
 
@@ -87,11 +86,11 @@ You control the system running KUKSA.val. You intend to integrate applications f
 
 | Aspect           | Design Choice           |
 | ---------------- | ------------- |
-| Users            | 3rd parties            |     | 
-| System Updates   | App-level      | 
-| Security         | TLS+Individual Consumer  tokens    | 
-| VSS              | Static        | 
-| KUKSA deployment | Software package        | 
+| Users            | 3rd parties            |     |
+| System Updates   | App-level      |
+| Security         | TLS+Individual Consumer  tokens    |
+| VSS              | Static        |
+| KUKSA deployment | Software package        |
 
 In this deployment you need to enable and configure TLS to provide confidentiality, as well as providing an individual security token to each VSS consumer, limiting the access of each app.
 
@@ -99,7 +98,7 @@ The scope (and longevity) of those tokens will likely depend on the relationship
 
 When you update/rotate the keys for the VSS server you need a process to make sure to update customers at the same time.
 
-In this blueprint you expose an attack surface to a larger group of potential adversaries. To be able to react to security issues faster, you might want to deploy KUKSA.val in a way that allows you to update it individually (i.e. deploy it as a container), instead of just baking it into firmware. 
+In this blueprint you expose an attack surface to a larger group of potential adversaries. To be able to react to security issues faster, you might want to deploy KUKSA.val in a way that allows you to update it individually (i.e. deploy it as a container), instead of just baking it into firmware.
 
 
 # Deployment Blueprint 4: Dynamic Applications and VSS extensions
@@ -112,14 +111,14 @@ This is similar to the *Individual Applications* Use Case with the added capabil
 | Aspect         | Design Choice           |
 | -------------- | ------------- |
 | Users          | 3rd parties           |
-| System Updates | App-level      | 
-| Security       | Individual App  tokens    | 
-| VSS            | Dynamic        | 
-| KUKSA deployment | Software package        | 
+| System Updates | App-level      |
+| Security       | Individual App  tokens    |
+| VSS            | Dynamic        |
+| KUKSA deployment | Software package        |
 
 The main difference to the previous use case is allowing providers to add datapoints to the VSS tree managed by KUKSA.val.
 
-This could be a very elegant setup, even in a more static deployment, where KUKSA.val starts with an empty tree, and once the relevant software components come up, it is extended step by step. 
+This could be a very elegant setup, even in a more static deployment, where KUKSA.val starts with an empty tree, and once the relevant software components come up, it is extended step by step.
 
 However, the security and safety implications in such a scenario are the highest: While the security aspect can be handled by KUKSA.val, giving specific applications the right to extend the tree, the overall requirements on system design get harder:
 
@@ -130,5 +129,5 @@ However, the security and safety implications in such a scenario are the highest
 
  # Mixing
  The aforementioned blueprints are examples and any specific deployment might combine aspects of several of them.
- 
+
  There could be many domains in a vehicle, where a fully static "walled" deployment as described in Blueprint 1 is the right thing to do, while other use cases in the same vehicle require  the capabilities found in Blueprint 4. In that case, the right design choice could be to deploy several KUKSA.val instances in a car as sketched in [System Architecture -> (Distributed) KUKSA.val deployment](./system-architecture.md#distributed-kuksaval-deployment).

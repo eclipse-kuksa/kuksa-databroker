@@ -13,11 +13,15 @@
 
 use std::{convert::TryFrom, future::Future, time::Duration};
 
-use tokio::net::TcpListener;
-use tokio_stream::wrappers::TcpListenerStream;
-use tonic::transport::Server;
+use futures::Stream;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    net::{TcpListener, UnixListener},
+};
+use tokio_stream::wrappers::{TcpListenerStream, UnixListenerStream};
 #[cfg(feature = "tls")]
 use tonic::transport::ServerTlsConfig;
+use tonic::transport::{server::Connected, Server};
 use tracing::{debug, info};
 
 use databroker_proto::{kuksa, sdv};
@@ -34,7 +38,7 @@ pub enum ServerTLS {
     Enabled { tls_config: ServerTlsConfig },
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum Api {
     KuksaValV1,
     KuksaValV2,
@@ -96,7 +100,7 @@ where
     databroker.shutdown().await;
 }
 
-pub async fn serve<F>(
+pub async fn serve_tcp<F>(
     addr: impl Into<std::net::SocketAddr>,
     broker: broker::DataBroker,
     #[cfg(feature = "tls")] server_tls: ServerTLS,
@@ -110,25 +114,14 @@ where
     let socket_addr = addr.into();
     let listener = TcpListener::bind(socket_addr).await?;
 
-    /* On Linux systems try to notify daemon readiness to systemd.
-     * This function determines whether the a system is using systemd
-     * or not, so it is safe to use on non-systemd systems as well.
-     */
-    #[cfg(target_os = "linux")]
-    {
-        match sd_notify::booted() {
-            Ok(true) => {
-                info!("Notifying systemd that the service is ready");
-                sd_notify::notify(false, &[sd_notify::NotifyState::Ready])?;
-            }
-            _ => {
-                debug!("System is not using systemd, will not try to notify");
-            }
-        }
+    if let Ok(addr) = listener.local_addr() {
+        info!("Listening on {}", addr);
     }
 
+    let incoming = TcpListenerStream::new(listener);
+
     serve_with_incoming_shutdown(
-        listener,
+        incoming,
         broker,
         #[cfg(feature = "tls")]
         server_tls,
@@ -139,8 +132,40 @@ where
     .await
 }
 
-pub async fn serve_with_incoming_shutdown<F>(
-    listener: TcpListener,
+pub async fn serve_uds<F>(
+    path: impl AsRef<std::path::Path>,
+    broker: broker::DataBroker,
+    apis: &[Api],
+    authorization: Authorization,
+    signal: F,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: Future<Output = ()>,
+{
+    let listener = UnixListener::bind(path)?;
+
+    if let Ok(addr) = listener.local_addr() {
+        match addr.as_pathname() {
+            Some(pathname) => info!("Listening on unix socket at {}", pathname.display()),
+            None => info!("Listening on unix socket (unknown path)"),
+        }
+    }
+
+    let incoming = UnixListenerStream::new(listener);
+
+    serve_with_incoming_shutdown(
+        incoming,
+        broker,
+        ServerTLS::Disabled,
+        apis,
+        authorization,
+        signal,
+    )
+    .await
+}
+
+pub async fn serve_with_incoming_shutdown<F, I, IO, IE>(
+    incoming: I,
     broker: broker::DataBroker,
     #[cfg(feature = "tls")] server_tls: ServerTLS,
     apis: &[Api],
@@ -149,13 +174,13 @@ pub async fn serve_with_incoming_shutdown<F>(
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     F: Future<Output = ()>,
+    I: Stream<Item = Result<IO, IE>>,
+    IO: AsyncRead + AsyncWrite + Connected + Unpin + Send + 'static,
+    IO::ConnectInfo: Clone + Send + Sync + 'static,
+    IE: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     broker.start_housekeeping_task();
-    if let Ok(addr) = listener.local_addr() {
-        info!("Listening on {}", addr);
-    }
 
-    let incoming = TcpListenerStream::new(listener);
     let mut server = Server::builder()
         .http2_keepalive_interval(Some(Duration::from_secs(10)))
         .http2_keepalive_timeout(Some(Duration::from_secs(20)));

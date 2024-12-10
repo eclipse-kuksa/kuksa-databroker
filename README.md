@@ -46,6 +46,8 @@
     </li>
     <li><a href="#usage">Usage</a></li>
     <li><a href="#building">Building</a></li>
+    <li><a href="#performance">Performance</a></li>
+    <li><a href="#additional-documentation">Additional Documentation</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -88,18 +90,30 @@ Data is usually exchanged with ECUs by means of a CAN bus or Ethernet based prot
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-<!-- KUKSA ANALYSIS -->
-## Kuksa analysis
-Extended [Kuksa analysis](./doc/kuksa_analysis.md) containing functional requirements, use cases diagrams, latest and new API definition `kuksa.val.v2` as well as new design discussions for future developments and improvements.
-
 ### APIs supported by Databroker
 
-Kuksa Databroker implements the following service interfaces:
+Kuksa Databroker provides [gRPC](https://grpc.io/) based API endpoints which can be used by
+clients to interact with the server. gRPC services are specified by means of `.proto` files which define the services and the data
+exchanged between server and client.
+[Tooling](https://grpc.io/docs/languages/) is available for most popular programming languages to create
+client stubs for invoking the services.
+The Databroker uses gRPC's default HTTP/2 transport and [protocol buffers](https://developers.google.com/protocol-buffers) for message serialization.
+The same `.proto` file can be used to generate server skeleton and client stubs for other transports and serialization formats as well.
 
-- Enabled on Databroker by default [kuksa.val.v2.VAL](proto/kuksa/val/v2/val.proto) (recommended to use)
-- Enabled on Databroker by default [kuksa.val.v1.VAL](proto/kuksa/val/v1/val.proto)
-- Disabled on Databroker by default [sdv.databroker.v1.Broker](proto/sdv/databroker/v1/broker.proto)
-- Disabled on Databroker by default [sdv.databroker.v1.Collector](proto/sdv/databroker/v1/collector.proto)
+HTTP/2 is a binary replacement for HTTP/1.1 used for handling connections, multiplexing (channels) and providing a standardized way to add headers for authorization and TLS for encryption/authentication.
+It also supports bi-directional streaming between client and server.
+
+Kuksa Databroker implements the following gRPC service interfaces:
+
+- Enabled on Databroker by default [kuksa.val.v2.VAL](proto/kuksa/val/v2/val.proto)
+- Enabled on Databroker by default [kuksa.val.v1.VAL](proto/kuksa/val/v1/val.proto) (Deprecated!)
+- Disabled on Databroker by default [sdv.databroker.v1.Broker](proto/sdv/databroker/v1/broker.proto) (Deprecated!)
+- Disabled on Databroker by default [sdv.databroker.v1.Collector](proto/sdv/databroker/v1/collector.proto) (Deprecated!)
+
+In addition to the gRPC interfaces the Kuksa Databroker also supports a subset of the [COVESA VISS v2 Protocol[(https://github.com/COVESA/vehicle-information-service-specification)
+using WebSocket.
+Please visit the [user guide](doc/user_guide.md) for more information on how the interfaces can be enabled and configured in the Databroker.
+Please visit the [protocol documentation](doc/protocol.md) for more information on the APIs.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -130,7 +144,7 @@ The quickest possible way to get Kuksa Databroker up and running.
    > :bulb: **Tip:** You can stop the container using `ctrl-c`.
 
 *Note that not all APIs are enabled by default, see [user guide](doc/user_guide.md) and*
-*[protocols](doc/protocol/README.md) for more information!*
+*[protocols](doc/protocol.md) for more information!*
 
 ### Reading and writing VSS data using the CLI
 
@@ -277,11 +291,22 @@ Signal Consumer(stream subscribe) <- Databroker <- Provider(stream publish)
 
 Feel free to use it and share your results with us!
 
+## Additional Documentation
+
+Additional documentation is available in the [repository documentation folder](doc).
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 ## Contributing
 
 Please refer to the [Kuksa Contributing Guide](CONTRIBUTING.md).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+<!-- KUKSA ANALYSIS -->
+## Kuksa analysis
+Extended [Kuksa analysis](./doc/kuksa_analysis.md) containing functional requirements, use cases diagrams, latest and new API definition `kuksa.val.v2` as well as new design discussions for future developments and improvements.
 
 ## License
 
