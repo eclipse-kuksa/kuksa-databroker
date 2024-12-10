@@ -822,7 +822,7 @@ impl Subscriptions {
 
         self.actuation_subscriptions.retain(|sub| {
             if !sub.actuation_provider.is_available() {
-                info!("Provider gone: removing subscription");
+                info!("Provider gone: removing provided actuation");
                 false
             } else if sub.permissions.is_expired() {
                 info!("Permissions of Provider expired: removing subscription");
