@@ -27,14 +27,11 @@ use databroker::broker::RegistrationError;
 #[cfg(feature = "tls")]
 use databroker::grpc::server::ServerTLS;
 
+use clap::{Arg, ArgAction, Command};
 use std::thread::available_parallelism;
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
-#[cfg(feature = "tls")]
-use tracing::warn;
-use tracing::{debug, error, info};
-
-use clap::{Arg, ArgAction, Command};
+use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "viss")]
 use databroker::viss;
