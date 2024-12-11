@@ -256,9 +256,9 @@ impl proto::val_server::Val for broker::DataBroker {
                 Ok(tonic::Response::new(Box::pin(stream)))
             }
             Err(SubscriptionError::NotFound) => Err(tonic::Status::not_found("Path not found")),
-            Err(SubscriptionError::InvalidInput) => {
-                Err(tonic::Status::invalid_argument("Invalid Argument"))
-            }
+            Err(SubscriptionError::InvalidInput) => Err(tonic::Status::invalid_argument(
+                "No valid id or path specified",
+            )),
             Err(SubscriptionError::InternalError) => Err(tonic::Status::internal("Internal Error")),
             Err(SubscriptionError::InvalidBufferSize) => Err(tonic::Status::new(
                 tonic::Code::InvalidArgument,
@@ -333,7 +333,7 @@ impl proto::val_server::Val for broker::DataBroker {
             }
             Err(SubscriptionError::InvalidInput) => Err(tonic::Status::new(
                 tonic::Code::InvalidArgument,
-                "Invalid Argument",
+                "No valid id or path specified",
             )),
             Err(SubscriptionError::InternalError) => {
                 Err(tonic::Status::new(tonic::Code::Internal, "Internal Error"))

@@ -610,7 +610,7 @@ impl proto::val_server::Val for broker::DataBroker {
             }
             Err(SubscriptionError::InvalidInput) => Err(tonic::Status::new(
                 tonic::Code::InvalidArgument,
-                "Invalid Argument",
+                "No valid path specified",
             )),
             Err(SubscriptionError::InternalError) => {
                 Err(tonic::Status::new(tonic::Code::Internal, "Internal Error"))
