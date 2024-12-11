@@ -34,5 +34,4 @@ crate-type = ["lib"]
 path = "src/lib.rs"
 
 [features]
-default = ["tls"]
 tls = ["tonic/tls"]
