@@ -24,25 +24,6 @@ permissions:
   packages: write
 
 jobs:
-  get_version:
-    runs-on: ubuntu-latest
-    # Map a step output to a job output
-    outputs:
-      version: ${{ steps.eval_version.outputs.version }}
-    steps:
-      - name: Get tag or user release version
-        id: eval_version
-        run: |
-          GIT_VER="${GITHUB_REF/refs\/tags\//}"
-          echo "### Detected tag: $GIT_VER"
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
-            GIT_VER="${{ github.event.inputs.tag }}"
-            echo "Forced release version: $GIT_VER"
-            echo "version=${GIT_VER}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GIT_VER}" >> $GITHUB_OUTPUT
-          fi
-
   call_kuksa_databroker_build:
     uses: ./.github/workflows/kuksa_databroker_build.yml
     secrets:
@@ -58,7 +39,6 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       [
-        get_version,
         call_kuksa_databroker_build,
         call_kuksa_databroker-cli_build,
       ]
