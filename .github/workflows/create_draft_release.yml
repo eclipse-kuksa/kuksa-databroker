@@ -14,11 +14,9 @@
 name: Create Draft Release
 
 on:
-  workflow_dispatch: # select tag when creating
   push:
    tags:
      - "*.*.*"
-
 
 # Needed if GITHUB_TOKEN by default do not have right to create release
 permissions:
