@@ -61,6 +61,7 @@ pub struct Cli {
 }
 
 impl Cli {
+    #[cfg(feature = "tls")]
     pub fn get_ca_cert(&mut self) -> Option<String> {
         self.ca_cert.clone()
     }

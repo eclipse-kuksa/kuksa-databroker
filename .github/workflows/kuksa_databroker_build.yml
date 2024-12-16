@@ -160,6 +160,9 @@ jobs:
       # Needed for pip
       with:
         python-version: '3.12'
+    - uses: taiki-e/install-action@v2.9.4
+      with:
+        tool: cargo-hack@0.6
     - name: Install build prerequisites
       working-directory: ${{github.workspace}}/
       run: |
@@ -172,6 +175,10 @@ jobs:
         KUKSA_DATABROKER_SBOM: y
       run: |
         ./scripts/build-databroker.sh ${{ matrix.platform.name }}
+
+    - name: "Check each feature"
+      working-directory: ${{github.workspace}}
+      run: cargo hack check --each-feature
 
     - name: "Archiving artifacts"
       shell: bash
