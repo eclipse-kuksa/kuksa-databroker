@@ -68,6 +68,12 @@ axum = { version = "0.6.20", optional = true, features = ["ws"] }
 chrono = { version = "0.4.31", optional = true, features = ["std"] }
 uuid = { version = "1.4.1", optional = true, features = ["v4"] }
 
+# OTEL
+opentelemetry = { version = "0.19.0", optional = true, features = ["rt-tokio", "trace"] }
+opentelemetry-otlp = { version="0.12.0", optional = true,  features = ["tonic", "metrics"] }
+opentelemetry-semantic-conventions = { version="0.11.0", optional = true }
+tracing-opentelemetry = { version="0.19.0", optional = true }
+
 # systemd related dependency, only relevant on linux systems
 [target.'cfg(target_os = "linux")'.dependencies]
 sd-notify = "0.4.1"
@@ -78,6 +84,7 @@ tls = ["tonic/tls", "kuksa-common/tls", "kuksa/tls"]
 jemalloc = ["dep:jemallocator"]
 viss = ["dep:axum", "dep:chrono", "dep:uuid"]
 libtest = []
+otel = ["dep:chrono", "dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry-semantic-conventions", "dep:tracing-opentelemetry"]
 
 [build-dependencies]
 anyhow = "1.0"
