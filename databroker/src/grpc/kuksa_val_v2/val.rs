@@ -853,6 +853,10 @@ async fn get_signal(
     signal_id: Option<proto::SignalId>,
     broker: &AuthorizedAccess<'_, '_>,
 ) -> Result<i32, tonic::Status> {
+    if signal_id.is_none() {
+        return Err(tonic::Status::invalid_argument("No SignalId provided"));
+    }
+
     if let Some(signal) = signal_id.unwrap().signal {
         match signal {
             proto::signal_id::Signal::Path(path) => {
@@ -1171,6 +1175,28 @@ mod tests {
             }
             Err(status) => {
                 assert_eq!(status.code(), tonic::Code::NotFound)
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_value_with_signal_id_none() {
+        let broker = DataBroker::default();
+
+        let request = proto::GetValueRequest { signal_id: None };
+
+        // Manually insert permissions
+        let mut get_value_request = tonic::Request::new(request);
+        get_value_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match broker.get_value(get_value_request).await {
+            Ok(_response) => {
+                panic!("Did not expect success");
+            }
+            Err(status) => {
+                assert_eq!(status.code(), tonic::Code::InvalidArgument)
             }
         }
     }
