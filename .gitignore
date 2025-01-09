@@ -5,3 +5,5 @@ __pycache__
 databroker/thirdparty
 databroker-cli/thirdparty
 .venv/
+databroker/databroker_bin.cdx.json
+databroker-cli/databroker-cli_bin.cdx.json
