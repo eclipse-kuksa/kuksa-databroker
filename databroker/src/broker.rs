@@ -760,7 +760,10 @@ impl Subscriptions {
         self.change_subscriptions.push(subscription)
     }
 
-    #[cfg_attr(feature="otel", tracing::instrument(name="broker_Subscriptions_notify", skip(self, changed, db)))]
+    #[cfg_attr(
+        feature = "otel",
+        tracing::instrument(name = "broker_Subscriptions_notify", skip(self, changed, db))
+    )]
     pub async fn notify(
         &self,
         changed: Option<&HashMap<i32, HashSet<Field>>>,
@@ -844,7 +847,10 @@ impl Subscriptions {
 }
 
 impl ChangeSubscription {
-    #[cfg_attr(feature="otel", tracing::instrument(name="broker_ChangeSubscription_notify", skip(self, changed, db)))]
+    #[cfg_attr(
+        feature = "otel",
+        tracing::instrument(name = "broker_ChangeSubscription_notify", skip(self, changed, db))
+    )]
     async fn notify(
         &self,
         changed: Option<&HashMap<i32, HashSet<Field>>>,

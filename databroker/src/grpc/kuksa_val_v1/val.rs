@@ -263,8 +263,8 @@ impl proto::val_server::Val for broker::DataBroker {
     ) -> Result<tonic::Response<proto::SetResponse>, tonic::Status> {
         debug!(?request);
 
-        #[cfg(feature="otel")]
-        let request = (||{
+        #[cfg(feature = "otel")]
+        let request = (|| {
             let (trace_id, request) = read_incoming_trace_id(request);
             tracing::Span::current().record("trace_id", &trace_id);
             request
@@ -1063,26 +1063,28 @@ fn combine_view_and_fields(
     combined
 }
 
-#[cfg(feature="otel")]
+#[cfg(feature = "otel")]
 #[cfg_attr(feature="otel", tracing::instrument(name="val_read_incoming_trace_id", skip(request), fields(timestamp=chrono::Utc::now().to_string())))]
-fn read_incoming_trace_id(request: tonic::Request<proto::SetRequest>) -> (String, tonic::Request<proto::SetRequest>){
+fn read_incoming_trace_id(
+    request: tonic::Request<proto::SetRequest>,
+) -> (String, tonic::Request<proto::SetRequest>) {
     let mut trace_id: String = String::from("");
     let request_copy = tonic::Request::new(request.get_ref().clone());
     for request in request_copy.into_inner().updates {
         match &request.entry {
-            Some(entry) =>  match &entry.metadata {
-                Some(metadata) => match &metadata.description{
-                    Some(description)=> {
+            Some(entry) => match &entry.metadata {
+                Some(metadata) => match &metadata.description {
+                    Some(description) => {
                         trace_id = String::from(description);
                     }
-                None => trace_id = String::from("")
-                }
-                None => trace_id = String::from("")
-            }
-            None => trace_id = String::from("")
+                    None => trace_id = String::from(""),
+                },
+                None => trace_id = String::from(""),
+            },
+            None => trace_id = String::from(""),
         }
     }
-    return(trace_id, request);
+    return (trace_id, request);
 }
 
 impl broker::EntryUpdate {
