@@ -340,4 +340,3 @@ impl From<broker::EntryUpdate> for proto::DataEntry {
         }
     }
 }
-

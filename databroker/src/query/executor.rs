@@ -650,4 +650,3 @@ fn executor_where_lag_subquery_test() {
     let res = compiled_query.execute(&execution_input1).unwrap();
     assert!(res.is_none());
 }
-

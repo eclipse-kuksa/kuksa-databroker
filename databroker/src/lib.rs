@@ -62,7 +62,7 @@ pub fn init_logging() {
 
      // Initialize OpenTelemetry tracer
      let tracer = init_trace().expect("Failed to initialize tracer");
- 
+
      // telemetry layer
      let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 

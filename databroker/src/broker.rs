@@ -755,7 +755,7 @@ impl Subscriptions {
         self.query_subscriptions.push(subscription)
     }
 
-    #[cfg_attr(feature="otel", tracing::instrument(name = "broker_add_change_subscription",skip(self, subscription), fields(timestamp=chrono::Utc::now().to_string())))]    
+    #[cfg_attr(feature="otel", tracing::instrument(name = "broker_add_change_subscription",skip(self, subscription), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn add_change_subscription(&mut self, subscription: ChangeSubscription) {
         self.change_subscriptions.push(subscription)
     }
@@ -1549,7 +1549,7 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .get_entry_by_id(id)
             .cloned()
     }
-    
+
     #[cfg_attr(feature="otel", tracing::instrument(name="broker_for_each_entry", skip(self, f), fields(timestamp=chrono::Utc::now().to_string())))]
     pub async fn for_each_entry(&self, f: impl FnMut(EntryReadAccess)) {
         self.broker
@@ -4516,4 +4516,3 @@ pub mod tests {
         }
     }
 }
-

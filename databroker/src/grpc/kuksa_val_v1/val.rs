@@ -262,14 +262,14 @@ impl proto::val_server::Val for broker::DataBroker {
         request: tonic::Request<proto::SetRequest>,
     ) -> Result<tonic::Response<proto::SetResponse>, tonic::Status> {
         debug!(?request);
-                
+
         #[cfg(feature="otel")]
         let request = (||{
             let (trace_id, request) = read_incoming_trace_id(request);
             tracing::Span::current().record("trace_id", &trace_id);
             request
         })();
-   
+
         let permissions = match request.extensions().get::<Permissions>() {
             Some(permissions) => {
                 debug!(?permissions);
@@ -1066,7 +1066,7 @@ fn combine_view_and_fields(
 #[cfg(feature="otel")]
 #[cfg_attr(feature="otel", tracing::instrument(name="val_read_incoming_trace_id", skip(request), fields(timestamp=chrono::Utc::now().to_string())))]
 fn read_incoming_trace_id(request: tonic::Request<proto::SetRequest>) -> (String, tonic::Request<proto::SetRequest>){
-    let mut trace_id: String = String::from(""); 
+    let mut trace_id: String = String::from("");
     let request_copy = tonic::Request::new(request.get_ref().clone());
     for request in request_copy.into_inner().updates {
         match &request.entry {
@@ -1082,7 +1082,7 @@ fn read_incoming_trace_id(request: tonic::Request<proto::SetRequest>) -> (String
             None => trace_id = String::from("")
         }
     }
-    return(trace_id, request);  
+    return(trace_id, request);
 }
 
 impl broker::EntryUpdate {
@@ -1433,4 +1433,3 @@ mod tests {
         }
     }
 }
-
