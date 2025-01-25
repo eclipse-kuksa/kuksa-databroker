@@ -74,7 +74,7 @@ impl Matcher {
     }
 }
 
-#[cfg_attr(feature="otel", tracing::instrument(name="glob_to_regex_string", skip(glob), fields(timestamp=chrono::Utc::now().to_string())))]
+#[cfg_attr(feature="otel", tracing::instrument(name="to_regex_string", skip(glob), fields(timestamp=chrono::Utc::now().to_string())))]
 pub fn to_regex_string(glob: &str) -> String {
     // Construct regular expression
 
@@ -122,7 +122,7 @@ pub fn to_regex_string(glob: &str) -> String {
     re
 }
 
-#[cfg_attr(feature="otel", tracing::instrument(name="glob_to_regex", skip(glob), fields(timestamp=chrono::Utc::now().to_string())))]
+#[cfg_attr(feature="otel", tracing::instrument(name="to_regex", skip(glob), fields(timestamp=chrono::Utc::now().to_string())))]
 pub fn to_regex(glob: &str) -> Result<Regex, Error> {
     let re = to_regex_string(glob);
     Regex::new(&re).map_err(|_err| Error::RegexError)
@@ -162,7 +162,7 @@ lazy_static! {
     .expect("regex compilation (of static pattern) should always succeed");
 }
 
-#[cfg_attr(feature="otel", tracing::instrument(name="glob_is_valid_pattern", skip(input), fields(timestamp=chrono::Utc::now().to_string())))]
+#[cfg_attr(feature="otel", tracing::instrument(name="is_valid_pattern", skip(input), fields(timestamp=chrono::Utc::now().to_string())))]
 pub fn is_valid_pattern(input: &str) -> bool {
     REGEX_VALID_PATTERN.is_match(input)
 }
