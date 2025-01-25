@@ -481,7 +481,7 @@ impl proto::val_server::Val for broker::DataBroker {
         >,
     >;
 
-    #[cfg_attr(feature="otel", tracing::instrument(name="kuksa_val_v1_data_broker_subscribe", skip(self, request), fields(trace_id, timestamp=chrono::Utc::now().to_string())))]
+    #[cfg_attr(feature="otel", tracing::instrument(name="kuksa_val_v1_data_broker_subscribe", skip(self, request), fields(timestamp=chrono::Utc::now().to_string())))]
     async fn subscribe(
         &self,
         request: tonic::Request<proto::SubscribeRequest>,
