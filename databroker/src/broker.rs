@@ -1411,7 +1411,7 @@ pub struct AuthorizedAccess<'a, 'b> {
     permissions: &'b Permissions,
 }
 
-impl AuthorizedAccess<'_,'_> {
+impl AuthorizedAccess<'_, '_> {
     #[allow(clippy::too_many_arguments)]
     pub async fn add_entry(
         &self,
