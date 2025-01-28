@@ -1673,7 +1673,10 @@ impl AuthorizedAccess<'_, '_> {
         let stream = BroadcastStream::new(receiver).filter_map(move |result| match result {
             Ok(message) => Some(message),
             Err(err) => {
-                warn!("Slow subscriber with capacity {} lagged and missed signal updates: {}", channel_capacity, err);
+                warn!(
+                    "Slow subscriber with capacity {} lagged and missed signal updates: {}",
+                    channel_capacity, err
+                );
                 None
             }
         });
