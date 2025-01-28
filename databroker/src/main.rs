@@ -112,7 +112,7 @@ async fn add_kuksa_attribute(
     }
 }
 
-async fn read_metadata_file<'a, 'b>(
+async fn read_metadata_file(
     database: &broker::AuthorizedAccess<'_, '_>,
     filename: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {

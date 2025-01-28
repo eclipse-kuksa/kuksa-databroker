@@ -1411,7 +1411,7 @@ pub struct AuthorizedAccess<'a, 'b> {
     permissions: &'b Permissions,
 }
 
-impl<'a, 'b> AuthorizedAccess<'a, 'b> {
+impl AuthorizedAccess<'_, '_> {
     #[allow(clippy::too_many_arguments)]
     pub async fn add_entry(
         &self,
@@ -1670,10 +1670,13 @@ impl<'a, 'b> AuthorizedAccess<'a, 'b> {
             .await
             .add_change_subscription(subscription);
 
-        let stream = BroadcastStream::new(receiver).filter_map(|result| match result {
+        let stream = BroadcastStream::new(receiver).filter_map(move |result| match result {
             Ok(message) => Some(message),
             Err(err) => {
-                debug!("Lagged entries: {}", err);
+                warn!(
+                    "Slow subscriber with capacity {} lagged and missed signal updates: {}",
+                    channel_capacity, err
+                );
                 None
             }
         });

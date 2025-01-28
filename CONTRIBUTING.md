@@ -30,3 +30,12 @@ Use `pip install pre-commit` to install pre-commit.
 After you clone the project, run `pre-commit install` to install pre-commit into your git hooks.
 Pre-commit will now run on every commit.
 Every time you clone a project using pre-commit running pre-commit install should always be the first thing you do.
+
+## Linting
+
+Please run the formatter and linter before opening pull requests:
+
+```sh
+cargo fmt -- --check
+cargo clippy --all-targets -- -W warnings -D warnings
+```
