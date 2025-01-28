@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2024 Contributors to the Eclipse Foundation
+# Copyright (c) 2025 Contributors to the Eclipse Foundation
 #
 # Building all currently supported targets for databroker-cli.
 # Uses cross for cross-compiling. Needs to be executed
@@ -13,3 +13,4 @@
 
 pip install "git+https://github.com/eclipse-kuksa/kuksa-common.git@v1#subdirectory=sbom-tools"
 pip install pre-commit
+pre-commit install

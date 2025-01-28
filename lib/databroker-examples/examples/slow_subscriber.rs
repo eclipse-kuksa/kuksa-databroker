@@ -1,5 +1,5 @@
 /********************************************************************************
-* Copyright (c) 2024 Contributors to the Eclipse Foundation
+* Copyright (c) 2025 Contributors to the Eclipse Foundation
 *
 * See the NOTICE file(s) distributed with this work for additional
 * information regarding copyright ownership.
@@ -21,7 +21,7 @@ async fn main() {
 
     // Paths to subscribe
     let paths = vec!["Vehicle.Speed"];
-    
+
     // Initialize the KuksaClient
     let mut client: KuksaClient = KuksaClient::new(to_uri("127.0.0.1:55555").unwrap());
 
@@ -29,7 +29,7 @@ async fn main() {
     let mut stream = client.subscribe(paths.clone()).await.unwrap();
 
     println!("Subscribed to {:?}", paths);
-    
+
     loop {
         match stream.message().await {
             Ok(msg) => {
