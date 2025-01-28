@@ -48,4 +48,4 @@ http = "0.2.8"
 
 [features]
 default = ["tls"]
-tls = ["tonic/tls"]
+tls = ["tonic/tls", "kuksa-common/tls", "kuksa/tls"]
