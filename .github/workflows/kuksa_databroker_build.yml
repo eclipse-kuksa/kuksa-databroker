@@ -133,10 +133,10 @@ jobs:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload test results to Codecov
-      	if: ${{ !cancelled() }}
+        if: ${{ !cancelled() }}
         uses: codecov/test-results-action@v1
         with:
-        files: test_results.xml
+          files: test_results.xml
           token: ${{ secrets.CODECOV_TOKEN }}
       - uses: taiki-e/install-action@v2.9.4
         with:
@@ -327,7 +327,7 @@ jobs:
         run: |
           ${{github.workspace}}/integration_test/run.sh
       - name: Upload test results to Codecov
-      	if: ${{ !cancelled() }}
+        if: ${{ !cancelled() }}
         uses: codecov/test-results-action@v1
         with:
           files: pytest_results.xml
