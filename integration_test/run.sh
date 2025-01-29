@@ -31,7 +31,7 @@ RUNNING_IMAGE=$(
     docker run -d -v ${VSS_DATA_DIR}:/data -p 55555:55555 --rm  --platform ${CONTAINER_PLATFORM} ${DATABROKER_IMAGE} --metadata data/vss-core/vss_release_4.0.json --insecure --enable-databroker-v1
 )
 
-python3 -m pytest -v "${SCRIPT_DIR}/test_databroker.py"
+python3 -m pytest -v "${SCRIPT_DIR}/test_databroker.py" --junitxml=pytest_results.xml
 
 RESULT=$?
 
