@@ -25,7 +25,8 @@ use crate::{
 use databroker_proto::kuksa::val::v2::{
     self as proto,
     open_provider_stream_request::Action::{
-        BatchActuateStreamResponse, ProvideActuationRequest, PublishValuesRequest,
+        BatchActuateStreamResponse, GetProviderValueResponse, ProvideActuationRequest,
+        ProvideSignalRequest, ProviderErrorIndication, PublishValuesRequest, UpdateFilterResponse,
     },
     open_provider_stream_response, OpenProviderStreamResponse, PublishValuesResponse,
 };
@@ -693,6 +694,18 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
 
                                             },
+                                            Some(ProvideSignalRequest(_provide_signal_request)) => {
+                                                todo!();
+                                            }
+                                            Some(UpdateFilterResponse(_update_filter_response)) => {
+                                                todo!();
+                                            }
+                                            Some(GetProviderValueResponse(_get_provider_value_response)) => {
+                                                todo!();
+                                            }
+                                            Some(ProviderErrorIndication(_provide_error_indication)) => {
+                                                todo!();
+                                            }
                                             None => {
 
                                             },
@@ -932,7 +945,8 @@ mod tests {
     use crate::{broker::DataBroker, permissions};
     use databroker_proto::kuksa::val::v2::val_server::Val;
     use proto::open_provider_stream_response::Action::{
-        BatchActuateStreamRequest, ProvideActuationResponse, PublishValuesResponse,
+        BatchActuateStreamRequest, GetProviderValueRequest, ProvideActuationResponse,
+        ProvideSignalResponse, PublishValuesResponse, UpdateFilterRequest,
     };
     use proto::{
         open_provider_stream_request, BatchActuateRequest, OpenProviderStreamRequest,
@@ -1901,6 +1915,7 @@ mod tests {
         let mut request = tonic::Request::new(proto::SubscribeRequest {
             signal_paths: vec!["test.datapoint1".to_string()],
             buffer_size: 5,
+            filter: None,
         });
 
         request
@@ -2048,6 +2063,7 @@ mod tests {
         let mut request = tonic::Request::new(proto::SubscribeByIdRequest {
             signal_ids: vec![entry_id],
             buffer_size: 5,
+            filter: None,
         });
 
         request
@@ -2213,6 +2229,15 @@ mod tests {
                                     }
                                 }
                                 Some(BatchActuateStreamRequest(_)) => {
+                                    panic!("Should not happen")
+                                }
+                                Some(ProvideSignalResponse(_)) => {
+                                    panic!("Should not happen")
+                                }
+                                Some(UpdateFilterRequest(_)) => {
+                                    panic!("Should not happen")
+                                }
+                                Some(GetProviderValueRequest(_)) => {
                                     panic!("Should not happen")
                                 }
                                 None => {
