@@ -74,6 +74,13 @@ enum ErrorCode {
   ERROR_CODE_PERMISSION_DENIED = 4;
 }
 
+enum CommandError {
+  COMMAND_ERROR_CODE_UNSPECIFIED   = 0; // Default value, never to be explicitly set,
+  COMMAND_ERROR_CODE_OK            = 1;
+  COMMAND_ERROR_CODE_NETWORK_ERROR = 2;
+  COMMAND_ERROR_CODE_OVERLOAD      = 3;
+}
+
 message Metadata {
 
   // Full dot notated path for the signal

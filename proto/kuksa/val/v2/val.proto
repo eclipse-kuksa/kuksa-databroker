@@ -213,6 +213,7 @@ message SubscribeRequest {
   // Default (0) results in that only latest message is kept.
   // Maximum value supported is implementation dependent.
   uint32 buffer_size           = 2;
+  Filter filter                = 3;
 }
 
 message SubscribeResponse {
@@ -227,6 +228,7 @@ message SubscribeByIdRequest {
   // Default (0) results in that only latest message is kept.
   // Maximum value supported is implementation dependent.
   uint32 buffer_size        = 2;
+  Filter filter             = 3;
 }
 
 message SubscribeByIdResponse {
@@ -268,16 +270,13 @@ message PublishValueRequest {
   Datapoint data_point = 2;
 }
 
-message PublishValueResponse {
-}
-
 message PublishValuesRequest {
-  int32 request_id                 = 1; /// Unique request id for the stream that can be used to identify the response.
+  uint64 command_id                 = 1; /// Unique request id for the stream that can be used to identify the command.
   map<int32, Datapoint> data_points = 2;
 }
 
 message PublishValuesResponse {
-  int32 request_id         = 1;
+  uint64 command_id        = 1;
   map<int32, Error> status = 2;
 }
 
@@ -298,6 +297,38 @@ message BatchActuateStreamResponse {
   Error error = 2;
 }
 
+message Filter {
+  int item_count     = 1;
+  int duration_ms    = 2;
+  int sample_rate_ms = 3;
+}
+
+message Start {
+  //Databroker create and manages command ids life, in case provider is down we send same start command id to continue the provider sending same data with filters
+  uint64 command_id              = 1;
+  Filter filter                  = 2;
+  repeated SignalID signals_list = 3;
+}
+
+message Stop {
+  uint64 command_id = 1;
+}
+
+message Command {
+  oneof action {
+    Start start = 1;
+    Stop stop   = 2;
+  }
+}
+
+message SignalCommandRequest {
+  Command command = 1;
+}
+
+message SignalCommandResponse {
+  CommandError command_error = 1;
+}
+
 message OpenProviderStreamRequest {
   oneof action {
     // Inform server of an actuator this provider provides.
@@ -307,6 +338,10 @@ message OpenProviderStreamRequest {
     // Sent to acknowledge the acceptance of a batch actuate
     // request.
     BatchActuateStreamResponse batch_actuate_stream_response = 3;
+    // Inform server of a sensor this provider provides.
+    ProvideSensorRequest provide_sensor_request              = 4;
+    // Start/stop response
+    SignalCommandResponse signal_command_response            = 5;
   }
 }
 
@@ -318,6 +353,10 @@ message OpenProviderStreamResponse {
     PublishValuesResponse publish_values_response          = 2;
     // Send a batch actuate request to a provider.
     BatchActuateStreamRequest batch_actuate_stream_request = 3;
+    // Response to a provide sensor request.
+    ProvideSensorResponse provide_sensor_response          = 4;
+    // Start/stop request
+    SignalCommandRequest signal_command_request            = 5;
   }
 }
 
