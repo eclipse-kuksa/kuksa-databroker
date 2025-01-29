@@ -122,8 +122,10 @@ jobs:
           key: databroker-coverage-${{ hashFiles('**/Cargo.lock') }}
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Install cargo-junit
+        run: cargo install cargo-junit
       - name: Generate test results
-        run: cargo test --all-features --junitxml=test_results.xml
+        run: cargo junit --all-features --name test_results.xml
       - name: Generate code coverage
         run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --summary | tee test_summary.log
       - name: Upload coverage to Codecov
