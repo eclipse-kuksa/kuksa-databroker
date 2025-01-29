@@ -22,32 +22,26 @@ use std::time::SystemTime;
 use tracing::debug;
 
 impl From<&proto::Datapoint> for broker::Datapoint {
+    #[inline]
     fn from(datapoint: &proto::Datapoint) -> Self {
         let value = broker::DataValue::from(datapoint);
         let ts = SystemTime::now();
 
-        match &datapoint.timestamp {
-            Some(source_timestamp) => {
-                let source: Option<SystemTime> = match source_timestamp.clone().try_into() {
-                    Ok(source) => Some(source),
-                    Err(_) => None,
-                };
-                broker::Datapoint {
-                    ts,
-                    source_ts: source,
-                    value,
-                }
-            }
-            None => broker::Datapoint {
-                ts,
-                source_ts: None,
-                value,
-            },
+        let source_ts = datapoint
+            .timestamp
+            .as_ref()
+            .and_then(|source_timestamp| source_timestamp.clone().try_into().ok());
+
+        broker::Datapoint {
+            ts,
+            source_ts,
+            value,
         }
     }
 }
 
 impl From<broker::Datapoint> for Option<proto::Datapoint> {
+    #[inline]
     fn from(from: broker::Datapoint) -> Self {
         match from.value {
             broker::DataValue::NotAvailable => Some(proto::Datapoint {
