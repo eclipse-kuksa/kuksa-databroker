@@ -42,6 +42,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &["proto"],
         )
         .unwrap();
+    tonic_build::configure()
+        .file_descriptor_set_path(out_dir.join("kuksa.val.v1_descriptor.bin"))
+        .compile(
+            &[
+                "proto/kuksa/val/v1/val.proto",
+                "proto/kuksa/val/v1/types.proto",
+            ],
+            &["proto"],
+        )
+        .unwrap();
+    tonic_build::configure()
+        .file_descriptor_set_path(out_dir.join("sdv.databroker.v1_descriptor.bin"))
+        .compile(
+            &[
+                "proto/sdv/databroker/v1/broker.proto",
+                "proto/sdv/databroker/v1/types.proto",
+                "proto/sdv/databroker/v1/collector.proto",
+            ],
+            &["proto"],
+        )
+        .unwrap();
 
     Ok(())
 }
