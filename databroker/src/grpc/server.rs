@@ -213,7 +213,7 @@ where
     };
 
     let mut reflection_builder = tonic_reflection::server::Builder::configure()
-            .register_encoded_file_descriptor_set(kuksa::val::v1::FILE_DESCRIPTOR_SET);
+        .register_encoded_file_descriptor_set(kuksa::val::v1::FILE_DESCRIPTOR_SET);
     let mut router = server.add_optional_service(kuksa_val_v1);
 
     if apis.contains(&Api::KuksaValV2) {
