@@ -24,6 +24,9 @@ on:
       QUAY_IO_USERNAME:
         required: true
   workflow_dispatch:
+  # Run every Sunday night to check regressions, for example from clippy
+  schedule:
+    - cron: "0 4 * * 0"
 
 # suffix to avoid cancellation when running from release workflow
 concurrency:
@@ -127,6 +130,12 @@ jobs:
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
+      - uses: taiki-e/install-action@v2.9.4
+        with:
+          tool: cargo-hack@0.6
+      - name: "Check each feature"
+        working-directory: ${{github.workspace}}
+        run: cargo hack check --each-feature
 
   build:
     name: Build

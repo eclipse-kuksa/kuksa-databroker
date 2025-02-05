@@ -75,7 +75,7 @@ sd-notify = "0.4.1"
 
 [features]
 default = ["tls"]
-tls = ["tonic/tls"]
+tls = ["tonic/tls", "kuksa-common/tls", "kuksa/tls"]
 jemalloc = ["dep:jemallocator"]
 viss = ["dep:axum", "dep:chrono", "dep:uuid"]
 libtest = []

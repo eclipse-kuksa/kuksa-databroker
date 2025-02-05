@@ -891,10 +891,10 @@ impl Subscriptions {
 
         self.actuation_subscriptions.retain(|sub| {
             if !sub.actuation_provider.is_available() {
-                info!("Provider gone: removing subscription");
+                info!("Provider gone: removing provided actuation");
                 false
             } else if sub.permissions.is_expired() {
-                info!("Permissions of Provider expired: removing subscription");
+                info!("Permissions of Provider expired: removing provided actuation");
                 false
             } else {
                 true
@@ -1180,7 +1180,7 @@ pub enum EntryReadAccess<'a> {
     Err(&'a Metadata, ReadError),
 }
 
-impl<'a> EntryReadAccess<'a> {
+impl EntryReadAccess<'_> {
     pub fn datapoint(&self) -> Result<&Datapoint, ReadError> {
         match self {
             Self::Entry(entry) => Ok(&entry.datapoint),
@@ -1220,7 +1220,7 @@ pub struct EntryReadIterator<'a, 'b> {
     permissions: &'b Permissions,
 }
 
-impl<'a, 'b> Iterator for EntryReadIterator<'a, 'b> {
+impl<'a> Iterator for EntryReadIterator<'a, '_> {
     type Item = EntryReadAccess<'a>;
 
     #[inline]
@@ -1236,7 +1236,7 @@ impl<'a, 'b> Iterator for EntryReadIterator<'a, 'b> {
     }
 }
 
-impl<'a, 'b> DatabaseReadAccess<'a, 'b> {
+impl DatabaseReadAccess<'_, '_> {
     pub fn get_entry_by_id(&self, id: i32) -> Result<&Entry, ReadError> {
         match self.db.entries.get(&id) {
             Some(entry) => match self.permissions.can_read(&entry.metadata.path) {
@@ -1277,7 +1277,7 @@ impl<'a, 'b> DatabaseReadAccess<'a, 'b> {
     }
 }
 
-impl<'a, 'b> DatabaseWriteAccess<'a, 'b> {
+impl DatabaseWriteAccess<'_, '_> {
     pub fn update_by_path(
         &mut self,
         path: &str,
@@ -1471,7 +1471,7 @@ impl Database {
     }
 }
 
-impl<'a, 'b> query::CompilationInput for DatabaseReadAccess<'a, 'b> {
+impl query::CompilationInput for DatabaseReadAccess<'_, '_> {
     fn get_datapoint_type(&self, path: &str) -> Result<DataType, query::CompilationError> {
         match self.get_metadata_by_path(path) {
             Some(metadata) => Ok(metadata.data_type.to_owned()),
@@ -1485,7 +1485,7 @@ pub struct AuthorizedAccess<'a, 'b> {
     permissions: &'b Permissions,
 }
 
-impl<'a, 'b> AuthorizedAccess<'a, 'b> {
+impl AuthorizedAccess<'_, '_> {
     #[allow(clippy::too_many_arguments)]
     pub async fn add_entry(
         &self,

@@ -387,8 +387,8 @@ fn resolve_permissions(
     }
 }
 
-async fn generate_metadata<'a>(
-    db: &'a AuthorizedAccess<'_, '_>,
+async fn generate_metadata(
+    db: &AuthorizedAccess<'_, '_>,
     path: &str,
 ) -> HashMap<String, MetadataEntry> {
     let mut metadata: HashMap<String, MetadataEntry> = HashMap::new();
