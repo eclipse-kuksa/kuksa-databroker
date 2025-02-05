@@ -27,14 +27,11 @@ use databroker::broker::RegistrationError;
 #[cfg(feature = "tls")]
 use databroker::grpc::server::ServerTLS;
 
+use clap::{Arg, ArgAction, Command};
 use std::thread::available_parallelism;
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
-#[cfg(feature = "tls")]
-use tracing::warn;
-use tracing::{debug, error, info};
-
-use clap::{Arg, ArgAction, Command};
+use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "viss")]
 use databroker::viss;
@@ -115,7 +112,7 @@ async fn add_kuksa_attribute(
     }
 }
 
-async fn read_metadata_file<'a, 'b>(
+async fn read_metadata_file(
     database: &broker::AuthorizedAccess<'_, '_>,
     filename: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {

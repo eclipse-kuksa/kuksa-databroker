@@ -130,6 +130,12 @@ jobs:
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
+      - uses: taiki-e/install-action@v2.9.4
+        with:
+          tool: cargo-hack@0.6
+      - name: "Check each feature"
+        working-directory: ${{github.workspace}}
+        run: cargo hack check --each-feature
 
   build:
     name: Build
