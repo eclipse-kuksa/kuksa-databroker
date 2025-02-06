@@ -34,6 +34,11 @@ jobs:
     secrets:
       QUAY_IO_TOKEN: ${{ secrets.QUAY_IO_TOKEN }}
       QUAY_IO_USERNAME: ${{ secrets.QUAY_IO_USERNAME }}
+  call_debug_build:
+    uses: ./.github/workflows/debug_build.yml
+    secrets:
+      QUAY_IO_TOKEN: ${{ secrets.QUAY_IO_TOKEN }}
+      QUAY_IO_USERNAME: ${{ secrets.QUAY_IO_USERNAME }}
 
   create_release:
     runs-on: ubuntu-latest
@@ -41,6 +46,7 @@ jobs:
       [
         call_kuksa_databroker_build,
         call_kuksa_databroker-cli_build,
+        call_debug_build,
       ]
     steps:
       - name: Checkout
