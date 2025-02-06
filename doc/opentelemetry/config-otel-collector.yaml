@@ -1,0 +1,31 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+exporters:
+  debug:
+    # 'basic' or 'detailed'
+    verbosity: basic
+  # Data sources: metrics
+  prometheusremotewrite:
+    endpoint: http://localhost:9090/api/v1/write
+    tls:
+      insecure: true
+  # Actually jaeger
+  otlp:
+    endpoint: localhost:4417
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug,otlp]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug,prometheusremotewrite]
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
