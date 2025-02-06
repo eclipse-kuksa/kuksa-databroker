@@ -33,9 +33,20 @@ pub struct Matcher {
 impl Matcher {
     pub fn new(glob_pattern: &str) -> Result<Self, MatchError> {
         // Check if the pattern is valid
-        if is_valid_pattern(glob_pattern) {
+        // See https://github.com/eclipse-kuksa/kuksa-databroker/blob/main/doc/wildcard_matching.md
+        // for reference
+
+        // Empty string is ok, and by some reason also quoted empty string
+        // Must be replaced before checking if valid regexp
+        let glob_pattern_modified = if glob_pattern.eq("\"\"") || glob_pattern.is_empty() {
+            "**".to_string()
+        } else {
+            glob_pattern.to_string()
+        };
+
+        if is_valid_pattern(&glob_pattern_modified) {
             Ok(Matcher {
-                glob_pattern: Matcher::to_glob_string(glob_pattern),
+                glob_pattern: Matcher::to_glob_string(&glob_pattern_modified),
             })
         } else {
             Err(MatchError::MatchError)
@@ -43,7 +54,15 @@ impl Matcher {
     }
 
     pub fn is_match(&self, path: &str) -> bool {
-        glob_match(&self.glob_pattern, path)
+        let mut res: bool = glob_match(&self.glob_pattern, path);
+        // Special case - if we have something like A.B.C as input we want to both match
+        // the explicit signal A.B.C if existing but also
+        // sub-signals if A.B.C is a branch
+        if !res && self.glob_pattern.ends_with("/**") {
+            let new_pattern = self.glob_pattern.strip_suffix("/**").unwrap();
+            res = glob_match(new_pattern, path);
+        }
+        res
     }
 
     pub fn as_string(&self) -> String {
@@ -53,19 +72,10 @@ impl Matcher {
     fn to_glob_string(glob: &str) -> String {
         let mut glob_string = String::new();
 
-        if glob.eq("\"\"") || glob.is_empty() {
-            glob_string += "**";
-            return glob_string;
-        }
-
         let mut glob_path_string = glob.replace('.', "/");
 
         if !glob.contains('*') {
-            if glob.ends_with('.') {
-                glob_path_string += "/*";
-            } else if !glob.contains('.') {
-                glob_path_string += "/**";
-            }
+            glob_path_string += "/**";
         }
 
         glob_string.push_str(glob_path_string.as_str());
@@ -1269,7 +1279,6 @@ mod tests {
             .should_match_signal("Vehicle.TraveledDistance"));
     }
 
-    #[ignore]
     #[test]
     fn test_regex_single_subpath() {
         assert!(using_glob("Vehicle").should_equal_regex_pattern("^Vehicle(?:\\..+)?$"));
@@ -1299,7 +1308,6 @@ mod tests {
             .should_match_signals(ALL_SIGNALS));
     }
 
-    #[ignore]
     #[test]
     fn test_regex_matches_multi_subpath() {
         assert!(using_glob("Vehicle.Cabin.Sunroof")
@@ -1314,14 +1322,14 @@ mod tests {
     }
     #[test]
     fn test_matches_multi_subpath() {
-        using_glob("Vehicle.Cabin.Sunroof")
+        assert!(using_glob("Vehicle.Cabin.Sunroof")
             .with_signals(ALL_SIGNALS)
             .should_match_signals(&[
                 "Vehicle.Cabin.Sunroof.Position",
                 "Vehicle.Cabin.Sunroof.Shade.Position",
                 "Vehicle.Cabin.Sunroof.Shade.Switch",
                 "Vehicle.Cabin.Sunroof.Switch",
-            ]);
+            ]));
 
         // Make sure partial "last component" doesn't match
         assert!(using_glob("Vehicle.Cabin.Sunroof")
@@ -1337,7 +1345,6 @@ mod tests {
             .should_match_signal("Vehicle.Cabin.Sunroof.Shade.Position"));
     }
 
-    #[ignore]
     #[test]
     fn test_regex_wildcard_at_end() {
         assert!(using_glob("Vehicle.Cabin.Sunroof.*")
@@ -1354,7 +1361,6 @@ mod tests {
             ],));
     }
 
-    #[ignore]
     #[test]
     fn test_regex_single_wildcard_in_middle() {
         assert!(using_glob("Vehicle.Cabin.Sunroof.*.Position")
@@ -1428,7 +1434,6 @@ mod tests {
             ],));
     }
 
-    #[ignore]
     #[test]
     fn test_regex_double_wildcard_at_beginning() {
         assert!(using_glob("**.Sunroof").should_equal_regex_pattern(r"^.+\.Sunroof$"));
@@ -1445,7 +1450,6 @@ mod tests {
             .should_match_no_signals());
     }
 
-    #[ignore]
     #[test]
     fn test_regex_single_wildcard_at_the_beginning() {
         assert!(using_glob("*.Sunroof").should_equal_regex_pattern(r"^[^.\s\:]+\.Sunroof$"));
@@ -1458,7 +1462,6 @@ mod tests {
             .should_match_no_signals());
     }
 
-    #[ignore]
     #[test]
     fn test_regex_single_non_matching_literal() {
         assert!(using_glob("Sunroof").should_equal_regex_pattern(r"^Sunroof(?:\..+)?$"));
@@ -2543,14 +2546,31 @@ mod tests_glob_matching {
         fn should_match_signals(&self, signals: &[&str]) -> bool {
             let mut should_have_matched = Vec::new();
             let mut should_not_have_matched = Vec::new();
+
+            // We cannot just check self.signals, then we miss the items in signals
+            // that is not part of self.signals
+
+            let mut matches = Vec::new();
             for signal in self.signals {
-                if signals.contains(signal) {
-                    if !self.glob.is_match(signal) {
-                        should_have_matched.push(signal);
-                    }
-                } else if self.glob.is_match(signal) {
+                if self.glob.is_match(signal) {
+                    matches.push(signal);
+                }
+            }
+
+            // Now compare in two loops
+            for signal in &matches {
+                if !signals.contains(signal) {
                     should_not_have_matched.push(signal);
                 }
+            }
+
+            let mut i = 0;
+
+            while i < signals.len() {
+                if !matches.contains(&&signals[i]) {
+                    should_have_matched.push(signals[i]);
+                }
+                i += 1
             }
 
             for signal in &should_have_matched {
@@ -2681,7 +2701,6 @@ mod tests_glob_matching {
             .should_match_signal("Vehicle/TraveledDistance"));
     }
 
-    #[ignore]
     #[test]
     fn test_glob_single_subpath() {
         assert!(using_glob_matching("Vehicle").should_equal_glob_string_pattern("Vehicle/**"));
@@ -2707,11 +2726,12 @@ mod tests_glob_matching {
             .should_match_signals(ALL_SIGNALS_WITH_SLASH_SEPARATORS));
     }
 
-    #[ignore]
     #[test]
     fn test_glob_matches_multi_subpath() {
+        // We append "/**"", but later compare also without if needed
+        // to cover the case that Vehicle.Cabin.Sunroof would be a signal
         assert!(using_glob_matching("Vehicle.Cabin.Sunroof")
-            .should_equal_glob_string_pattern(r"Vehicle/Cabin/Sunroof",));
+            .should_equal_glob_string_pattern(r"Vehicle/Cabin/Sunroof/**",));
     }
 
     #[test]
@@ -2722,18 +2742,28 @@ mod tests_glob_matching {
     }
     #[test]
     fn test_matches_multi_subpath() {
-        using_glob_matching("Vehicle.Cabin.Sunroof")
+        // Note .** should give same result as without
+        assert!(using_glob_matching("Vehicle.Cabin.Sunroof.**")
             .with_signals(ALL_SIGNALS_WITH_SLASH_SEPARATORS)
             .should_match_signals(&[
-                "Vehicle.Cabin.Sunroof.Position",
-                "Vehicle.Cabin.Sunroof.Shade.Position",
-                "Vehicle.Cabin.Sunroof.Shade.Switch",
-                "Vehicle.Cabin.Sunroof.Switch",
-            ]);
+                "Vehicle/Cabin/Sunroof/Position",
+                "Vehicle/Cabin/Sunroof/Shade/Position",
+                "Vehicle/Cabin/Sunroof/Shade/Switch",
+                "Vehicle/Cabin/Sunroof/Switch",
+            ]));
+
+        assert!(using_glob_matching("Vehicle.Cabin.Sunroof")
+            .with_signals(ALL_SIGNALS_WITH_SLASH_SEPARATORS)
+            .should_match_signals(&[
+                "Vehicle/Cabin/Sunroof/Position",
+                "Vehicle/Cabin/Sunroof/Shade/Position",
+                "Vehicle/Cabin/Sunroof/Shade/Switch",
+                "Vehicle/Cabin/Sunroof/Switch",
+            ]));
 
         // Make sure partial "last component" doesn't match
         assert!(using_glob_matching("Vehicle.Cabin.Sunroof")
-            .with_signals(&["Vehicle.Cabin.SunroofThing"])
+            .with_signals(&["Vehicle/Cabin/SunroofThing"])
             .should_match_no_signals());
     }
 
@@ -2745,7 +2775,6 @@ mod tests_glob_matching {
             .should_match_signal("Vehicle/Cabin/Sunroof/Shade/Position"));
     }
 
-    #[ignore]
     #[test]
     fn test_glob_wildcard_at_end() {
         assert!(using_glob_matching("Vehicle.Cabin.Sunroof.*")
@@ -2762,7 +2791,6 @@ mod tests_glob_matching {
             ],));
     }
 
-    #[ignore]
     #[test]
     fn test_glob_single_wildcard_in_middle() {
         assert!(using_glob_matching("Vehicle.Cabin.Sunroof.*.Position")
@@ -2786,11 +2814,17 @@ mod tests_glob_matching {
             .should_match_signals(&["Vehicle/Cabin/Sunroof/Shade/Position"]));
     }
 
-    #[ignore]
+    #[ignore] // Ignored due to comment below
     #[test]
     fn test_matches_combination_of_multiple_wildcard_and_single_wildcard() {
         /*
             This is the only case that can not be supported by the new glob match lib used.
+            Known problem, see e.g.
+            https://github.com/devongovett/glob-match/issues/8
+            https://github.com/devongovett/glob-match/issues/9
+            https://github.com/devongovett/glob-match/pull/18
+
+            But repo seems to be abandoned!
         */
         assert!(using_glob_matching("**.*.*.*.Position")
             .with_signals(ALL_SIGNALS_WITH_SLASH_SEPARATORS)
@@ -2840,7 +2874,6 @@ mod tests_glob_matching {
             ],));
     }
 
-    #[ignore]
     #[test]
     fn test_glob_double_wildcard_at_beginning() {
         assert!(using_glob_matching("**.Sunroof").should_equal_glob_string_pattern(r"**/Sunroof"));
@@ -2857,7 +2890,6 @@ mod tests_glob_matching {
             .should_match_no_signals());
     }
 
-    #[ignore]
     #[test]
     fn test_glob_single_wildcard_at_the_beginning() {
         assert!(using_glob_matching("*.Sunroof").should_equal_glob_string_pattern(r"*/Sunroof"));
@@ -2870,10 +2902,10 @@ mod tests_glob_matching {
             .should_match_no_signals());
     }
 
-    #[ignore]
     #[test]
     fn test_glob_single_non_matching_literal() {
-        assert!(using_glob_matching("Sunroof").should_equal_glob_string_pattern(r"Sunroof"));
+        // Single word without dash should result in everything below, thats why /** is expected
+        assert!(using_glob_matching("Sunroof").should_equal_glob_string_pattern(r"Sunroof/**"));
     }
 
     #[test]
@@ -2896,6 +2928,7 @@ mod tests_glob_matching {
 
     #[test]
     fn test_valid_glob_path() {
+        assert_eq!(Matcher::to_glob_string("String"), "String/**");
         assert_eq!(Matcher::to_glob_string("String.*"), "String/*");
         assert_eq!(Matcher::to_glob_string("String.**"), "String/**");
         assert_eq!(
@@ -2908,7 +2941,7 @@ mod tests_glob_matching {
         );
         assert_eq!(
             Matcher::to_glob_string("String.String.String.String"),
-            "String/String/String/String"
+            "String/String/String/String/**"
         );
         assert_eq!(
             Matcher::to_glob_string("String.String.String.String.String.**"),
@@ -2952,6 +2985,10 @@ mod tests_glob_matching {
         );
         assert_eq!(Matcher::to_glob_string("**.String"), "**/String");
         assert_eq!(Matcher::to_glob_string("*.String"), "*/String");
+        assert_eq!(
+            Matcher::to_glob_string("**.*.*.*.String"),
+            "**/*/*/*/String"
+        );
         assert_eq!(
             Matcher::to_glob_string("*.String.String.String"),
             "*/String/String/String"

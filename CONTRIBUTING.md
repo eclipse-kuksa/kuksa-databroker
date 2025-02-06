@@ -22,7 +22,7 @@ https://www.eclipse.org/projects/handbook/#resources-commit
 
 Contact the project developers via the project's "dev" list.
 
-* https://dev.eclipse.org/mailman/listinfo/kuksa-dev
+* https://accounts.eclipse.org/mailing-list/kuksa-dev
 
 ## Pre-commit set up
 This repository is set up to use [pre-commit](https://pre-commit.com/) hooks.
@@ -30,3 +30,12 @@ Use `pip install pre-commit` to install pre-commit.
 After you clone the project, run `pre-commit install` to install pre-commit into your git hooks.
 Pre-commit will now run on every commit.
 Every time you clone a project using pre-commit running pre-commit install should always be the first thing you do.
+
+## Linting
+
+Please run the formatter and linter before opening pull requests:
+
+```sh
+cargo fmt -- --check
+cargo clippy --all-targets -- -W warnings -D warnings
+```

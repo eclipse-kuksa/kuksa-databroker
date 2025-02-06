@@ -156,6 +156,7 @@ where
     serve_with_incoming_shutdown(
         incoming,
         broker,
+        #[cfg(feature = "tls")]
         ServerTLS::Disabled,
         apis,
         authorization,
