@@ -212,15 +212,15 @@ where
         }
     };
 
+    let mut reflection_builder = tonic_reflection::server::Builder::configure()
+        .register_encoded_file_descriptor_set(kuksa::val::v1::FILE_DESCRIPTOR_SET);
     let mut router = server.add_optional_service(kuksa_val_v1);
 
     if apis.contains(&Api::KuksaValV2) {
-        let service = tonic_reflection::server::Builder::configure()
-            .register_encoded_file_descriptor_set(kuksa::val::v2::FILE_DESCRIPTOR_SET)
-            .build()
-            .unwrap();
+        reflection_builder = reflection_builder
+            .register_encoded_file_descriptor_set(kuksa::val::v2::FILE_DESCRIPTOR_SET);
 
-        router = router.add_service(service).add_optional_service(Some(
+        router = router.add_optional_service(Some(
             kuksa::val::v2::val_server::ValServer::with_interceptor(
                 broker.clone(),
                 authorization.clone(),
@@ -229,6 +229,9 @@ where
     }
 
     if apis.contains(&Api::SdvDatabrokerV1) {
+        reflection_builder = reflection_builder
+            .register_encoded_file_descriptor_set(sdv::databroker::v1::FILE_DESCRIPTOR_SET);
+
         router = router.add_optional_service(Some(
             sdv::databroker::v1::broker_server::BrokerServer::with_interceptor(
                 broker.clone(),
@@ -242,6 +245,9 @@ where
             ),
         ));
     }
+
+    let reflection_service = reflection_builder.build().unwrap();
+    router = router.add_service(reflection_service);
 
     router
         .serve_with_incoming_shutdown(incoming, shutdown(broker, signal))
