@@ -12,17 +12,20 @@
 ********************************************************************************/
 
 use std::{convert::TryFrom, future::Future};
+use std::{convert::TryFrom, future::Future};
 
 use futures::Stream;
 use socket2::{Domain, Protocol, Socket, Type};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::UnixListener,
+    net::UnixListener,
 };
 use tokio_stream::wrappers::{TcpListenerStream, UnixListenerStream};
 #[cfg(feature = "tls")]
 use tonic::transport::ServerTlsConfig;
 use tonic::transport::{server::Connected, Server};
+use socket2::{Socket, Domain, Type, Protocol};
 use tracing::{debug, info};
 
 use databroker_proto::{kuksa, sdv};
@@ -117,15 +120,15 @@ where
 {
     let socket_addr = addr.into();
     let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
-
+    
     socket.set_linger(None)?;
     socket.set_nonblocking(true)?;
 
     socket.set_quickack(true)?;
     socket.set_nodelay(true)?;
-
+    
     socket.bind(&socket_addr.into())?;
-    socket.listen(MAX_ACCEPT_QUEUE_SIZE)?;
+    socket.listen(128)?;
 
     let std_listener = std::net::TcpListener::from(socket);
 
@@ -200,6 +203,9 @@ where
     broker.start_housekeeping_task();
 
     let mut server = Server::builder()
+        .http2_adaptive_window(Some(true))
+        .http2_keepalive_interval(None)
+        .http2_keepalive_timeout(None);
         .http2_adaptive_window(Some(true))
         .http2_keepalive_interval(None)
         .http2_keepalive_timeout(None);
