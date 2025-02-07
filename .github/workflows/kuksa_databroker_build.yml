@@ -362,4 +362,4 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: eclipse-kuksa/kuksa-actions/check-markdown@main
+      - uses: eclipse-kuksa/kuksa-actions/check-markdown@4
