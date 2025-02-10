@@ -763,7 +763,7 @@ impl Subscriptions {
 
     #[cfg_attr(
         feature = "otel",
-        tracing::instrument(name="subscriptions_notify", skip(self, changed, db))
+        tracing::instrument(name = "subscriptions_notify", skip(self, changed, db))
     )]
     pub async fn notify(
         &self,
@@ -850,7 +850,7 @@ impl Subscriptions {
 impl ChangeSubscription {
     #[cfg_attr(
         feature = "otel",
-        tracing::instrument(name="change_subscription_notify", skip(self, changed, db))
+        tracing::instrument(name = "change_subscription_notify", skip(self, changed, db))
     )]
     async fn notify(
         &self,
