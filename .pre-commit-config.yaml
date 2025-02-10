@@ -11,3 +11,20 @@ repos:
         exclude: \.token$
     -   id: check-yaml
     -   id: check-added-large-files
+-   repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        description: Format files with rustfmt.
+        entry: bash -c 'cargo fmt -- --check'
+        language: rust
+      - id: cargo-check
+        name: cargo check
+        description: Check the package for errors.
+        entry: bash -c 'cargo check --all'
+        language: rust
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Lint rust sources
+        entry: bash -c 'cargo clippy --all-targets -- -W warnings -D warnings'
+        language: rust

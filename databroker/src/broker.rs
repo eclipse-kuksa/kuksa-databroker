@@ -1707,10 +1707,13 @@ impl AuthorizedAccess<'_, '_> {
             .await
             .add_change_subscription(subscription);
 
-        let stream = BroadcastStream::new(receiver).filter_map(|result| match result {
+        let stream = BroadcastStream::new(receiver).filter_map(move |result| match result {
             Ok(message) => Some(message),
             Err(err) => {
-                debug!("Lagged entries: {}", err);
+                warn!(
+                    "Slow subscriber with capacity {} lagged and missed signal updates: {}",
+                    channel_capacity, err
+                );
                 None
             }
         });

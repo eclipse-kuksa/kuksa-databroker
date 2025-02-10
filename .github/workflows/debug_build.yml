@@ -1,0 +1,318 @@
+# /********************************************************************************
+# * Copyright (c) 2024 Contributors to the Eclipse Foundation
+# *
+# * See the NOTICE file(s) distributed with this work for additional
+# * information regarding copyright ownership.
+# *
+# * This program and the accompanying materials are made available under the
+# * terms of the Apache License 2.0 which is available at
+# * http://www.apache.org/licenses/LICENSE-2.0
+# *
+# * SPDX-License-Identifier: Apache-2.0
+# ********************************************************************************/
+
+name: Debug build databroker
+
+on:
+  push:
+    branches: [ main]
+  pull_request:
+  workflow_call:
+    secrets:
+      QUAY_IO_TOKEN:
+        required: true
+      QUAY_IO_USERNAME:
+        required: true
+  workflow_dispatch:
+
+# suffix to avoid cancellation when running from release workflow
+concurrency:
+      group: ${{ github.ref }}-${{ github.workflow }}-databroker-debug
+      cancel-in-progress: true
+
+# Needed as default_workflow_permissions is "read"
+permissions:
+  packages: write
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            target/
+          key: databroker-lint-${{ hashFiles('**/Cargo.lock') }}
+      - name: Show toolchain information
+        working-directory: ${{github.workspace}}
+        run: |
+          rustup toolchain list
+          cargo --version
+      - name: cargo fmt
+        working-directory: ${{github.workspace}}
+        run: cargo fmt -- --check
+      - name: cargo clippy
+        working-directory: ${{github.workspace}}
+        run: cargo clippy --all-targets -- -W warnings -D warnings
+      - name: cargo clippy (feature viss)
+        working-directory: ${{github.workspace}}
+        run: cargo clippy --features viss --all-targets -- -W warnings -D warnings
+
+
+  kuksa-lib:
+    name: Build Kuksa lib
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            target/
+          key: databroker-lint-${{ hashFiles('**/Cargo.lock') }}
+      - name: Show toolchain information
+        working-directory: ${{github.workspace}}
+        run: |
+          rustup toolchain list
+          cargo --version
+      - name: Build lib
+        working-directory: ${{github.workspace}}
+        run: |
+          cd lib
+          cargo build --release
+
+  test:
+    name: Run unit tests
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cache/pip/
+            target/
+          key: databroker-coverage-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate code coverage
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      - name: Upload coverage to Codecov
+        # Uploaded result available at https://app.codecov.io/gh/eclipse-kuksa/kuksa-databroker
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    strategy:
+      matrix:
+        platform:
+          - name: amd64
+          - name: arm64
+          - name: riscv64
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          ~/.cargo/.crates.toml
+          ~/.cargo/.crates2.json
+          target-*/
+        key: databroker-release-${{ matrix.platform.name }}-${{ hashFiles('**/Cargo.lock') }}
+    - uses: actions/setup-python@v5
+      # Needed for pip
+      with:
+        python-version: '3.12'
+    - name: Install build prerequisites
+      working-directory: ${{github.workspace}}/
+      run: |
+        cargo install cross cargo-license cargo-cyclonedx
+        pip install "git+https://github.com/eclipse-kuksa/kuksa-common.git@v1#subdirectory=sbom-tools"
+    - name: Build
+      working-directory: ${{github.workspace}}
+      env:
+        KUKSA_DATABROKER_FEATURES: databroker/viss,databroker/tls
+        KUKSA_DATABROKER_SBOM: y
+      run: |
+        export KUKSA_DATABROKER_PROFILE=release-with-debug
+        ./scripts/build-databroker.sh ${{ matrix.platform.name }}
+
+    - name: Find debug symbol for receiving signal updates
+      run: |
+        export DEBUGSYMBOL=$(nm ${{github.workspace}}/dist/${{ matrix.platform.name }}/databroker | grep -E 'DatabaseWriteAccess.*update[^_]+' | cut -d' ' -f3)
+        echo ${DEBUGSYMBOL} > ${{github.workspace}}/dist/${{ matrix.platform.name }}/debugsymbols.txt
+        echo "Debug Symbol for eBPF Tracing: ${DEBUGSYMBOL}" >> $GITHUB_STEP_SUMMARY
+
+    - name: "Archiving artifacts"
+      shell: bash
+      working-directory: ${{github.workspace}}/dist/${{ matrix.platform.name }}
+      run: |
+        tar -czf ../databroker-${{ matrix.platform.name }}-release-with-debug.tar.gz *
+
+    - name: "Uploading  artifacts"
+      uses: actions/upload-artifact@v4
+      with:
+          name: databroker-${{ matrix.platform.name }}-release-with-debug
+          path: ${{github.workspace}}/dist/databroker-${{ matrix.platform.name}}-release-with-debug.tar.gz
+          if-no-files-found: error
+
+  check_ghcr_push:
+    name: Check access rights
+    uses: eclipse-kuksa/kuksa-actions/.github/workflows/check_ghcr_push.yml@4
+    secrets: inherit
+
+  create-container:
+    name: Create multiarch container
+    runs-on: ubuntu-latest
+
+    needs: [build, check_ghcr_push]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Retrieve artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        pattern: databroker-*
+        merge-multiple: true
+
+    - name: Unpack binaries
+      run: |
+        mkdir -p dist/amd64 dist/arm64 dist/riscv64
+        tar xf artifacts/databroker-arm64-release-with-debug.tar.gz -C dist/arm64
+        tar xf artifacts/databroker-amd64-release-with-debug.tar.gz -C dist/amd64
+        tar xf artifacts/databroker-riscv64-release-with-debug.tar.gz -C dist/riscv64
+
+    - name: Set container metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        # list of Docker images to use as base name for tags
+        images: |
+          ghcr.io/eclipse-kuksa/kuksa-databroker-debug
+          quay.io/eclipse-kuksa/kuksa-databroker-debug
+        # generate Docker tags based on the following events/attributes
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+
+    - name: Setup Docker Buildx
+      id: buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to ghcr.io container registry
+      if: needs.check_ghcr_push.outputs.push == 'true'
+      uses: docker/login-action@v3
+      with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Log in to quay.io container registry
+      if: needs.check_ghcr_push.outputs.push == 'true'
+      uses: docker/login-action@v3
+      with:
+        registry: quay.io
+        username: ${{ secrets.QUAY_IO_USERNAME }}
+        password: ${{ secrets.QUAY_IO_TOKEN }}
+
+    - name: Build kuksa-databroker container and push to ghcr.io, quay.io and ttl.sh
+      id: ghcr-build
+      if: needs.check_ghcr_push.outputs.push == 'true'
+      uses: docker/build-push-action@v5
+      with:
+        platforms: |
+          linux/amd64
+          linux/arm64
+          linux/riscv64
+        file: ./scripts/Dockerfile
+        context: .
+        push: true
+        tags: |
+          ${{ steps.meta.outputs.tags }}
+          ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}-release-with-debug
+        labels: ${{ steps.meta.outputs.labels }}
+        # Provenance to solve that an unknown/unkown image is shown on ghcr.io
+        # Same problem as described in https://github.com/orgs/community/discussions/45969
+        provenance: false
+
+    - name: Build ephemeral kuksa-databroker container and push to ttl.sh
+      if: needs.check_ghcr_push.outputs.push == 'false'
+      id: tmp-build
+      uses: docker/build-push-action@v5
+      with:
+        platforms: |
+          linux/amd64
+          linux/arm64
+          linux/riscv64
+        file: ./scripts/Dockerfile
+        context: .
+        push: true
+        tags: "ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}-release-with-debug"
+        labels: ${{ steps.meta.outputs.labels }}
+        # Provenance to solve that an unknown/unkown image is shown on ghcr.io
+        # Same problem as described in https://github.com/orgs/community/discussions/45969
+        provenance: false
+
+    - name: Posting message
+      uses: eclipse-kuksa/kuksa-actions/post-container-location@4
+      with:
+        image: ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}-release-with-debug
+
+  integration-test:
+    name: Run integration test
+    runs-on: ubuntu-latest
+    needs: [create-container]
+    strategy:
+      matrix:
+        platform: ["arm64", "amd64", "riscv64"]
+
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - uses: actions/checkout@v4
+
+      - name: Run integration test on ${{ matrix.platform }} container
+        env:
+          DATABROKER_IMAGE: ttl.sh/eclipse-kuksa/kuksa-databroker-${{github.sha}}-release-with-debug
+          CONTAINER_PLATFORM: linux/${{ matrix.platform }}
+        run: |
+          ${{github.workspace}}/integration_test/run.sh
