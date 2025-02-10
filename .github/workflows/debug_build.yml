@@ -223,8 +223,8 @@ jobs:
       with:
         # list of Docker images to use as base name for tags
         images: |
-          ghcr.io/eclipse-kuksa/kuksa-databroker-release-with-debug
-          quay.io/eclipse-kuksa/kuksa-databroker-release-with-debug
+          ghcr.io/eclipse-kuksa/kuksa-databroker-debug
+          quay.io/eclipse-kuksa/kuksa-databroker-debug
         # generate Docker tags based on the following events/attributes
         tags: |
           type=ref,event=branch
