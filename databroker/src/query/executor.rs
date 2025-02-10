@@ -37,6 +37,7 @@ pub trait ExecutionInput {
 }
 
 impl CompiledQuery {
+    #[cfg_attr(feature="otel", tracing::instrument(name="compiled_query_execute_internal", skip(query, input), fields(timestamp=chrono::Utc::now().to_string())))]
     fn execute_internal(
         query: &CompiledQuery,
         input: &impl ExecutionInput,
@@ -157,6 +158,8 @@ impl CompiledQuery {
             Ok(None)
         }
     }
+
+    #[cfg_attr(feature="otel", tracing::instrument(name="compiled_query_execute", skip(self, input), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn execute(
         &self,
         input: &impl ExecutionInput,
@@ -166,6 +169,7 @@ impl CompiledQuery {
 }
 
 impl Expr {
+    #[cfg_attr(feature="otel", tracing::instrument(name="expr_execute", skip(self, input), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn execute(&self, input: &impl ExecutionInput) -> Result<DataValue, ExecutionError> {
         match &self {
             Expr::Datapoint {
@@ -396,6 +400,7 @@ impl ExecutionInput for ExecutionInputImpl {
         }
     }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="execution_input_impl_executor_get_fields", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
     fn get_fields(&self) -> &HashMap<String, ExecutionInputImplData> {
         &self.fields
     }

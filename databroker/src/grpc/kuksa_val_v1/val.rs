@@ -256,11 +256,20 @@ impl proto::val_server::Val for broker::DataBroker {
         }
     }
 
+    #[cfg_attr(feature="otel",tracing::instrument(name="kuksa_val_v1_data_broker_set",skip(self, request), fields(trace_id, timestamp= chrono::Utc::now().to_string())))]
     async fn set(
         &self,
         request: tonic::Request<proto::SetRequest>,
     ) -> Result<tonic::Response<proto::SetResponse>, tonic::Status> {
         debug!(?request);
+
+        #[cfg(feature = "otel")]
+        let request = (|| {
+            let (trace_id, request) = read_incoming_trace_id(request);
+            tracing::Span::current().record("trace_id", &trace_id);
+            request
+        })();
+
         let permissions = match request.extensions().get::<Permissions>() {
             Some(permissions) => {
                 debug!(?permissions);
@@ -472,6 +481,7 @@ impl proto::val_server::Val for broker::DataBroker {
         >,
     >;
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="kuksa_val_v1_data_broker_subscribe", skip(self, request), fields(timestamp=chrono::Utc::now().to_string())))]
     async fn subscribe(
         &self,
         request: tonic::Request<proto::SubscribeRequest>,
@@ -666,6 +676,7 @@ async fn validate_entry_update(
     Ok((id, update))
 }
 
+#[cfg_attr(feature="otel", tracing::instrument(name="kuksa_val_v1_convert_to_data_entry_error", skip(path, error), fields(timestamp=chrono::Utc::now().to_string())))]
 fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> DataEntryError {
     match error {
         broker::UpdateError::NotFound => DataEntryError {
@@ -735,6 +746,7 @@ fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> Da
     }
 }
 
+#[cfg_attr(feature="otel", tracing::instrument(name="kuksa_val_v1_convert_to_proto_stream", skip(input), fields(timestamp=chrono::Utc::now().to_string())))]
 fn convert_to_proto_stream(
     input: impl Stream<Item = broker::EntryUpdates>,
 ) -> impl Stream<Item = Result<proto::SubscribeResponse, tonic::Status>> {
@@ -1051,7 +1063,23 @@ fn combine_view_and_fields(
     combined
 }
 
+#[cfg(feature = "otel")]
+#[cfg_attr(feature="otel", tracing::instrument(name="kuksa_val_v1_read_incoming_trace_id", skip(request), fields(timestamp=chrono::Utc::now().to_string())))]
+fn read_incoming_trace_id(
+    request: tonic::Request<proto::SetRequest>,
+) -> (String, tonic::Request<proto::SetRequest>) {
+    let mut trace_id: String = String::from("");
+    let request_copy = tonic::Request::new(request.get_ref().clone());
+    for request in request_copy.into_inner().updates {
+        if let Some(entry) = request.entry {
+            trace_id = entry.path;
+        }
+    }
+    return (trace_id, request);
+}
+
 impl broker::EntryUpdate {
+    #[cfg_attr(feature="otel", tracing::instrument(name="kuksa_val_v1_entry_update_from_proto_entry_and_fields",skip(entry,fields), fields(timestamp=chrono::Utc::now().to_string())))]
     fn from_proto_entry_and_fields(
         entry: &proto::DataEntry,
         fields: HashSet<proto::Field>,
