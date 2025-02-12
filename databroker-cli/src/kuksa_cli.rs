@@ -124,8 +124,12 @@ async fn handle_actuate_command(
 
                 match client.set_target_values(datapoints).await {
                     Ok(_) => cli::print_resp_ok("actuate")?,
-                    Err(ClientError::Status(status)) => cli::print_resp_err("actuate", &status)?,
-                    Err(ClientError::Connection(msg)) => cli::print_error("actuate", msg)?,
+                    Err(ClientError::Status(status)) => {
+                        cli::print_resp_err("actuate", &status)?
+                    }
+                    Err(ClientError::Connection(msg)) => {
+                        cli::print_error("actuate", msg)?
+                    }
                     Err(ClientError::Function(msg)) => {
                         cli::print_resp_err_fmt("actuate", format_args!("Error {msg:?}"))?
                     }
@@ -163,13 +167,15 @@ async fn handle_publish_command(
             if let Some(metadata) = entry.metadata {
                 let data_value = try_into_data_value(
                     value,
-                    proto::v1::DataType::try_from(metadata.data_type).unwrap(),
+                    proto::v1::DataType::try_from(metadata.data_type)
+                        .unwrap(),
                 );
                 if data_value.is_err() {
                     println!(
                         "Could not parse \"{}\" as {:?}",
                         value,
-                        proto::v1::DataType::try_from(metadata.data_type).unwrap()
+                        proto::v1::DataType::try_from(metadata.data_type)
+                            .unwrap()
                     );
                     continue;
                 }
@@ -193,7 +199,10 @@ async fn handle_publish_command(
                         cli::print_error("publish", msg)?
                     }
                     Err(kuksa_common::ClientError::Function(msg)) => {
-                        cli::print_resp_err_fmt("publish", format_args!("Error {msg:?}"))?;
+                        cli::print_resp_err_fmt(
+                            "publish",
+                            format_args!("Error {msg:?}"),
+                        )?;
                     }
                 }
             }
@@ -302,16 +311,16 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.get_command() {
         Some(cli::Commands::Get { paths }) => {
             return handle_get_command(paths, &mut client).await;
-        }
-        Some(cli::Commands::Set { path: _, value: _ }) => {
-            unimplemented!("The set command is not implemented for kuksa.val.v1 protocol because it is not intended to be named like this anymore. Use publish instead.");
-        }
+        },
+        Some(cli::Commands::Set { path, value }) => {
+            return handle_publish_command(&path, &value, &mut client).await;
+        },
         Some(cli::Commands::Actuate { path, value }) => {
             return handle_actuate_command(&path, &value, &mut client).await;
-        }
+        },
         Some(cli::Commands::Publish { path, value }) => {
             return handle_publish_command(&path, &value, &mut client).await;
-        }
+        },
         None => {
             // No subcommand => run interactive client
             let version = match option_env!("CARGO_PKG_VERSION") {
@@ -376,7 +385,7 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 .split_whitespace()
                                 .map(|path| path.to_owned())
                                 .collect();
-
+                            
                             handle_get_command(paths, &mut client).await?
                         }
                         "gettarget" => {
@@ -513,6 +522,7 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                             }
 
                             handle_actuate_command(path, value, &mut client).await?
+                            handle_actuate_command(path, value, &mut client).await?
                         }
                         "publish" => {
                             interface.add_history_unique(line.clone());
@@ -524,6 +534,7 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 continue;
                             }
 
+                            handle_publish_command(path, value, &mut client).await?
                             handle_publish_command(path, value, &mut client).await?
                         }
                         "subscribe" => {
