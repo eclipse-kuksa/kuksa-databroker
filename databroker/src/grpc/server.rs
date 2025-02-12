@@ -11,12 +11,13 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use std::{convert::TryFrom, future::Future, time::Duration};
+use std::{convert::TryFrom, future::Future};
 
 use futures::Stream;
+use socket2::{Domain, Protocol, Socket, Type};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    net::{TcpListener, UnixListener},
+    net::UnixListener,
 };
 use tokio_stream::wrappers::{TcpListenerStream, UnixListenerStream};
 #[cfg(feature = "tls")]
@@ -31,6 +32,9 @@ use crate::{
     broker,
     permissions::{self, Permissions},
 };
+
+// https://www.linuxjournal.com/files/linuxjournal.com/linuxjournal/articles/023/2333/2333s2.html
+const MAX_ACCEPT_QUEUE_SIZE: i32 = 128;
 
 #[cfg(feature = "tls")]
 pub enum ServerTLS {
@@ -112,7 +116,20 @@ where
     F: Future<Output = ()>,
 {
     let socket_addr = addr.into();
-    let listener = TcpListener::bind(socket_addr).await?;
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
+
+    socket.set_linger(None)?;
+    socket.set_nonblocking(true)?;
+
+    socket.set_quickack(true)?;
+    socket.set_nodelay(true)?;
+
+    socket.bind(&socket_addr.into())?;
+    socket.listen(MAX_ACCEPT_QUEUE_SIZE)?;
+
+    let std_listener = std::net::TcpListener::from(socket);
+
+    let listener = tokio::net::TcpListener::from_std(std_listener)?;
 
     if let Ok(addr) = listener.local_addr() {
         info!("Listening on {}", addr);
@@ -183,8 +200,9 @@ where
     broker.start_housekeeping_task();
 
     let mut server = Server::builder()
-        .http2_keepalive_interval(Some(Duration::from_secs(10)))
-        .http2_keepalive_timeout(Some(Duration::from_secs(20)));
+        .http2_adaptive_window(Some(true))
+        .http2_keepalive_interval(None)
+        .http2_keepalive_timeout(None);
 
     #[cfg(feature = "tls")]
     match server_tls {
