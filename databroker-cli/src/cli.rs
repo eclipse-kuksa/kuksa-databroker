@@ -90,7 +90,24 @@ pub enum Commands {
         #[clap(value_name = "PATH")]
         paths: Vec<String>,
     },
-    // Subscribe,
+    Set {
+        #[clap(value_name = "PATH")]
+        path: String,
+        #[clap(value_name = "VALUE")]
+        value: String,
+    },
+    Publish {
+        #[clap(value_name = "PATH")]
+        path: String,
+        #[clap(value_name = "VALUE")]
+        value: String,
+    },
+    Actuate {
+        #[clap(value_name = "PATH")]
+        path: String,
+        #[clap(value_name = "VALUE")]
+        value: String,
+    },
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
