@@ -155,13 +155,13 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             return handle_get_command(paths, &mut client).await;
         }
         Some(cli::Commands::Set { path: _, value: _ }) => {
-            unimplemented!("The Set command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
+            unimplemented!("The set command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
         }
         Some(cli::Commands::Publish { path: _, value: _ }) => {
-            unimplemented!("The Publish command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
+            unimplemented!("The publish command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
         }
         Some(cli::Commands::Actuate { path: _, value: _ }) => {
-            unimplemented!("The Actuate command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
+            unimplemented!("The actuate command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
         }
         None => {
             // No subcommand => run interactive client

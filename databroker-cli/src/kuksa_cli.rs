@@ -303,8 +303,8 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Some(cli::Commands::Get { paths }) => {
             return handle_get_command(paths, &mut client).await;
         }
-        Some(cli::Commands::Set { path, value }) => {
-            return handle_publish_command(&path, &value, &mut client).await;
+        Some(cli::Commands::Set { path: _, value: _ }) => {
+            unimplemented!("The set command is not implemented for kuksa.val.v1 protocol because it is not intended to be named like this anymore. Use publish instead.");
         }
         Some(cli::Commands::Actuate { path, value }) => {
             return handle_actuate_command(&path, &value, &mut client).await;
