@@ -66,6 +66,28 @@ fn print_usage(command: impl AsRef<str>) {
     }
 }
 
+async fn handle_get_command(paths: Vec<String>, client: &mut SDVClient) -> Result<(), Box<dyn std::error::Error>>{
+    match client.get_datapoints(paths).await {
+        Ok(datapoints) => {
+            cli::print_resp_ok("get")?;
+            for (name, datapoint) in datapoints {
+                println!("{}: {}", name, DisplayDatapoint(datapoint),);
+            }
+        }
+        Err(kuksa_common::ClientError::Status(err)) => {
+            cli::print_resp_err("get", &err)?;
+        }
+        Err(kuksa_common::ClientError::Connection(msg)) => {
+            cli::print_error("get", msg)?;
+        }
+        Err(kuksa_common::ClientError::Function(msg)) => {
+            cli::print_resp_err_fmt("get", format_args!("Error {msg:?}"))?;
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let mut properties = Vec::<proto::v1::Metadata>::new();
     println!("Using {VERSION}");
@@ -127,18 +149,17 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.get_command() {
         Some(cli::Commands::Get { paths }) => {
-            match client.get_datapoints(paths).await {
-                Ok(datapoints) => {
-                    for (name, datapoint) in datapoints {
-                        println!("{}: {}", name, DisplayDatapoint(datapoint),);
-                    }
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                }
-            }
-            return Ok(());
-        }
+            return handle_get_command(paths, &mut client).await;
+        },
+        Some(cli::Commands::Set { path: _, value: _ }) => {
+            unimplemented!("The Set command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
+        },
+        Some(cli::Commands::Publish { path: _, value: _ }) => {
+            unimplemented!("The Publish command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
+        },
+        Some(cli::Commands::Actuate { path: _, value: _ }) => {
+            unimplemented!("The Actuate command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
+        },
         None => {
             // No subcommand => run interactive client
             let version = match option_env!("CARGO_PKG_VERSION") {
@@ -205,23 +226,7 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 .map(|path| path.to_owned())
                                 .collect();
 
-                            match client.get_datapoints(paths).await {
-                                Ok(datapoints) => {
-                                    cli::print_resp_ok(cmd)?;
-                                    for (name, datapoint) in datapoints {
-                                        println!("{}: {}", name, DisplayDatapoint(datapoint),);
-                                    }
-                                }
-                                Err(kuksa_common::ClientError::Status(err)) => {
-                                    cli::print_resp_err(cmd, &err)?;
-                                }
-                                Err(kuksa_common::ClientError::Connection(msg)) => {
-                                    cli::print_error(cmd, msg)?;
-                                }
-                                Err(kuksa_common::ClientError::Function(msg)) => {
-                                    cli::print_resp_err_fmt(cmd, format_args!("Error {msg:?}"))?;
-                                }
-                            }
+                            handle_get_command(paths, &mut client).await?
                         }
                         "token" => {
                             interface.add_history_unique(line.clone());

@@ -67,6 +67,189 @@ fn print_usage(command: impl AsRef<str>) {
     }
 }
 
+async fn handle_actuate_command(
+    path: &str,
+    value: &str,
+    client: &mut KuksaClient,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if value.is_empty() {
+        print_usage("actuate");
+        return Ok(());
+    }
+
+    let datapoint_entries = match client.get_metadata(vec![path]).await {
+        Ok(data_entries) => Some(data_entries),
+        Err(ClientError::Status(status)) => {
+            cli::print_resp_err("metadata", &status)?;
+            None
+        }
+        Err(ClientError::Connection(msg)) => {
+            cli::print_error("metadata", msg)?;
+            None
+        }
+        Err(ClientError::Function(msg)) => {
+            cli::print_resp_err_fmt("actuate", format_args!("Error {msg:?}"))?;
+            None
+        }
+    };
+
+    if let Some(entries) = datapoint_entries {
+        for entry in entries {
+            if let Some(metadata) = entry.metadata {
+                let data_value = try_into_data_value(
+                    value,
+                    proto::v1::DataType::try_from(metadata.data_type).unwrap(),
+                );
+                if data_value.is_err() {
+                    println!(
+                        "Could not parse \"{value}\" as {:?}",
+                        proto::v1::DataType::try_from(metadata.data_type).unwrap()
+                    );
+                    continue;
+                }
+
+                if metadata.entry_type != proto::v1::EntryType::Actuator as i32 {
+                    cli::print_error("actuate", format!("{} is not an actuator.", path))?;
+                    continue;
+                }
+
+                let ts = Timestamp::from(SystemTime::now());
+                let datapoints = HashMap::from([(
+                    path.to_string(),
+                    proto::v1::Datapoint {
+                        timestamp: Some(ts),
+                        value: Some(data_value.unwrap()),
+                    },
+                )]);
+
+                match client.set_target_values(datapoints).await {
+                    Ok(_) => cli::print_resp_ok("actuate")?,
+                    Err(ClientError::Status(status)) => {
+                        cli::print_resp_err("actuate", &status)?
+                    }
+                    Err(ClientError::Connection(msg)) => {
+                        cli::print_error("actuate", msg)?
+                    }
+                    Err(ClientError::Function(msg)) => {
+                        cli::print_resp_err_fmt("actuate", format_args!("Error {msg:?}"))?
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_publish_command(
+    path: &str,
+    value: &str,
+    client: &mut KuksaClient,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let datapoint_entries = match client.get_metadata(vec![path]).await {
+        Ok(data_entries) => Some(data_entries),
+        Err(kuksa_common::ClientError::Status(status)) => {
+            cli::print_resp_err("metadata", &status)?;
+            None
+        }
+        Err(kuksa_common::ClientError::Connection(msg)) => {
+            cli::print_error("metadata", msg)?;
+            None
+        }
+        Err(kuksa_common::ClientError::Function(msg)) => {
+            cli::print_resp_err_fmt("publish", format_args!("Error {msg:?}"))?;
+            None
+        }
+    };
+
+    if let Some(entries) = datapoint_entries {
+        for entry in entries {
+            if let Some(metadata) = entry.metadata {
+                let data_value = try_into_data_value(
+                    value,
+                    proto::v1::DataType::try_from(metadata.data_type)
+                        .unwrap(),
+                );
+                if data_value.is_err() {
+                    println!(
+                        "Could not parse \"{}\" as {:?}",
+                        value,
+                        proto::v1::DataType::try_from(metadata.data_type)
+                            .unwrap()
+                    );
+                    continue;
+                }
+                let ts = Timestamp::from(SystemTime::now());
+                let datapoints = HashMap::from([(
+                    path.to_string().clone(),
+                    proto::v1::Datapoint {
+                        timestamp: Some(ts),
+                        value: Some(data_value.unwrap()),
+                    },
+                )]);
+
+                match client.set_current_values(datapoints).await {
+                    Ok(_) => {
+                        cli::print_resp_ok("publish")?;
+                    }
+                    Err(kuksa_common::ClientError::Status(status)) => {
+                        cli::print_resp_err("publish", &status)?
+                    }
+                    Err(kuksa_common::ClientError::Connection(msg)) => {
+                        cli::print_error("publish", msg)?
+                    }
+                    Err(kuksa_common::ClientError::Function(msg)) => {
+                        cli::print_resp_err_fmt(
+                            "publish",
+                            format_args!("Error {msg:?}"),
+                        )?;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_get_command(
+    paths: Vec<String>,
+    client: &mut KuksaClient,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match client.get_current_values(paths).await {
+        Ok(data_entries) => {
+            cli::print_resp_ok("get")?;
+            for entry in data_entries {
+                if let Some(val) = entry.value {
+                    println!(
+                        "{}: {} {}",
+                        entry.path,
+                        DisplayDatapoint(val),
+                        entry
+                            .metadata
+                            .and_then(|meta| meta.unit)
+                            .map(|unit| unit.to_string())
+                            .unwrap_or_else(|| "".to_string())
+                    );
+                } else {
+                    println!("{}: NotAvailable", entry.path);
+                }
+            }
+        }
+        Err(kuksa_common::ClientError::Status(err)) => {
+            cli::print_resp_err("get", &err)?;
+        }
+        Err(kuksa_common::ClientError::Connection(msg)) => {
+            cli::print_error("get", msg)?;
+        }
+        Err(kuksa_common::ClientError::Function(msg)) => {
+            cli::print_resp_err_fmt("get", format_args!("Error {msg:?}"))?;
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     println!("Using {VERSION}");
 
@@ -127,22 +310,17 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.get_command() {
         Some(cli::Commands::Get { paths }) => {
-            match client.get_current_values(paths).await {
-                Ok(data_entries) => {
-                    for entry in data_entries {
-                        if let Some(val) = entry.value {
-                            println!("{}: {}", entry.path, DisplayDatapoint(val),);
-                        } else {
-                            println!("{}: NotAvailable", entry.path);
-                        }
-                    }
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                }
-            }
-            return Ok(());
-        }
+            return handle_get_command(paths, &mut client).await;
+        },
+        Some(cli::Commands::Set { path, value }) => {
+            return handle_publish_command(&path, &value, &mut client).await;
+        },
+        Some(cli::Commands::Actuate { path, value }) => {
+            return handle_actuate_command(&path, &value, &mut client).await;
+        },
+        Some(cli::Commands::Publish { path, value }) => {
+            return handle_publish_command(&path, &value, &mut client).await;
+        },
         None => {
             // No subcommand => run interactive client
             let version = match option_env!("CARGO_PKG_VERSION") {
@@ -207,36 +385,8 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 .split_whitespace()
                                 .map(|path| path.to_owned())
                                 .collect();
-                            match client.get_current_values(paths).await {
-                                Ok(data_entries) => {
-                                    cli::print_resp_ok(cmd)?;
-                                    for entry in data_entries {
-                                        if let Some(val) = entry.value {
-                                            println!(
-                                                "{}: {} {}",
-                                                entry.path,
-                                                DisplayDatapoint(val),
-                                                entry
-                                                    .metadata
-                                                    .and_then(|meta| meta.unit)
-                                                    .map(|unit| unit.to_string())
-                                                    .unwrap_or_else(|| "".to_string())
-                                            );
-                                        } else {
-                                            println!("{}: NotAvailable", entry.path);
-                                        }
-                                    }
-                                }
-                                Err(kuksa_common::ClientError::Status(err)) => {
-                                    cli::print_resp_err(cmd, &err)?;
-                                }
-                                Err(kuksa_common::ClientError::Connection(msg)) => {
-                                    cli::print_error(cmd, msg)?;
-                                }
-                                Err(kuksa_common::ClientError::Function(msg)) => {
-                                    cli::print_resp_err_fmt(cmd, format_args!("Error {msg:?}"))?;
-                                }
-                            }
+                            
+                            handle_get_command(paths, &mut client).await?
                         }
                         "gettarget" => {
                             interface.add_history_unique(line.clone());
@@ -371,76 +521,7 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 continue;
                             }
 
-                            let datapoint_entries = match client.get_metadata(vec![path]).await {
-                                Ok(data_entries) => Some(data_entries),
-                                Err(kuksa_common::ClientError::Status(status)) => {
-                                    cli::print_resp_err("metadata", &status)?;
-                                    None
-                                }
-                                Err(kuksa_common::ClientError::Connection(msg)) => {
-                                    cli::print_error("metadata", msg)?;
-                                    None
-                                }
-                                Err(kuksa_common::ClientError::Function(msg)) => {
-                                    cli::print_resp_err_fmt(cmd, format_args!("Error {msg:?}"))?;
-                                    None
-                                }
-                            };
-
-                            if let Some(entries) = datapoint_entries {
-                                for entry in entries {
-                                    if let Some(metadata) = entry.metadata {
-                                        let data_value = try_into_data_value(
-                                            value,
-                                            proto::v1::DataType::try_from(metadata.data_type)
-                                                .unwrap(),
-                                        );
-                                        if data_value.is_err() {
-                                            println!(
-                                                "Could not parse \"{value}\" as {:?}",
-                                                proto::v1::DataType::try_from(metadata.data_type)
-                                                    .unwrap()
-                                            );
-                                            continue;
-                                        }
-
-                                        if metadata.entry_type
-                                            != proto::v1::EntryType::Actuator as i32
-                                        {
-                                            cli::print_error(
-                                                cmd,
-                                                format!("{} is not an actuator.", path),
-                                            )?;
-                                            continue;
-                                        }
-
-                                        let ts = Timestamp::from(SystemTime::now());
-                                        let datapoints = HashMap::from([(
-                                            path.to_string().clone(),
-                                            proto::v1::Datapoint {
-                                                timestamp: Some(ts),
-                                                value: Some(data_value.unwrap()),
-                                            },
-                                        )]);
-
-                                        match client.set_target_values(datapoints).await {
-                                            Ok(_) => cli::print_resp_ok(cmd)?,
-                                            Err(kuksa_common::ClientError::Status(status)) => {
-                                                cli::print_resp_err(cmd, &status)?
-                                            }
-                                            Err(kuksa_common::ClientError::Connection(msg)) => {
-                                                cli::print_error(cmd, msg)?
-                                            }
-                                            Err(kuksa_common::ClientError::Function(msg)) => {
-                                                cli::print_resp_err_fmt(
-                                                    cmd,
-                                                    format_args!("Error {msg:?}"),
-                                                )?
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            handle_actuate_command(path, value, &mut client).await?
                         }
                         "publish" => {
                             interface.add_history_unique(line.clone());
@@ -452,68 +533,7 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 continue;
                             }
 
-                            let datapoint_entries = match client.get_metadata(vec![path]).await {
-                                Ok(data_entries) => Some(data_entries),
-                                Err(kuksa_common::ClientError::Status(status)) => {
-                                    cli::print_resp_err("metadata", &status)?;
-                                    None
-                                }
-                                Err(kuksa_common::ClientError::Connection(msg)) => {
-                                    cli::print_error("metadata", msg)?;
-                                    None
-                                }
-                                Err(kuksa_common::ClientError::Function(msg)) => {
-                                    cli::print_resp_err_fmt(cmd, format_args!("Error {msg:?}"))?;
-                                    None
-                                }
-                            };
-
-                            if let Some(entries) = datapoint_entries {
-                                for entry in entries {
-                                    if let Some(metadata) = entry.metadata {
-                                        let data_value = try_into_data_value(
-                                            value,
-                                            proto::v1::DataType::try_from(metadata.data_type)
-                                                .unwrap(),
-                                        );
-                                        if data_value.is_err() {
-                                            println!(
-                                                "Could not parse \"{}\" as {:?}",
-                                                value,
-                                                proto::v1::DataType::try_from(metadata.data_type)
-                                                    .unwrap()
-                                            );
-                                            continue;
-                                        }
-                                        let ts = Timestamp::from(SystemTime::now());
-                                        let datapoints = HashMap::from([(
-                                            path.to_string().clone(),
-                                            proto::v1::Datapoint {
-                                                timestamp: Some(ts),
-                                                value: Some(data_value.unwrap()),
-                                            },
-                                        )]);
-
-                                        match client.set_current_values(datapoints).await {
-                                            Ok(_) => {
-                                                cli::print_resp_ok(cmd)?;
-                                            }
-                                            Err(kuksa_common::ClientError::Status(status)) => {
-                                                cli::print_resp_err(cmd, &status)?
-                                            }
-                                            Err(kuksa_common::ClientError::Connection(msg)) => {
-                                                cli::print_error(cmd, msg)?
-                                            }
-                                            Err(kuksa_common::ClientError::Function(msg)) => {
-                                                cli::print_resp_err_fmt(
-                                                    cmd,
-                                                    format_args!("Error {msg:?}"),
-                                                )?;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            handle_publish_command(path, value, &mut client).await?
                         }
                         "subscribe" => {
                             interface.add_history_unique(line.clone());
