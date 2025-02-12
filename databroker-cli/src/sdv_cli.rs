@@ -66,7 +66,10 @@ fn print_usage(command: impl AsRef<str>) {
     }
 }
 
-async fn handle_get_command(paths: Vec<String>, client: &mut SDVClient) -> Result<(), Box<dyn std::error::Error>>{
+async fn handle_get_command(
+    paths: Vec<String>,
+    client: &mut SDVClient,
+) -> Result<(), Box<dyn std::error::Error>> {
     match client.get_datapoints(paths).await {
         Ok(datapoints) => {
             cli::print_resp_ok("get")?;
@@ -150,16 +153,16 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.get_command() {
         Some(cli::Commands::Get { paths }) => {
             return handle_get_command(paths, &mut client).await;
-        },
+        }
         Some(cli::Commands::Set { path: _, value: _ }) => {
             unimplemented!("The Set command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
-        },
+        }
         Some(cli::Commands::Publish { path: _, value: _ }) => {
             unimplemented!("The Publish command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
-        },
+        }
         Some(cli::Commands::Actuate { path: _, value: _ }) => {
             unimplemented!("The Actuate command is not implemented for sdv.databroker.v1 protocol because it is already deprecated.");
-        },
+        }
         None => {
             // No subcommand => run interactive client
             let version = match option_env!("CARGO_PKG_VERSION") {
