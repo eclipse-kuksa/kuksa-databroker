@@ -90,18 +90,21 @@ pub enum Commands {
         #[clap(value_name = "PATH")]
         paths: Vec<String>,
     },
+    /// Set a datapoint
     Set {
         #[clap(value_name = "PATH")]
         path: String,
         #[clap(value_name = "VALUE")]
         value: String,
     },
+    /// Publish a datapoint PATH VALUE
     Publish {
         #[clap(value_name = "PATH")]
         path: String,
         #[clap(value_name = "VALUE")]
         value: String,
     },
+    /// Request an actuation PATH VALUE
     Actuate {
         #[clap(value_name = "PATH")]
         path: String,
