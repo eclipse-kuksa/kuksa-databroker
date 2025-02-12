@@ -147,6 +147,7 @@ The quickest possible way to get Kuksa Databroker up and running.
 *[protocols](doc/protocol.md) for more information!*
 
 ### Reading and writing VSS data using the CLI (interactive)
+### Reading and writing VSS data using the CLI (interactive)
 
 1. Start the CLI in a container attached to the _kuksa_ bridge network and connect to the Databroker container:
 
@@ -213,6 +214,7 @@ The quickest possible way to get Kuksa Databroker up and running.
 
    ```console
    [publish]  OK
+   [publish]  OK
    ```
 
 1. Get the vehicle's current speed
@@ -236,7 +238,6 @@ Run the cli with:
 
 ### Reading and writing VSS data using the CLI (non-interactive)
 You can use the databroker-cli as non interactive client as well. If you call `help` on it then you get the available commands:
-
 ```sh
 Usage: databroker-cli [OPTIONS] [COMMAND]
 
@@ -269,7 +270,7 @@ exmaple invocation:
   docker run -it --rm --net=host ghcr.io/eclipse-kuksa/kuksa-databroker-cli:main --protocol kuksa.val.v1 publish Vehicle.Speed 12
   Using kuksa.val.v1
   [publish]  OK
-```
+```  
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
