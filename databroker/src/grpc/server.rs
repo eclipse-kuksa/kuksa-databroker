@@ -11,7 +11,7 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use std::{convert::TryFrom, future::Future, time::Duration};
+use std::{convert::TryFrom, future::Future};
 
 use futures::Stream;
 use tokio::{
@@ -183,8 +183,8 @@ where
     broker.start_housekeeping_task();
 
     let mut server = Server::builder()
-        .http2_keepalive_interval(Some(Duration::from_secs(10)))
-        .http2_keepalive_timeout(Some(Duration::from_secs(20)));
+        .http2_keepalive_interval(None)
+        .http2_keepalive_timeout(None);
 
     #[cfg(feature = "tls")]
     match server_tls {
