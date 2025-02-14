@@ -17,7 +17,7 @@ ENV CROSS_CONTAINER_IN_CONTAINER=true
 ENV TZ=Europe/Berlin
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN apt-get update -y
-RUN apt install software-properties-common build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev curl git libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev -y
+RUN apt install software-properties-common build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev curl git libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev pre-commit -y
 
 USER vscode
 RUN cargo install cross cargo-license cargo-cyclonedx
@@ -31,6 +31,7 @@ ENV PATH="${PYENV_ROOT}/shims:${PYENV_ROOT}/bin:${PATH}"
 ENV PYTHON_VERSION=3.12
 RUN pyenv install ${PYTHON_VERSION}
 RUN pyenv global ${PYTHON_VERSION}
+RUN pip install pre-commit
 
 # Fails due to gpg keyserver not accessible via corporate proxy
 # Moved to postStartCommand.sh for DevContainer

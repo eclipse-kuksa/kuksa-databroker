@@ -1,0 +1,7 @@
+asyncio
+grpcio
+protobuf
+pytest
+pytest-ordering
+pytest-asyncio
+websockets

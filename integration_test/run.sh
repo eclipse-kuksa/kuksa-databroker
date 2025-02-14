@@ -20,7 +20,7 @@ source .venv/bin/activate
 pip install -r "${SCRIPT_DIR}"/requirements.txt
 
 
-DATABROKER_IMAGE=${DATABROKER_IMAGE:-"ghcr.io/eclipse-kuksa/kuksa-databroker:0.4.0"}
+DATABROKER_IMAGE=${DATABROKER_IMAGE:-"ghcr.io/eclipse-kuksa/kuksa-databroker"}
 DATABROKER_ADDRESS=${DATABROKER_ADDRESS:-"127.0.0.1:55555"}
 CONTAINER_PLATFORM=${CONTAINER_PLATFORM:-"linux/amd64"}
 

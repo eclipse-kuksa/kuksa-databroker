@@ -8,12 +8,5 @@
 	"features": {
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {}
 	},
-	"postStartCommand": "bash .devcontainer/postStartCommand.sh",
-	"mounts": [
-		{
-			"target": "/var/run/docker.sock",
-			"source": "/var/run/docker.sock",
-			"type": "bind"
-	 	}
-	 ]
+	"postStartCommand": "bash .devcontainer/postStartCommand.sh"
 }
