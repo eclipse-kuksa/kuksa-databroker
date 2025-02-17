@@ -271,12 +271,12 @@ message PublishValueRequest {
 }
 
 message PublishValuesRequest {
-  uint64 command_id                 = 1; /// Unique request id for the stream that can be used to identify the command.
+  uint64 request_it                 = 1; /// Unique request id for the stream that can be used to identify the command.
   map<int32, Datapoint> data_points = 2;
 }
 
 message PublishValuesResponse {
-  uint64 command_id        = 1;
+  uint64 request_id        = 1;
   map<int32, Error> status = 2;
 }
 
@@ -285,6 +285,13 @@ message ProvideActuationRequest {
 }
 
 message ProvideActuationResponse {
+}
+
+message ProvideSensorRequest {
+  map<int32, SampleRate> signals_sample_rates = 1;
+}
+
+message ProvideSensorResponse {
 }
 
 message BatchActuateStreamRequest {
@@ -298,35 +305,36 @@ message BatchActuateStreamResponse {
 }
 
 message Filter {
-  int item_count     = 1;
-  int duration_ms    = 2;
-  int sample_rate_ms = 3;
+  // Duration of the active call. If it is not set, call will least for ever.
+  int32 duration_ms      = 1;
+  // Desired sample rate.
+  SampleRate sample_rate = 2;
+  should we add time_out in case provider took so long to provider the value?
 }
 
-message Start {
-  //Databroker create and manages command ids life, in case provider is down we send same start command id to continue the provider sending same data with filters
-  uint64 command_id              = 1;
-  Filter filter                  = 2;
-  repeated SignalID signals_list = 3;
-}
-
-message Stop {
-  uint64 command_id = 1;
-}
-
-message Command {
-  oneof action {
-    Start start = 1;
-    Stop stop   = 2;
+message FilterProvider {
+  oneof state {
+    // Used for GetValue method
+    bool oneshot_only = 1;
+    // Filter created on Databroker side upon Client request.
+    Filter filter     =  2;
   }
 }
 
-message SignalCommandRequest {
-  Command command = 1;
+message FilterRequest {
+  //Databroker sends filters to provider.
+  //In case provider is down databroker sends local filters stored to continue the provider sending same data with filters
+  request id=
+  map<int32, FilterProvider> filter_update = 1;
 }
 
-message SignalCommandResponse {
-  CommandError command_error = 1;
+message FilterResponse {
+  // Datapoint response if filter is oneshot_only -> Provider should store on local database all signal values.
+  request_id
+  oneof response {
+    Datapoint oneshot_only_value = 1;
+    FilterError filter_error     = 2;
+  }
 }
 
 message OpenProviderStreamRequest {
@@ -341,7 +349,7 @@ message OpenProviderStreamRequest {
     // Inform server of a sensor this provider provides.
     ProvideSensorRequest provide_sensor_request              = 4;
     // Start/stop response
-    SignalCommandResponse signal_command_response            = 5;
+    FilterResponse                filter_response            = 5;
   }
 }
 
@@ -355,8 +363,8 @@ message OpenProviderStreamResponse {
     BatchActuateStreamRequest batch_actuate_stream_request = 3;
     // Response to a provide sensor request.
     ProvideSensorResponse provide_sensor_response          = 4;
-    // Start/stop request
-    SignalCommandRequest signal_command_request            = 5;
+    // Filter request
+    FilterRequest filter_request                           = 5;
   }
 }
 

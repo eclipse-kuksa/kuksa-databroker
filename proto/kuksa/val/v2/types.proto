@@ -47,6 +47,10 @@ message Value {
   }
 }
 
+message SampleRate {
+  int32 value_ms = 1;
+}
+
 message SignalID {
   oneof signal {
     // Numeric identifier to the signal
@@ -120,7 +124,9 @@ message Metadata {
   Value allowed_values                 = 17; // Must be of array type
   Value min                            = 18;
   Value max                            = 19;
-
+  
+  // Sample rate at which its provider will publish the signal value.bool
+  SampleRate sample_rate               = 20;
 }
 
 // VSS Data type of a signal
