@@ -185,6 +185,19 @@ service VAL {
   //
   rpc OpenProviderStream(stream OpenProviderStreamRequest) returns (stream OpenProviderStreamResponse);
 
+  // Get the latest value of a signal
+  // If the signal exist but does not have a valid value
+  // a DataPoint where value is None shall be returned.
+  //
+  // Returns (GRPC error code):
+  //   NOT_FOUND if the requested signal doesn't exist
+  //   UNAUTHENTICATED if no credentials provided or credentials has expired
+  //   PERMISSION_DENIED if access is denied
+  //   INVALID_ARGUMENT if the request is empty or provided path is too long
+  //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
+  //
+  rpc GetProviderValue(GetValueRequest) returns (GetValueResponse);
+
   // Get server information
   rpc GetServerInfo(GetServerInfoRequest) returns (GetServerInfoResponse);
 }
@@ -309,32 +322,24 @@ message Filter {
   int32 duration_ms      = 1;
   // Desired sample rate.
   SampleRate sample_rate = 2;
-  should we add time_out in case provider took so long to provider the value?
 }
 
-message FilterProvider {
-  oneof state {
-    // Used for GetValue method
-    bool oneshot_only = 1;
-    // Filter created on Databroker side upon Client request.
-    Filter filter     =  2;
-  }
+message UpdateFilterRequest {
+  // Databroker sends filters to provider.
+  // In case provider restarts, databroker will send local filters stored 
+  // to continue the provider sending same signals and same filter.
+  map<int32, Filter> filters_update = 1;
 }
 
-message FilterRequest {
-  //Databroker sends filters to provider.
-  //In case provider is down databroker sends local filters stored to continue the provider sending same data with filters
-  request id=
-  map<int32, FilterProvider> filter_update = 1;
+enum FilterError {
+  FILTER_ERROR_CODE_UNSPECIFIED   = 0;
+  FILTER_ERROR_CODE_OK            = 1;
+  FILTER_ERROR_CODE_NETWORK_ERROR = 2;
+  FILTER_ERROR_CODE_OVERLOAD      = 3;
 }
 
-message FilterResponse {
-  // Datapoint response if filter is oneshot_only -> Provider should store on local database all signal values.
-  request_id
-  oneof response {
-    Datapoint oneshot_only_value = 1;
-    FilterError filter_error     = 2;
-  }
+message UpdateFilterResponse {
+  FilterError filter_error = 1;
 }
 
 message OpenProviderStreamRequest {
@@ -348,8 +353,8 @@ message OpenProviderStreamRequest {
     BatchActuateStreamResponse batch_actuate_stream_response = 3;
     // Inform server of a sensor this provider provides.
     ProvideSensorRequest provide_sensor_request              = 4;
-    // Start/stop response
-    FilterResponse                filter_response            = 5;
+    // Update filter response
+    UpdateFilterResponse update_filter_response              = 5;
   }
 }
 
@@ -364,7 +369,7 @@ message OpenProviderStreamResponse {
     // Response to a provide sensor request.
     ProvideSensorResponse provide_sensor_response          = 4;
     // Filter request
-    FilterRequest filter_request                           = 5;
+    UpdateFilterRequest update_filter_request              = 5;
   }
 }
 
