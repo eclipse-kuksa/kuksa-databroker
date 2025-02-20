@@ -31,6 +31,7 @@ service VAL {
   //   PERMISSION_DENIED if access is denied
   //   INVALID_ARGUMENT if the request is empty or provided path is too long
   //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
+  //   UNAVAILABLE if there is no provider currently providing the signal
   //
   rpc GetValue(GetValueRequest) returns (GetValueResponse);
 
@@ -44,6 +45,7 @@ service VAL {
   //   PERMISSION_DENIED if access is denied for any of the requested signals.
   //   INVALID_ARGUMENT if the request is empty or provided path is too long
   //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
+  //   UNAVAILABLE if there is no provider currently providing the signals
   //
   rpc GetValues(GetValuesRequest) returns (GetValuesResponse);
 
@@ -57,6 +59,7 @@ service VAL {
   //             MAX_REQUEST_PATH_LENGTH: usize = 1000;
   //       - if buffer_size exceeds the maximum permitted
   //             MAX_BUFFER_SIZE: usize = 1000;
+  //   UNAVAILABLE if there is no provider currently providing the signal
   //
   // When subscribing, Databroker shall immediately return the value for all
   // subscribed entries.
@@ -77,6 +80,7 @@ service VAL {
   //             MAX_REQUEST_PATH_LENGTH: usize = 1000;
   //       - if buffer_size exceeds the maximum permitted
   //             MAX_BUFFER_SIZE: usize = 1000;
+  //   UNAVAILABLE if there is no provider currently providing the signal
   //
   // When subscribing, Databroker shall immediately return the value for all
   // subscribed entries.
@@ -131,6 +135,7 @@ service VAL {
   //   NOT_FOUND if the specified root branch does not exist.
   //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   INVALID_ARGUMENT if the provided path or wildcard is wrong.
+  //   UNAVAILABLE if there is no provider currently providing the signal
   //
   rpc ListMetadata(ListMetadataRequest) returns (ListMetadataResponse);
 
@@ -300,11 +305,11 @@ message ProvideActuationRequest {
 message ProvideActuationResponse {
 }
 
-message ProvideSensorRequest {
+message ProvideSignalRequest {
   map<int32, SampleRate> signals_sample_rates = 1;
 }
 
-message ProvideSensorResponse {
+message ProvideSignalResponse {
 }
 
 message BatchActuateStreamRequest {
@@ -317,27 +322,14 @@ message BatchActuateStreamResponse {
   Error error = 2;
 }
 
-message Filter {
-  // Duration of the active call. If it is not set, call will least for ever.
-  int32 duration_ms      = 1;
-  // Desired sample rate.
-  SampleRate sample_rate = 2;
-}
-
 message UpdateFilterRequest {
   // Databroker sends filters to provider.
   // In case provider restarts, databroker will send local filters stored 
-  // to continue the provider sending same signals and same filter.
+  // to continue the provider sending same signals with same filter.
   map<int32, Filter> filters_update = 1;
 }
 
-enum FilterError {
-  FILTER_ERROR_CODE_UNSPECIFIED   = 0;
-  FILTER_ERROR_CODE_OK            = 1;
-  FILTER_ERROR_CODE_NETWORK_ERROR = 2;
-  FILTER_ERROR_CODE_OVERLOAD      = 3;
-}
-
+// Only returned if there is a filter error on provider side
 message UpdateFilterResponse {
   FilterError filter_error = 1;
 }
@@ -351,8 +343,8 @@ message OpenProviderStreamRequest {
     // Sent to acknowledge the acceptance of a batch actuate
     // request.
     BatchActuateStreamResponse batch_actuate_stream_response = 3;
-    // Inform server of a sensor this provider provides.
-    ProvideSensorRequest provide_sensor_request              = 4;
+    // Inform server of a signal this provider provides.
+    ProvideSignalRequest provide_signal_request              = 4;
     // Update filter response
     UpdateFilterResponse update_filter_response              = 5;
   }
@@ -367,7 +359,7 @@ message OpenProviderStreamResponse {
     // Send a batch actuate request to a provider.
     BatchActuateStreamRequest batch_actuate_stream_request = 3;
     // Response to a provide sensor request.
-    ProvideSensorResponse provide_sensor_response          = 4;
+    ProvideSignalResponse provide_signal_response          = 4;
     // Filter request
     UpdateFilterRequest update_filter_request              = 5;
   }

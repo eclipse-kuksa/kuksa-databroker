@@ -51,6 +51,20 @@ message SampleRate {
   int32 value_ms = 1;
 }
 
+enum FilterError {
+  FILTER_ERROR_CODE_UNSPECIFIED   = 0;
+  FILTER_ERROR_CODE_OK            = 1;
+  FILTER_ERROR_CODE_NETWORK_ERROR = 2;
+  FILTER_ERROR_CODE_OVERLOAD      = 3;
+}
+
+message Filter {
+  // Duration of the active call. If it is not set, call will least for ever.
+  int32 duration_ms      = 1;
+  // Desired sample rate.
+  SampleRate sample_rate = 2;
+}
+
 message SignalID {
   oneof signal {
     // Numeric identifier to the signal
