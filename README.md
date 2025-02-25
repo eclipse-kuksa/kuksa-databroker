@@ -146,7 +146,7 @@ The quickest possible way to get Kuksa Databroker up and running.
 *Note that not all APIs are enabled by default, see [user guide](doc/user_guide.md) and*
 *[protocols](doc/protocol.md) for more information!*
 
-### Reading and writing VSS data using the CLI
+### Reading and writing VSS data using the CLI (interactive)
 
 1. Start the CLI in a container attached to the _kuksa_ bridge network and connect to the Databroker container:
 
@@ -212,7 +212,7 @@ The quickest possible way to get Kuksa Databroker up and running.
    ```
 
    ```console
-   [set]  OK
+   [publish]  OK
    ```
 
 1. Get the vehicle's current speed
@@ -232,6 +232,44 @@ Run the cli with:
    ```sh
    quit
    ```
+
+
+### Reading and writing VSS data using the CLI (non-interactive)
+You can use the databroker-cli as non interactive client as well. If you call `help` on it then you get the available commands:
+
+```sh
+Usage: databroker-cli [OPTIONS] [COMMAND]
+
+Commands:
+  get      Get one or more datapoint(s)
+  set      Set a datapoint
+  publish  Publish a datapoint PATH VALUE
+  actuate  Request an actuation PATH VALUE
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --server <SERVER>      Server to connect to [default: http://127.0.0.1:55555]
+      --token-file <FILE>    File containing access token
+      --ca-cert <CERT>       CA certificate used to verify server certificate
+  -p, --protocol <PROTOCOL>  [default: kuksa.val.v1] [possible values: kuksa.val.v1, sdv.databroker.v1]
+  -h, --help                 Print help
+  -V, --version              Print version
+```
+support of the commands for non-interactive mode for kuksa.val.v1 and sdv.databroker.v1:
+| Operation                          | sdv.databroker.v1 | kuksa.val.v1 |
+|------------------------------------|--------------------|---------------|
+| `publish` to Databroker             | No                | Yes           |
+| `set` datapoint in Databroker          | No                | No           |
+| `actuate` request to Databroker             | No                 | Yes           |
+| `get` datapoint from Databroker | Yes                | Yes            |
+
+exmaple invocation:
+
+```sh
+  docker run -it --rm --net=host ghcr.io/eclipse-kuksa/kuksa-databroker-cli:main --protocol kuksa.val.v1 publish Vehicle.Speed 12
+  Using kuksa.val.v1
+  [publish]  OK
+```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
