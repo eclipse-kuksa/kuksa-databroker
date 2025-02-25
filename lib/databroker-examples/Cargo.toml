@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+databroker-proto = { workspace = true }
 kuksa-common = { path = "../common"}
 kuksa = { path = "../kuksa"}
 kuksa-sdv = { path = "../sdv"}
 tokio = {version = "1.17.0", features = ["full"]}
 tokio-stream = "0.1.8"
+tonic = { workspace = true, features = ["transport", "channel"] }
+prost-types = "0.12.6"

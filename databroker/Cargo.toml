@@ -104,3 +104,6 @@ tonic-mock = "0.3.0"
 [[test]]
 name = "read_write_values"
 harness = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)'] }

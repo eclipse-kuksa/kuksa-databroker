@@ -1,0 +1,30 @@
+[package]
+name = "kuksa_val_v2"
+version = "0.6.0-dev.0"
+authors = ["Eclipse KUKSA Project"]
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+kuksa-common = { path = "../common"}
+databroker-proto = { workspace = true }
+tonic = { workspace = true, features = ["transport", "channel"] }
+tokio = { workspace = true, features = [
+    "macros",
+] }
+tokio-stream = { workspace = true, features = ["sync"] }
+http = "0.2.8"
+prost-types = "0.12.6"
+test-tag = "0.1.4"
+prost = "0.11"
+
+[lib]
+name = "kuksa_val_v2"
+crate-type = ["lib"]
+path = "src/lib.rs"
+
+[features]
+tls = ["tonic/tls"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)'] }
