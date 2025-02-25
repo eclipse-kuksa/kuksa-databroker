@@ -100,6 +100,16 @@ jobs:
         run: |
           cd lib
           cargo build
+      - name: "Run Docker Container of Databroker in detached mode"
+        run: docker run --pull=always --rm --publish 55556:55556/tcp --detach --name databroker ghcr.io/eclipse-kuksa/kuksa-databroker:main --port 55556 --insecure
+        shell: bash
+      - name: Run cargo tests
+        working-directory: lib
+        run: cargo test
+      - name: "Stop Docker Container of Databroker"
+        if: always()
+        run: docker stop databroker
+        shell: bash
 
   test:
     name: Run unit tests
