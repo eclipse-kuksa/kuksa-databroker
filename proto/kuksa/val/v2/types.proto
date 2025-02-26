@@ -139,8 +139,8 @@ message Metadata {
   Value min                            = 18;
   Value max                            = 19;
   
-  // Sample rate at which its provider will publish the signal value.bool
-  SampleRate sample_rate               = 20;
+  // Maximum sample interval at which its provider will publish the signal value
+  SampleInterval sample_interval       = 20;
 }
 
 // VSS Data type of a signal

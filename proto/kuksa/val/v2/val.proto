@@ -135,7 +135,7 @@ service VAL {
   //   NOT_FOUND if the specified root branch does not exist.
   //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   INVALID_ARGUMENT if the provided path or wildcard is wrong.
-  //   UNAVAILABLE if there is no provider currently providing the signal
+  //   UNAVAILABLE if there is no provider currently providing the signal -> do we want this error for list metadata?
   //
   rpc ListMetadata(ListMetadataRequest) returns (ListMetadataResponse);
 
