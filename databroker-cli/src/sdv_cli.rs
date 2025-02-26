@@ -12,8 +12,8 @@
 ********************************************************************************/
 
 use databroker_proto::sdv::databroker as proto;
-use kuksa_sdv::*;
 use kuksa_common::ClientTrait;
+use kuksa_sdv::*;
 
 use prost_types::Timestamp;
 use tokio_stream::StreamExt;

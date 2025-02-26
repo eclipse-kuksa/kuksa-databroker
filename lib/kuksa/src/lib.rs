@@ -112,11 +112,11 @@ impl kuksa_common::ClientTrait for KuksaClient {
     type DatapointType = HashMap<String, proto::v1::Datapoint>;
     type PathType = Vec<String>;
     type SubscribeType = Self::PathType;
-    type PublishResponseType = (); 
+    type PublishResponseType = ();
     type GetResponseType = Vec<DataEntry>;
-    type SubscribeResponseType = tonic::Streaming<proto::v1::SubscribeResponse>; 
-    type ProvideResponseType = tonic::Streaming<proto::v1::SubscribeResponse>; 
-    type ActuateResponseType = (); 
+    type SubscribeResponseType = tonic::Streaming<proto::v1::SubscribeResponse>;
+    type ProvideResponseType = tonic::Streaming<proto::v1::SubscribeResponse>;
+    type ActuateResponseType = ();
     type MetadataResponseType = Vec<DataEntry>;
 
     async fn update_datapoints(
