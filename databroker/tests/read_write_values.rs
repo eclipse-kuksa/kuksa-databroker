@@ -17,6 +17,7 @@ use std::{collections::HashMap, future, time::SystemTime, vec};
 use cucumber::{cli, gherkin::Step, given, then, when, writer, World as _};
 use databroker::broker;
 use databroker_proto::kuksa::val::v1::{datapoint::Value, DataType, Datapoint};
+use kuksa_common::ClientTrait;
 use tracing::debug;
 use world::{DataBrokerWorld, ValueType};
 
