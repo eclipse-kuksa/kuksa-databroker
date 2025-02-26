@@ -190,19 +190,6 @@ service VAL {
   //
   rpc OpenProviderStream(stream OpenProviderStreamRequest) returns (stream OpenProviderStreamResponse);
 
-  // Get the latest value of a signal
-  // If the signal exist but does not have a valid value
-  // a DataPoint where value is None shall be returned.
-  //
-  // Returns (GRPC error code):
-  //   NOT_FOUND if the requested signal doesn't exist
-  //   UNAUTHENTICATED if no credentials provided or credentials has expired
-  //   PERMISSION_DENIED if access is denied
-  //   INVALID_ARGUMENT if the request is empty or provided path is too long
-  //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
-  //
-  rpc GetProviderValue(GetValueRequest) returns (GetValueResponse);
-
   // Get server information
   rpc GetServerInfo(GetServerInfoRequest) returns (GetServerInfoResponse);
 }
@@ -306,7 +293,7 @@ message ProvideActuationResponse {
 }
 
 message ProvideSignalRequest {
-  map<int32, SampleRate> signals_sample_rates = 1;
+  map<int32, SampleInterval> signals_sample_intervals = 1;
 }
 
 message ProvideSignalResponse {
@@ -334,6 +321,16 @@ message UpdateFilterResponse {
   FilterError filter_error = 1;
 }
 
+message GetValueStreamRequest {
+  uint64 request_it       = 1; /// Unique request id for the stream that can be used to identify the request.
+  GetValueRequest request = 2;
+}
+
+message GetValueStreamResponse {
+  uint64 request_it         = 1; /// Unique request id for the stream that can be used to identify the response.
+  GetValueResponse response = 2;
+}
+
 message OpenProviderStreamRequest {
   oneof action {
     // Inform server of an actuator this provider provides.
@@ -347,6 +344,8 @@ message OpenProviderStreamRequest {
     ProvideSignalRequest provide_signal_request              = 4;
     // Update filter response
     UpdateFilterResponse update_filter_response              = 5;
+    // GetValue response
+    GetValueStreamResponse get_value_stream_response         = 6;
   }
 }
 
@@ -362,6 +361,8 @@ message OpenProviderStreamResponse {
     ProvideSignalResponse provide_signal_response          = 4;
     // Filter request
     UpdateFilterRequest update_filter_request              = 5;
+    // GetValue request from client forwarded to provider
+    GetValueStreamRequest get_value_stream_request         = 6;
   }
 }
 

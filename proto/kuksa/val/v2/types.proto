@@ -47,8 +47,8 @@ message Value {
   }
 }
 
-message SampleRate {
-  int32 value_ms = 1;
+message SampleInterval {
+  int32 max_interval_ms = 1;
 }
 
 enum FilterError {
@@ -60,9 +60,9 @@ enum FilterError {
 
 message Filter {
   // Duration of the active call. If it is not set, call will least for ever.
-  int32 duration_ms      = 1;
-  // Desired sample rate.
-  SampleRate sample_rate = 2;
+  int32 duration_ms                  = 1;
+  // Max desired sample update interval.
+  SampleInterval max_sample_interval = 2;
 }
 
 message SignalID {
