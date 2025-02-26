@@ -676,47 +676,45 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
                             if paths.is_empty() {
                                 cli::print_info("If you want to list metadata of signals, use `metadata PATTERN`")?;
-                            } else {
-                                if let Some(entries) =
-                                    handle_get_metadata(paths, &mut client).await.unwrap()
-                                {
-                                    cli::print_resp_ok(cmd)?;
-                                    if !entries.is_empty() {
-                                        let max_len_path =
-                                            entries.iter().fold(0, |mut max_len, item| {
-                                                if item.path.len() > max_len {
-                                                    max_len = item.path.len();
-                                                }
-                                                max_len
-                                            });
-
-                                        cli::print_info(format!(
-                                            "{:<max_len_path$} {:<10} {:<9}",
-                                            "Path", "Entry type", "Data type"
-                                        ))?;
-
-                                        for entry in &entries {
-                                            if let Some(entry_metadata) = &entry.metadata {
-                                                println!(
-                                                    "{:<max_len_path$} {:<10} {:<9}",
-                                                    entry.path,
-                                                    DisplayEntryType::from(
-                                                        proto::v1::EntryType::try_from(
-                                                            entry_metadata.entry_type
-                                                        )
-                                                        .ok()
-                                                    ),
-                                                    DisplayDataType::from(
-                                                        proto::v1::DataType::try_from(
-                                                            entry_metadata.data_type
-                                                        )
-                                                        .ok()
-                                                    ),
-                                                );
-                                            } else {
-                                                let name = entry.path.clone();
-                                                println!("No entry metadata for {name}");
+                            } else if let Some(entries) =
+                                handle_get_metadata(paths, &mut client).await.unwrap()
+                            {
+                                cli::print_resp_ok(cmd)?;
+                                if !entries.is_empty() {
+                                    let max_len_path =
+                                        entries.iter().fold(0, |mut max_len, item| {
+                                            if item.path.len() > max_len {
+                                                max_len = item.path.len();
                                             }
+                                            max_len
+                                        });
+
+                                    cli::print_info(format!(
+                                        "{:<max_len_path$} {:<10} {:<9}",
+                                        "Path", "Entry type", "Data type"
+                                    ))?;
+
+                                    for entry in &entries {
+                                        if let Some(entry_metadata) = &entry.metadata {
+                                            println!(
+                                                "{:<max_len_path$} {:<10} {:<9}",
+                                                entry.path,
+                                                DisplayEntryType::from(
+                                                    proto::v1::EntryType::try_from(
+                                                        entry_metadata.entry_type
+                                                    )
+                                                    .ok()
+                                                ),
+                                                DisplayDataType::from(
+                                                    proto::v1::DataType::try_from(
+                                                        entry_metadata.data_type
+                                                    )
+                                                    .ok()
+                                                ),
+                                            );
+                                        } else {
+                                            let name = entry.path.clone();
+                                            println!("No entry metadata for {name}");
                                         }
                                     }
                                 }

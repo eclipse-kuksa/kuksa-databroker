@@ -35,17 +35,20 @@ impl kuksa_common::ClientTrait for SDVClient {
     type DatapointType = HashMap<String, proto::v1::Datapoint>;
     type PathType = Vec<String>;
     type SubscribeType = String;
-    type PublishResponseType = proto::v1::UpdateDatapointsReply; 
+    type PublishResponseType = proto::v1::UpdateDatapointsReply;
     type GetResponseType = HashMap<std::string::String, proto::v1::Datapoint>;
-    type SubscribeResponseType = tonic::Streaming<proto::v1::SubscribeReply>; 
-    type ProvideResponseType = (); 
-    type ActuateResponseType = proto::v1::SetDatapointsReply; 
+    type SubscribeResponseType = tonic::Streaming<proto::v1::SubscribeReply>;
+    type ProvideResponseType = ();
+    type ActuateResponseType = proto::v1::SetDatapointsReply;
     type MetadataResponseType = Vec<proto::v1::Metadata>;
     async fn update_datapoints(
         &mut self,
         datapoints: Self::DatapointType,
     ) -> Result<Self::PublishResponseType, ClientError> {
-        let metadata = self.get_metadata(datapoints.keys().cloned().collect()).await.unwrap();
+        let metadata = self
+            .get_metadata(datapoints.keys().cloned().collect())
+            .await
+            .unwrap();
         let id_datapoints: HashMap<i32, proto::v1::Datapoint> = metadata
             .into_iter()
             .map(|meta| meta.id)
@@ -57,7 +60,9 @@ impl kuksa_common::ClientTrait for SDVClient {
             self.basic_client.get_auth_interceptor(),
         );
 
-        let request = tonic::Request::new(proto::v1::UpdateDatapointsRequest { datapoints: id_datapoints });
+        let request = tonic::Request::new(proto::v1::UpdateDatapointsRequest {
+            datapoints: id_datapoints,
+        });
         match client.update_datapoints(request).await {
             Ok(response) => Ok(response.into_inner()),
             Err(err) => Err(ClientError::Status(err)),
@@ -86,9 +91,7 @@ impl kuksa_common::ClientTrait for SDVClient {
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
         );
-        let args = tonic::Request::new(proto::v1::GetDatapointsRequest {
-            datapoints: paths,
-        });
+        let args = tonic::Request::new(proto::v1::GetDatapointsRequest { datapoints: paths });
         match client.get_datapoints(args).await {
             Ok(response) => {
                 let message = response.into_inner();
@@ -119,7 +122,7 @@ impl kuksa_common::ClientTrait for SDVClient {
 
     async fn provide_actuation(
         &mut self,
-       _paths: Self::PathType,
+        _paths: Self::PathType,
     ) -> Result<Self::ProvideResponseType, ClientError> {
         unimplemented!("No function in the RUST SDK sdv.databroker.v1 for getting target values")
     }
