@@ -13,6 +13,7 @@
 
 use databroker_proto::sdv::databroker as proto;
 use kuksa_sdv::*;
+use kuksa_common::ClientTrait;
 
 use prost_types::Timestamp;
 use tokio_stream::StreamExt;
@@ -451,7 +452,7 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 let ts = Timestamp::from(SystemTime::now());
                                 let datapoints = HashMap::from([(
-                                    metadata.id,
+                                    metadata.name.clone(),
                                     proto::v1::Datapoint {
                                         timestamp: Some(ts),
                                         value: Some(data_value.unwrap()),

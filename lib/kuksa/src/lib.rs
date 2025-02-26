@@ -13,6 +13,7 @@
 
 use http::Uri;
 use std::collections::HashMap;
+use tonic::async_trait;
 
 pub use databroker_proto::kuksa::val::{self as proto, v1::DataEntry};
 
@@ -104,83 +105,31 @@ impl KuksaClient {
             Err(err) => Err(ClientError::Status(err)),
         }
     }
+}
 
-    pub async fn get_metadata(&mut self, paths: Vec<&str>) -> Result<Vec<DataEntry>, ClientError> {
-        let mut metadata_result = Vec::new();
+#[async_trait]
+impl kuksa_common::ClientTrait for KuksaClient {
+    type DatapointType = HashMap<String, proto::v1::Datapoint>;
+    type PathType = Vec<String>;
+    type SubscribeType = Self::PathType;
+    type PublishResponseType = (); 
+    type GetResponseType = Vec<DataEntry>;
+    type SubscribeResponseType = tonic::Streaming<proto::v1::SubscribeResponse>; 
+    type ProvideResponseType = tonic::Streaming<proto::v1::SubscribeResponse>; 
+    type ActuateResponseType = (); 
+    type MetadataResponseType = Vec<DataEntry>;
 
-        for path in paths {
-            match self
-                .get(
-                    path,
-                    proto::v1::View::Metadata,
-                    vec![proto::v1::Field::Metadata.into()],
-                )
-                .await
-            {
-                Ok(mut entry) => metadata_result.append(&mut entry),
-                Err(err) => return Err(err),
-            }
-        }
-
-        Ok(metadata_result)
+    async fn update_datapoints(
+        &mut self,
+        datapoints: Self::DatapointType,
+    ) -> Result<Self::PublishResponseType, ClientError> {
+        self.set_current_values(datapoints).await
     }
 
-    pub async fn get_current_values(
+    async fn set_current_values(
         &mut self,
-        paths: Vec<String>,
-    ) -> Result<Vec<DataEntry>, ClientError> {
-        let mut get_result = Vec::new();
-
-        for path in paths {
-            match self
-                .get(
-                    &path,
-                    proto::v1::View::CurrentValue,
-                    vec![
-                        proto::v1::Field::Value.into(),
-                        proto::v1::Field::Metadata.into(),
-                    ],
-                )
-                .await
-            {
-                Ok(mut entry) => get_result.append(&mut entry),
-                Err(err) => return Err(err),
-            }
-        }
-
-        Ok(get_result)
-    }
-
-    pub async fn get_target_values(
-        &mut self,
-        paths: Vec<String>,
-    ) -> Result<Vec<DataEntry>, ClientError> {
-        let mut get_result = Vec::new();
-
-        for path in paths {
-            match self
-                .get(
-                    &path,
-                    proto::v1::View::TargetValue,
-                    vec![
-                        proto::v1::Field::ActuatorTarget.into(),
-                        proto::v1::Field::Metadata.into(),
-                    ],
-                )
-                .await
-            {
-                Ok(mut entry) => get_result.append(&mut entry),
-                Err(err) => return Err(err),
-            }
-        }
-
-        Ok(get_result)
-    }
-
-    pub async fn set_current_values(
-        &mut self,
-        datapoints: HashMap<String, proto::v1::Datapoint>,
-    ) -> Result<(), ClientError> {
+        datapoints: Self::DatapointType,
+    ) -> Result<Self::PublishResponseType, ClientError> {
         for (path, datapoint) in datapoints {
             match self
                 .set(
@@ -207,10 +156,157 @@ impl KuksaClient {
         Ok(())
     }
 
-    pub async fn set_target_values(
+    async fn publish(
         &mut self,
-        datapoints: HashMap<String, proto::v1::Datapoint>,
-    ) -> Result<(), ClientError> {
+        datapoints: Self::DatapointType,
+    ) -> Result<Self::PublishResponseType, ClientError> {
+        self.set_current_values(datapoints).await
+    }
+
+    async fn get_datapoints(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError> {
+        self.get_current_values(paths).await
+    }
+
+    async fn get_current_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError> {
+        let mut get_result = Vec::new();
+
+        for path in paths {
+            match self
+                .get(
+                    &path,
+                    proto::v1::View::CurrentValue,
+                    vec![
+                        proto::v1::Field::Value.into(),
+                        proto::v1::Field::Metadata.into(),
+                    ],
+                )
+                .await
+            {
+                Ok(mut entry) => get_result.append(&mut entry),
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(get_result)
+    }
+
+    async fn get(&mut self, paths: Self::PathType) -> Result<Self::GetResponseType, ClientError> {
+        // Implement the logic to get values
+        self.get_current_values(paths).await
+    }
+
+    async fn subscribe_target_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::ProvideResponseType, ClientError> {
+        let mut client = proto::v1::val_client::ValClient::with_interceptor(
+            self.basic_client.get_channel().await?.clone(),
+            self.basic_client.get_auth_interceptor(),
+        );
+        let mut entries = Vec::new();
+        for path in paths {
+            entries.push(proto::v1::SubscribeEntry {
+                path: path.to_string(),
+                view: proto::v1::View::TargetValue.into(),
+                fields: vec![proto::v1::Field::ActuatorTarget.into()],
+            })
+        }
+
+        let req = proto::v1::SubscribeRequest { entries };
+
+        match client.subscribe(req).await {
+            Ok(response) => Ok(response.into_inner()),
+            Err(err) => Err(ClientError::Status(err)),
+        }
+    }
+
+    async fn provide_actuation(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::ProvideResponseType, ClientError> {
+        println!("Actuation concept has changed with kuksa.val.v2 only supported by it! Defaulting to subscribing to target values.");
+        self.subscribe_target_values(paths).await
+    }
+
+    async fn get_target_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError> {
+        let mut get_result = Vec::new();
+
+        for path in paths {
+            match self
+                .get(
+                    &path,
+                    proto::v1::View::TargetValue,
+                    vec![
+                        proto::v1::Field::ActuatorTarget.into(),
+                        proto::v1::Field::Metadata.into(),
+                    ],
+                )
+                .await
+            {
+                Ok(mut entry) => get_result.append(&mut entry),
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(get_result)
+    }
+
+    async fn subscribe_current_values(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError> {
+        let mut client = proto::v1::val_client::ValClient::with_interceptor(
+            self.basic_client.get_channel().await?.clone(),
+            self.basic_client.get_auth_interceptor(),
+        );
+
+        let mut entries = Vec::new();
+        for path in paths {
+            entries.push(proto::v1::SubscribeEntry {
+                path: path.to_string(),
+                view: proto::v1::View::CurrentValue.into(),
+                fields: vec![
+                    proto::v1::Field::Value.into(),
+                    proto::v1::Field::Metadata.into(),
+                ],
+            })
+        }
+
+        let req = proto::v1::SubscribeRequest { entries };
+
+        match client.subscribe(req).await {
+            Ok(response) => Ok(response.into_inner()),
+            Err(err) => Err(ClientError::Status(err)),
+        }
+    }
+
+    async fn subscribe(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError> {
+        self.subscribe_current_values(paths).await
+    }
+
+    async fn set_datapoints(
+        &mut self,
+        datapoints: Self::DatapointType,
+    ) -> Result<Self::ActuateResponseType, ClientError> {
+        self.set_target_values(datapoints).await
+    }
+
+    async fn set_target_values(
+        &mut self,
+        datapoints: Self::DatapointType,
+    ) -> Result<Self::ActuateResponseType, ClientError> {
         for (path, datapoint) in datapoints {
             match self
                 .set(
@@ -237,120 +333,34 @@ impl KuksaClient {
         Ok(())
     }
 
-    pub async fn set_metadata(
+    async fn actuate(
         &mut self,
-        metadatas: HashMap<String, proto::v1::Metadata>,
-    ) -> Result<(), ClientError> {
-        for (path, metadata) in metadatas {
+        datapoints: Self::DatapointType,
+    ) -> Result<Self::ActuateResponseType, ClientError> {
+        println!("Actuation concept has changed with kuksa.val.v2 only supported by it! Defaulting to setting target values.");
+        self.set_target_values(datapoints).await
+    }
+
+    async fn get_metadata(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::MetadataResponseType, ClientError> {
+        let mut metadata_result = Vec::new();
+
+        for path in paths {
             match self
-                .set(
-                    proto::v1::DataEntry {
-                        path: path.clone(),
-                        value: None,
-                        actuator_target: None,
-                        metadata: Some(metadata),
-                    },
-                    vec![
-                        proto::v1::Field::Metadata.into(),
-                        proto::v1::Field::Path.into(),
-                    ],
+                .get(
+                    &path,
+                    proto::v1::View::Metadata,
+                    vec![proto::v1::Field::Metadata.into()],
                 )
                 .await
             {
-                Ok(_) => {
-                    continue;
-                }
+                Ok(mut entry) => metadata_result.append(&mut entry),
                 Err(err) => return Err(err),
             }
         }
 
-        Ok(())
-    }
-
-    pub async fn subscribe_current_values(
-        &mut self,
-        paths: Vec<&str>,
-    ) -> Result<tonic::Streaming<proto::v1::SubscribeResponse>, ClientError> {
-        let mut client = proto::v1::val_client::ValClient::with_interceptor(
-            self.basic_client.get_channel().await?.clone(),
-            self.basic_client.get_auth_interceptor(),
-        );
-
-        let mut entries = Vec::new();
-        for path in paths {
-            entries.push(proto::v1::SubscribeEntry {
-                path: path.to_string(),
-                view: proto::v1::View::CurrentValue.into(),
-                fields: vec![
-                    proto::v1::Field::Value.into(),
-                    proto::v1::Field::Metadata.into(),
-                ],
-            })
-        }
-
-        let req = proto::v1::SubscribeRequest { entries };
-
-        match client.subscribe(req).await {
-            Ok(response) => Ok(response.into_inner()),
-            Err(err) => Err(ClientError::Status(err)),
-        }
-    }
-
-    //masking subscribe curent values with subscribe due to plugability
-    pub async fn subscribe(
-        &mut self,
-        paths: Vec<&str>,
-    ) -> Result<tonic::Streaming<proto::v1::SubscribeResponse>, ClientError> {
-        self.subscribe_current_values(paths).await
-    }
-
-    pub async fn subscribe_target_values(
-        &mut self,
-        paths: Vec<&str>,
-    ) -> Result<tonic::Streaming<proto::v1::SubscribeResponse>, ClientError> {
-        let mut client = proto::v1::val_client::ValClient::with_interceptor(
-            self.basic_client.get_channel().await?.clone(),
-            self.basic_client.get_auth_interceptor(),
-        );
-        let mut entries = Vec::new();
-        for path in paths {
-            entries.push(proto::v1::SubscribeEntry {
-                path: path.to_string(),
-                view: proto::v1::View::TargetValue.into(),
-                fields: vec![proto::v1::Field::ActuatorTarget.into()],
-            })
-        }
-
-        let req = proto::v1::SubscribeRequest { entries };
-
-        match client.subscribe(req).await {
-            Ok(response) => Ok(response.into_inner()),
-            Err(err) => Err(ClientError::Status(err)),
-        }
-    }
-
-    pub async fn subscribe_metadata(
-        &mut self,
-        paths: Vec<String>,
-    ) -> Result<tonic::Streaming<proto::v1::SubscribeResponse>, ClientError> {
-        let mut client = proto::v1::val_client::ValClient::with_interceptor(
-            self.basic_client.get_channel().await?.clone(),
-            self.basic_client.get_auth_interceptor(),
-        );
-        let mut entries = Vec::new();
-        for path in paths {
-            entries.push(proto::v1::SubscribeEntry {
-                path: path.to_string(),
-                view: proto::v1::View::Metadata.into(),
-                fields: vec![proto::v1::Field::Metadata.into()],
-            })
-        }
-
-        let req = proto::v1::SubscribeRequest { entries };
-
-        match client.subscribe(req).await {
-            Ok(response) => Ok(response.into_inner()),
-            Err(err) => Err(ClientError::Status(err)),
-        }
+        Ok(metadata_result)
     }
 }
