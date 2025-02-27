@@ -109,7 +109,8 @@ impl KuksaClient {
 
 #[async_trait]
 impl kuksa_common::ClientTrait for KuksaClient {
-    type DatapointType = HashMap<String, proto::v1::Datapoint>;
+    type SensorUpdateType = HashMap<String, proto::v1::Datapoint>;
+    type UpdateActuationType = HashMap<String, proto::v1::Datapoint>;
     type PathType = Vec<String>;
     type SubscribeType = Self::PathType;
     type PublishResponseType = ();
@@ -121,14 +122,14 @@ impl kuksa_common::ClientTrait for KuksaClient {
 
     async fn update_datapoints(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError> {
         self.set_current_values(datapoints).await
     }
 
     async fn set_current_values(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError> {
         for (path, datapoint) in datapoints {
             match self
@@ -158,7 +159,7 @@ impl kuksa_common::ClientTrait for KuksaClient {
 
     async fn publish(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError> {
         self.set_current_values(datapoints).await
     }
@@ -298,14 +299,14 @@ impl kuksa_common::ClientTrait for KuksaClient {
 
     async fn set_datapoints(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError> {
         self.set_target_values(datapoints).await
     }
 
     async fn set_target_values(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError> {
         for (path, datapoint) in datapoints {
             match self
@@ -335,7 +336,7 @@ impl kuksa_common::ClientTrait for KuksaClient {
 
     async fn actuate(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError> {
         println!("Actuation concept has changed with kuksa.val.v2 only supported by it! Defaulting to setting target values.");
         self.set_target_values(datapoints).await
