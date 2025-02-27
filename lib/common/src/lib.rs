@@ -43,7 +43,8 @@ pub enum ClientError {
 
 #[async_trait]
 pub trait ClientTrait {
-    type DatapointType;
+    type SensorUpdateType;
+    type UpdateActuationType;
     type PathType;
     type SubscribeType;
     type PublishResponseType;
@@ -57,15 +58,15 @@ pub trait ClientTrait {
     // if we do not want to put in the effort just give an unimplemented error for the function
     async fn update_datapoints(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError>;
     async fn set_current_values(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError>;
     async fn publish(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError>;
 
     // from application getting sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
@@ -111,15 +112,15 @@ pub trait ClientTrait {
     // if we do not want to put in the effort just give an unimplemented error for the function
     async fn set_datapoints(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError>;
     async fn set_target_values(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError>;
     async fn actuate(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError>;
 
     // general functions

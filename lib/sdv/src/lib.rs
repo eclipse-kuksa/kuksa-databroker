@@ -32,7 +32,8 @@ impl SDVClient {
 
 #[async_trait]
 impl kuksa_common::ClientTrait for SDVClient {
-    type DatapointType = HashMap<String, proto::v1::Datapoint>;
+    type UpdateActuationType = HashMap<String, proto::v1::Datapoint>;
+    type SensorUpdateType = HashMap<String, proto::v1::Datapoint>;
     type PathType = Vec<String>;
     type SubscribeType = String;
     type PublishResponseType = proto::v1::UpdateDatapointsReply;
@@ -43,7 +44,7 @@ impl kuksa_common::ClientTrait for SDVClient {
     type MetadataResponseType = Vec<proto::v1::Metadata>;
     async fn update_datapoints(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError> {
         let metadata = self
             .get_metadata(datapoints.keys().cloned().collect())
@@ -71,14 +72,14 @@ impl kuksa_common::ClientTrait for SDVClient {
 
     async fn set_current_values(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError> {
         self.update_datapoints(datapoints).await
     }
 
     async fn publish(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError> {
         self.update_datapoints(datapoints).await
     }
@@ -159,7 +160,7 @@ impl kuksa_common::ClientTrait for SDVClient {
 
     async fn set_datapoints(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError> {
         let args = tonic::Request::new(proto::v1::SetDatapointsRequest { datapoints });
         let mut client = proto::v1::broker_client::BrokerClient::with_interceptor(
@@ -174,14 +175,14 @@ impl kuksa_common::ClientTrait for SDVClient {
 
     async fn set_target_values(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError> {
         self.set_datapoints(datapoints).await
     }
 
     async fn actuate(
         &mut self,
-        datapoints: Self::DatapointType,
+        datapoints: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError> {
         println!("Actuation concept has changed with kuksa.val.v2 only supported by it! Defaulting to setting target values.");
         self.set_datapoints(datapoints).await
