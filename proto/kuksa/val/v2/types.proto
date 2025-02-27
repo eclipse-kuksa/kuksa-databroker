@@ -48,21 +48,22 @@ message Value {
 }
 
 message SampleInterval {
-  int32 max_interval_ms = 1;
+  uint32 interval_ms = 1;
 }
 
 enum FilterError {
-  FILTER_ERROR_CODE_UNSPECIFIED   = 0;
-  FILTER_ERROR_CODE_OK            = 1;
-  FILTER_ERROR_CODE_NETWORK_ERROR = 2;
-  FILTER_ERROR_CODE_OVERLOAD      = 3;
+  FILTER_ERROR_CODE_UNSPECIFIED      = 0;
+  FILTER_ERROR_CODE_OK               = 1;
+  FILTER_ERROR_CODE_NETWORK_ERROR    = 2;
+  FILTER_ERROR_CODE_OVERLOAD         = 3;
+  FILTER_ERROR_CODE_UNKNOW_SINGAL_ID = 4;
 }
 
 message Filter {
-  // Duration of the active call. If it is not set, call will least for ever.
-  int32 duration_ms                  = 1;
-  // Max desired sample update interval.
-  SampleInterval max_sample_interval = 2;
+  // Duration of the active call. If it is not set, call will last for ever.
+  uint32 duration_ms                 = 1;
+  // Min desired sample update interval.
+  SampleInterval min_sample_interval = 2;
 }
 
 message SignalID {
@@ -90,13 +91,6 @@ enum ErrorCode {
   ERROR_CODE_INVALID_ARGUMENT  = 2;
   ERROR_CODE_NOT_FOUND         = 3;
   ERROR_CODE_PERMISSION_DENIED = 4;
-}
-
-enum CommandError {
-  COMMAND_ERROR_CODE_UNSPECIFIED   = 0; // Default value, never to be explicitly set,
-  COMMAND_ERROR_CODE_OK            = 1;
-  COMMAND_ERROR_CODE_NETWORK_ERROR = 2;
-  COMMAND_ERROR_CODE_OVERLOAD      = 3;
 }
 
 message Metadata {
@@ -139,8 +133,8 @@ message Metadata {
   Value min                            = 18;
   Value max                            = 19;
   
-  // Maximum sample interval at which its provider will publish the signal value
-  SampleInterval sample_interval       = 20;
+  // Minimum sample interval at which its provider will publish the signal value
+  SampleInterval min_sample_interval   = 20;
 }
 
 // VSS Data type of a signal

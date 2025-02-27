@@ -31,7 +31,6 @@ service VAL {
   //   PERMISSION_DENIED if access is denied
   //   INVALID_ARGUMENT if the request is empty or provided path is too long
   //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
-  //   UNAVAILABLE if there is no provider currently providing the signal
   //
   rpc GetValue(GetValueRequest) returns (GetValueResponse);
 
@@ -45,7 +44,6 @@ service VAL {
   //   PERMISSION_DENIED if access is denied for any of the requested signals.
   //   INVALID_ARGUMENT if the request is empty or provided path is too long
   //       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
-  //   UNAVAILABLE if there is no provider currently providing the signals
   //
   rpc GetValues(GetValuesRequest) returns (GetValuesResponse);
 
@@ -59,7 +57,6 @@ service VAL {
   //             MAX_REQUEST_PATH_LENGTH: usize = 1000;
   //       - if buffer_size exceeds the maximum permitted
   //             MAX_BUFFER_SIZE: usize = 1000;
-  //   UNAVAILABLE if there is no provider currently providing the signal
   //
   // When subscribing, Databroker shall immediately return the value for all
   // subscribed entries.
@@ -80,7 +77,6 @@ service VAL {
   //             MAX_REQUEST_PATH_LENGTH: usize = 1000;
   //       - if buffer_size exceeds the maximum permitted
   //             MAX_BUFFER_SIZE: usize = 1000;
-  //   UNAVAILABLE if there is no provider currently providing the signal
   //
   // When subscribing, Databroker shall immediately return the value for all
   // subscribed entries.
@@ -276,12 +272,12 @@ message PublishValueRequest {
 }
 
 message PublishValuesRequest {
-  uint64 request_it                 = 1; /// Unique request id for the stream that can be used to identify the command.
+  uint64 request_id                 = 1; /// Unique request id for the stream that can be used to match the corresponding response.
   map<int32, Datapoint> data_points = 2;
 }
 
 message PublishValuesResponse {
-  uint64 request_id        = 1;
+  uint64 request_id        = 1; /// Unique request id for the stream that can be used to match the corresponding request.
   map<int32, Error> status = 2;
 }
 
@@ -321,13 +317,13 @@ message UpdateFilterResponse {
   FilterError filter_error = 1;
 }
 
-message GetValueStreamRequest {
-  uint64 request_it       = 1; /// Unique request id for the stream that can be used to identify the request.
+message GetProviderValueRequest {
+  uint64 request_id       = 1; /// Unique request id for the stream that can be used to match the corresponding response.
   GetValueRequest request = 2;
 }
 
-message GetValueStreamResponse {
-  uint64 request_it         = 1; /// Unique request id for the stream that can be used to identify the response.
+message GetProviderValueResponse {
+  uint64 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding request.
   GetValueResponse response = 2;
 }
 
@@ -345,7 +341,7 @@ message OpenProviderStreamRequest {
     // Update filter response
     UpdateFilterResponse update_filter_response              = 5;
     // GetValue response
-    GetValueStreamResponse get_value_stream_response         = 6;
+    GetProviderValueResponse get_provider_value_response     = 6;
   }
 }
 
@@ -362,7 +358,7 @@ message OpenProviderStreamResponse {
     // Filter request
     UpdateFilterRequest update_filter_request              = 5;
     // GetValue request from client forwarded to provider
-    GetValueStreamRequest get_value_stream_request         = 6;
+    GetProviderValueRequest get_provider_value_request     = 6;
   }
 }
 
