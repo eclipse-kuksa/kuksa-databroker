@@ -1,5 +1,5 @@
 /********************************************************************************
-* Copyright (c) 2023 Contributors to the Eclipse Foundation
+* Copyright (c) 2025 Contributors to the Eclipse Foundation
 *
 * See the NOTICE file(s) distributed with this work for additional
 * information regarding copyright ownership.
@@ -17,12 +17,6 @@ use databroker_proto::kuksa::val::v1::Error;
 use http::Uri;
 use tokio_stream::wrappers::BroadcastStream;
 use tonic::{async_trait, transport::Channel};
-
-///////////////////////////////////////////////////////////////////////////////////
-///
-/// new implementation starts here
-///
-//////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug)]
 pub struct Client {
@@ -60,7 +54,7 @@ pub trait ClientTrait {
     type MetadataResponseType;
 
     // from deeply embedded layer providing sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
-    // if we do not want to put in the effort just give an unimplented error for the function
+    // if we do not want to put in the effort just give an unimplemented error for the function
     async fn update_datapoints(
         &mut self,
         datapoints: Self::DatapointType,
@@ -75,7 +69,7 @@ pub trait ClientTrait {
     ) -> Result<Self::PublishResponseType, ClientError>;
 
     // from application getting sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
-    // if we do not want to put in the effort just give an unimplented error for the function
+    // if we do not want to put in the effort just give an unimplemented error for the function
     async fn get_datapoints(
         &mut self,
         paths: Self::PathType,
@@ -87,7 +81,7 @@ pub trait ClientTrait {
     async fn get(&mut self, paths: Self::PathType) -> Result<Self::GetResponseType, ClientError>;
 
     // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
-    // if we do not want to put in the effort just give an unimplented error for the function
+    // if we do not want to put in the effort just give an unimplemented error for the function
     async fn subscribe_target_values(
         &mut self,
         paths: Self::PathType,
@@ -103,7 +97,7 @@ pub trait ClientTrait {
     ) -> Result<Self::GetResponseType, ClientError>;
 
     // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
-    // if we do not want to put in the effort just give an unimplented error for the function
+    // if we do not want to put in the effort just give an unimplemented error for the function
     async fn subscribe_current_values(
         &mut self,
         paths: Self::SubscribeType,
@@ -114,7 +108,7 @@ pub trait ClientTrait {
     ) -> Result<Self::SubscribeResponseType, ClientError>;
 
     // from application requesting an actuation (to keep backwards compatibility the naming is different for the corresponding interfaces)
-    // if we do not want to put in the effort just give an unimplented error for the function
+    // if we do not want to put in the effort just give an unimplemented error for the function
     async fn set_datapoints(
         &mut self,
         datapoints: Self::DatapointType,
@@ -128,14 +122,12 @@ pub trait ClientTrait {
         datapoints: Self::DatapointType,
     ) -> Result<Self::ActuateResponseType, ClientError>;
 
-    // common functions
+    // general functions
     async fn get_metadata(
         &mut self,
         paths: Self::PathType,
     ) -> Result<Self::MetadataResponseType, ClientError>;
 }
-
-//////////////////////////////////////////////////////////////////////////////////
 
 impl std::error::Error for ClientError {}
 impl std::fmt::Display for ClientError {
