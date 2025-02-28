@@ -38,6 +38,23 @@ pub struct ServerInfo {
     pub version: String,
 }
 
+pub struct OpenProviderStream {
+    sender: tokio::sync::mpsc::Sender<OpenProviderStreamRequest>,
+    receiver_stream: Streaming<OpenProviderStreamResponse>,
+}
+
+impl OpenProviderStream {
+    fn new(
+        sender: tokio::sync::mpsc::Sender<OpenProviderStreamRequest>,
+        receiver_stream: Streaming<OpenProviderStreamResponse>,
+    ) -> Self {
+        OpenProviderStream {
+            sender,
+            receiver_stream,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct KuksaClientV2 {
     pub basic_client: Client,
@@ -313,17 +330,20 @@ impl KuksaClientV2 {
     ///
     pub async fn open_provider_stream(
         &mut self,
-        receiver_stream: ReceiverStream<OpenProviderStreamRequest>,
-    ) -> Result<Streaming<OpenProviderStreamResponse>, ClientError> {
+        buffer_size: Option<usize>,
+    ) -> Result<OpenProviderStream, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
         );
 
+        let (sender, receiver) = tokio::sync::mpsc::channel(buffer_size.unwrap_or(1));
+        let receiver_stream = ReceiverStream::new(receiver);
+
         match client.open_provider_stream(receiver_stream).await {
             Ok(response) => {
                 let message = response.into_inner();
-                Ok(message)
+                Ok(OpenProviderStream::new(sender, message))
             }
             Err(err) => Err(Status(err)),
         }
@@ -800,9 +820,7 @@ mod tests {
 
         let signal_path = "Vehicle.ADAS.ABS.IsEnabled"; // is an actuator
 
-        let (sender, receiver) = tokio::sync::mpsc::channel(4);
-        let receiver_stream = ReceiverStream::new(receiver);
-        let mut stream = client.open_provider_stream(receiver_stream).await.unwrap();
+        let mut stream = client.open_provider_stream(None).await.unwrap();
 
         let provide_actuation_request = OpenProviderStreamRequest {
             action: Some(Action::ProvideActuationRequest(ProvideActuationRequest {
@@ -812,8 +830,8 @@ mod tests {
             })),
         };
 
-        sender.send(provide_actuation_request).await.unwrap();
-        stream.message().await.unwrap(); // wait until databroker has processed / answered provide_actuation_request
+        stream.sender.send(provide_actuation_request).await.unwrap();
+        stream.receiver_stream.message().await.unwrap(); // wait until databroker has processed / answered provide_actuation_request
 
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
@@ -954,9 +972,7 @@ mod tests {
 
         let signal_path = "Vehicle.ADAS.ESC.IsEnabled"; // is an actuator
 
-        let (sender, receiver) = tokio::sync::mpsc::channel(4);
-        let receiver_stream = ReceiverStream::new(receiver);
-        let mut stream = client.open_provider_stream(receiver_stream).await.unwrap();
+        let mut stream = client.open_provider_stream(None).await.unwrap();
 
         let provide_actuation_request = OpenProviderStreamRequest {
             action: Some(Action::ProvideActuationRequest(ProvideActuationRequest {
@@ -966,8 +982,8 @@ mod tests {
             })),
         };
 
-        sender.send(provide_actuation_request).await.unwrap();
-        stream.message().await.unwrap(); // wait until databroker has processed / answered provide_actuation_request
+        stream.sender.send(provide_actuation_request).await.unwrap();
+        stream.receiver_stream.message().await.unwrap(); // wait until databroker has processed / answered provide_actuation_request
 
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
@@ -999,9 +1015,7 @@ mod tests {
             },
         );
 
-        let (sender, receiver) = tokio::sync::mpsc::channel(4);
-        let receiver_stream = ReceiverStream::new(receiver);
-        let mut stream = client.open_provider_stream(receiver_stream).await.unwrap();
+        let mut stream = client.open_provider_stream(None).await.unwrap();
 
         let provide_actuation_request = OpenProviderStreamRequest {
             action: Some(Action::ProvideActuationRequest(ProvideActuationRequest {
@@ -1016,8 +1030,8 @@ mod tests {
             })),
         };
 
-        sender.send(provide_actuation_request).await.unwrap();
-        stream.message().await.unwrap();
+        stream.sender.send(provide_actuation_request).await.unwrap();
+        stream.receiver_stream.message().await.unwrap();
 
         let response = client.batch_actuate(values).await;
         assert!(response.is_ok());
@@ -1175,9 +1189,7 @@ mod tests {
             },
         );
 
-        let (sender, receiver) = tokio::sync::mpsc::channel(4);
-        let receiver_stream = ReceiverStream::new(receiver);
-        let mut stream = client.open_provider_stream(receiver_stream).await.unwrap();
+        let mut stream = client.open_provider_stream(None).await.unwrap();
 
         let provide_actuation_request = OpenProviderStreamRequest {
             action: Some(Action::ProvideActuationRequest(ProvideActuationRequest {
@@ -1192,8 +1204,8 @@ mod tests {
             })),
         };
 
-        sender.send(provide_actuation_request).await.unwrap();
-        stream.message().await.unwrap();
+        stream.sender.send(provide_actuation_request).await.unwrap();
+        stream.receiver_stream.message().await.unwrap();
 
         let mut values = HashMap::new();
         values.insert(
