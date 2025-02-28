@@ -297,6 +297,45 @@ impl KuksaClientV2 {
         }
     }
 
+    /// Subscribe to a set of signals using i32 id parameters
+    /// Returns (GRPC error code):
+    ///   NOT_FOUND if any of the signals are non-existant.
+    ///   UNAUTHENTICATED if no credentials provided or credentials has expired
+    ///   PERMISSION_DENIED if access is denied for any of the signals.
+    ///   INVALID_ARGUMENT
+    ///       - if the request is empty or provided path is too long
+    ///             MAX_REQUEST_PATH_LENGTH: usize = 1000;
+    ///       - if buffer_size exceeds the maximum permitted
+    ///             MAX_BUFFER_SIZE: usize = 1000;
+    ///
+    /// When subscribing, Databroker shall immediately return the value for all
+    /// subscribed entries.
+    /// If a value isn't available when subscribing to a it, it should return None
+    ///
+    /// If a subscriber is slow to consume signals, messages will be buffered up
+    /// to the specified buffer_size before the oldest messages are dropped.
+    ///
+    pub async fn subscribe_by_id(
+        &mut self,
+        signal_ids: Vec<i32>,
+        buffer_size: Option<u32>,
+    ) -> Result<Streaming<SubscribeByIdResponse>, ClientError> {
+        let mut client = ValClient::with_interceptor(
+            self.basic_client.get_channel().await?.clone(),
+            self.basic_client.get_auth_interceptor(),
+        );
+
+        let subscribe_by_id_request = SubscribeByIdRequest {
+            signal_ids,
+            buffer_size: buffer_size.unwrap_or(0),
+        };
+
+        match client.subscribe_by_id(subscribe_by_id_request).await {
+            Ok(response) => Ok(response.into_inner()),
+            Err(err) => Err(Status(err)),
+        }
+    }
+
     /// Open a stream used to provide actuation and/or publishing values using
     /// a streaming interface. Used to provide actuators and to enable high frequency
     /// updates of values.
