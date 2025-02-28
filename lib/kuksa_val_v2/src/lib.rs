@@ -10,23 +10,23 @@
 *
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
-pub use databroker_proto::kuksa::val as proto;
 use databroker_proto::kuksa::val::v2::signal_id::Signal::Path;
+use databroker_proto::kuksa::val::v2::val_client::ValClient;
+use databroker_proto::kuksa::val::v2::{
+    ActuateRequest, GetValueRequest, ListMetadataRequest, PublishValueRequest, SubscribeRequest,
+    SubscribeResponse,
+};
 use databroker_proto::kuksa::val::v2::{
     BatchActuateRequest, GetServerInfoRequest, GetValuesRequest, Metadata,
     OpenProviderStreamResponse, SignalId, Value,
 };
 use databroker_proto::kuksa::val::v2::{Datapoint, OpenProviderStreamRequest};
+use databroker_proto::kuksa::val::v2::{SubscribeByIdRequest, SubscribeByIdResponse};
 use http::Uri;
-use kuksa_common::ClientError::Status;
-pub use kuksa_common::{Client, ClientError};
+pub use kuksa_common::{Client, ClientError, ClientError::Status};
 use prost_types::Timestamp;
-use proto::v2::val_client::ValClient;
-use proto::v2::{
-    ActuateRequest, GetValueRequest, ListMetadataRequest, PublishValueRequest, SubscribeRequest,
-    SubscribeResponse,
-};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::time::SystemTime;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::Streaming;
@@ -39,8 +39,8 @@ pub struct ServerInfo {
 }
 
 pub struct OpenProviderStream {
-    sender: tokio::sync::mpsc::Sender<OpenProviderStreamRequest>,
-    receiver_stream: Streaming<OpenProviderStreamResponse>,
+    pub sender: tokio::sync::mpsc::Sender<OpenProviderStreamRequest>,
+    pub receiver_stream: Streaming<OpenProviderStreamResponse>,
 }
 
 impl OpenProviderStream {
@@ -63,7 +63,7 @@ pub struct KuksaClientV2 {
 impl KuksaClientV2 {
     pub fn new(uri: Uri) -> Self {
         KuksaClientV2 {
-            basic_client: Client::new(uri),
+            basic_client: Client::new(uri.clone()),
         }
     }
 
@@ -442,6 +442,22 @@ impl KuksaClientV2 {
         }
     }
 
+    pub async fn resolve_ids_for_paths(
+        &mut self,
+        vss_paths: Vec<&str>,
+    ) -> Result<Vec<i32>, ClientError> {
+        let mut ids = Vec::new();
+
+        for path in vss_paths {
+            let vec = self.list_metadata(path, "*").await?;
+            let metadata = vec.first().unwrap();
+
+            ids.push(metadata.id);
+        }
+
+        Ok(ids)
+    }
+
     fn convert_to_vector(values: HashMap<String, Value>) -> Vec<ActuateRequest> {
         let mut actuate_requests = Vec::with_capacity(values.len());
         for (signal_path, value) in values {
@@ -468,11 +484,28 @@ mod tests {
     use std::fs;
     use test_tag::tag;
     use tokio::test;
+    use tonic::Code::{InvalidArgument, NotFound, PermissionDenied, Unauthenticated, Unavailable};
+
+    impl KuksaClientV2 {
+        fn new_test_client(token_type: Option<TokenType>) -> Self {
+            let mut client = Self::new(Uri::from_static("http://localhost:55556"));
+
+            if (token_type.is_some()) {
+                let jwt = read_jwt(token_type.unwrap());
+                client
+                    .basic_client
+                    .set_access_token(jwt)
+                    .expect("Failed to set access token");
+            }
+
+            client
+        }
+    }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_get_value() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client.get_value("Vehicle.Speed").await;
         assert!(response.is_ok());
@@ -481,90 +514,55 @@ mod tests {
     #[tag(integration, insecure)]
     #[test]
     async fn test_get_value_with_empty_path_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client.get_value("").await;
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_get_value_with_invalid_path_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client.get_value("Vehicle.Some.Invalid.Path").await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_get_value_with_long_path_will_return_invalid_argument() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let long_path = "Vehicle.".repeat(200) + "Speed";
         let response = client.get_value(&long_path).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::InvalidArgument);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, InvalidArgument);
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_get_value_without_auth_token_will_return_unauthenticated() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(None);
 
         let response = client.get_value("Vehicle.Speed").await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::Unauthenticated);
-            }
-            _ => panic!("unexpected error"),
-        }
-    }
-
-    #[tag(integration, authentication)]
-    #[test]
-    async fn test_get_value_with_auth_token_will_return_ok() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
-
-        let jwt = read_jwt(Read);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
-
-        let response = client.get_value("Vehicle.Speed").await;
-        assert!(response.is_ok());
+        expect_status_code(err, Unauthenticated);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_get_values_will_return_ok() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let signal_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
         let response = client.get_values(signal_paths).await;
@@ -574,77 +572,46 @@ mod tests {
     #[tag(integration, insecure)]
     #[test]
     async fn test_get_values_with_empty_path_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let signal_paths = vec!["Vehicle.Speed", ""];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_get_values_with_invalid_path_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let signal_paths = vec!["Vehicle.Speed", "Vehicle.Some.Invalid.Path"];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_get_values_without_auth_token_will_return_unauthenticated() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(None);
 
         let signal_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::Unauthenticated);
-            }
-            _ => panic!("unexpected error"),
-        }
-    }
-
-    #[tag(integration, authentication)]
-    #[test]
-    async fn test_get_values_with_auth_token_will_return_ok() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
-
-        let jwt = read_jwt(Read);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
-
-        let signal_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
-        let response = client.get_values(signal_paths).await;
-        assert!(response.is_ok());
+        expect_status_code(err, Unauthenticated);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_publish_value_will_return_ok() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let signal_path = "Vehicle.Speed";
         let value = Value {
@@ -663,7 +630,7 @@ mod tests {
     #[tag(integration, insecure)]
     #[test]
     async fn test_publish_value_with_invalid_data_type_will_return_invalid_argument() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let signal_path = "Vehicle.Speed";
         let value = Value {
@@ -674,18 +641,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::InvalidArgument);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, InvalidArgument);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_publish_value_with_invalid_value_will_return_invalid_argument() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let signal_path = "Vehicle.Powertrain.Type";
         let value = Value {
@@ -696,18 +658,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::InvalidArgument);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, InvalidArgument);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_publish_value_with_invalid_min_max_value_will_return_invalid_argument() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let signal_path = "Vehicle.ADAS.PowerOptimizeLevel";
         let value = Value {
@@ -718,18 +675,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::InvalidArgument);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, InvalidArgument);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_publish_value_with_empty_path_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let signal_path = "";
         let value = Value {
@@ -740,38 +692,29 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_publish_value_with_invalid_path_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let signal_path = "Vehicle.Some.Invalid.Path";
         let value = Value {
             typed_value: Some(TypedValue::Float(120.0)),
         };
 
-        let err = client.publish_value(signal_path, value).await.unwrap_err();
+        let response = client.publish_value(signal_path, value).await;
 
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        let err = response.unwrap_err();
+        expect_status_code(err, NotFound);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_publish_value_to_an_actuator_will_return_ok() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let signal_path = "Vehicle.ADAS.ABS.IsEnabled"; // is an actuator
         let value = Value {
@@ -782,80 +725,44 @@ mod tests {
         assert!(response.is_ok());
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_publish_value_without_auth_token_will_return_unauthenticated() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(None);
 
-        let signal_path = "Vehicle.Speed";
+        let signal_path = "Vehicle.Driver.HeartRate";
         let value = Value {
-            typed_value: Some(TypedValue::Float(150.0)),
+            typed_value: Some(TypedValue::Uint32(80)),
         };
 
         let response = client.publish_value(signal_path, value.clone()).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::Unauthenticated);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, Unauthenticated);
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_publish_value_with_read_auth_token_will_return_permission_denied() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let jwt = read_jwt(Read);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
-
-        let signal_path = "Vehicle.Speed";
+        let signal_path = "Vehicle.Driver.HeartRate";
         let value = Value {
-            typed_value: Some(TypedValue::Float(150.0)),
+            typed_value: Some(TypedValue::Uint32(80)),
         };
 
         let response = client.publish_value(signal_path, value.clone()).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::PermissionDenied);
-            }
-            _ => panic!("unexpected error"),
-        }
-    }
-
-    #[tag(integration, authentication)]
-    #[test]
-    async fn test_publish_value_with_auth_token_will_return_ok() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
-
-        let jwt = read_jwt(ReadWrite);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
-
-        let signal_path = "Vehicle.Speed";
-        let value = Value {
-            typed_value: Some(TypedValue::Float(150.0)),
-        };
-
-        let response = client.publish_value(signal_path, value.clone()).await;
-        assert!(response.is_ok());
+        expect_status_code(err, PermissionDenied);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_actuate() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let signal_path = "Vehicle.ADAS.ABS.IsEnabled"; // is an actuator
 
@@ -883,9 +790,9 @@ mod tests {
     #[tag(integration, insecure)]
     #[test]
     async fn test_actuate_with_no_actuation_provider_will_return_unavailable() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.ADAS.ABS.IsEnabled"; // is an actuator
+        let signal_path = "Vehicle.ADAS.CruiseControl.IsActive"; // is an actuator
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
         };
@@ -894,18 +801,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::Unavailable);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, Unavailable);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_actuate_a_sensor_will_return_invalid_argument() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let signal_path = "Vehicle.Speed";
         let value = Value {
@@ -916,18 +818,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::InvalidArgument);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, InvalidArgument);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_actuate_with_invalid_signal_path_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let signal_path = "Vehicle.Some.Invalid.Path";
         let value = Value {
@@ -938,18 +835,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_actuate_without_auth_token_will_return_unauthenticated() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(None);
 
         let signal_path = "Vehicle.ADAS.ESC.IsEnabled"; // is an actuator
 
@@ -961,24 +853,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::Unauthenticated);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, Unauthenticated);
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_actuate_with_read_auth_token_will_return_permission_denied() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
-
-        let jwt = read_jwt(Read);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let signal_path = "Vehicle.ADAS.ESC.IsEnabled"; // is an actuator
 
@@ -990,52 +871,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::PermissionDenied);
-            }
-            _ => panic!("unexpected error"),
-        }
-    }
-
-    #[tag(integration, authentication)]
-    #[test]
-    async fn test_actuate_with_auth_token_will_return_ok() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
-
-        let jwt = read_jwt(ReadWrite);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
-
-        let signal_path = "Vehicle.ADAS.ESC.IsEnabled"; // is an actuator
-
-        let mut stream = client.open_provider_stream(None).await.unwrap();
-
-        let provide_actuation_request = OpenProviderStreamRequest {
-            action: Some(Action::ProvideActuationRequest(ProvideActuationRequest {
-                actuator_identifiers: vec![SignalId {
-                    signal: Some(Path(signal_path.to_string())),
-                }],
-            })),
-        };
-
-        stream.sender.send(provide_actuation_request).await.unwrap();
-        stream.receiver_stream.message().await.unwrap(); // wait until databroker has processed / answered provide_actuation_request
-
-        let value = Value {
-            typed_value: Some(TypedValue::Bool(true)),
-        };
-
-        let response = client.actuate(signal_path, value).await;
-        assert!(response.is_ok());
+        expect_status_code(err, PermissionDenied);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_batch_actuate() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled";
         let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled";
@@ -1079,7 +921,7 @@ mod tests {
     #[tag(integration, insecure)]
     #[test]
     async fn test_batch_actuate_with_empty_path_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let mut values = HashMap::new();
         values.insert(
@@ -1093,18 +935,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_batch_actuate_with_invalid_signal_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let mut values = HashMap::new();
         values.insert(
@@ -1118,18 +955,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_batch_actuate_without_auth_token_will_return_unauthenticated() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(None);
 
         let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled";
         let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled";
@@ -1152,24 +984,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::Unauthenticated);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, Unauthenticated);
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_batch_actuate_with_read_auth_token_will_return_permission_denied() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
-
-        let jwt = read_jwt(Read);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled";
         let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled";
@@ -1192,82 +1013,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::PermissionDenied);
-            }
-            _ => panic!("unexpected error"),
-        }
-    }
-
-    #[tag(integration, authentication)]
-    #[test]
-    async fn test_batch_actuate_with_auth_token_will_return_ok() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
-
-        let jwt = read_jwt(ReadWrite);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
-
-        let actuator_1 = "Vehicle.ADAS.LaneDepartureDetection.IsEnabled";
-        let actuator_2 = "Vehicle.ADAS.ObstacleDetection.IsEnabled";
-
-        let mut values = HashMap::new();
-        values.insert(
-            actuator_2.to_string(),
-            Value {
-                typed_value: Some(TypedValue::Bool(true)),
-            },
-        );
-        values.insert(
-            actuator_1.to_string(),
-            Value {
-                typed_value: Some(TypedValue::Bool(false)),
-            },
-        );
-
-        let mut stream = client.open_provider_stream(None).await.unwrap();
-
-        let provide_actuation_request = OpenProviderStreamRequest {
-            action: Some(Action::ProvideActuationRequest(ProvideActuationRequest {
-                actuator_identifiers: vec![
-                    SignalId {
-                        signal: Some(Path(actuator_2.to_string())),
-                    },
-                    SignalId {
-                        signal: Some(Path(actuator_1.to_string())),
-                    },
-                ],
-            })),
-        };
-
-        stream.sender.send(provide_actuation_request).await.unwrap();
-        stream.receiver_stream.message().await.unwrap();
-
-        let mut values = HashMap::new();
-        values.insert(
-            actuator_2.to_string(),
-            Value {
-                typed_value: Some(TypedValue::Bool(true)),
-            },
-        );
-        values.insert(
-            actuator_1.to_string(),
-            Value {
-                typed_value: Some(TypedValue::Bool(false)),
-            },
-        );
-
-        let response = client.batch_actuate(values).await;
-        assert!(response.is_ok());
+        expect_status_code(err, PermissionDenied);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_subscribe_sends_out_an_initial_update() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let mut stream = client
             .subscribe(
@@ -1291,7 +1043,7 @@ mod tests {
     #[tag(integration, insecure)]
     #[test]
     async fn test_subscribe() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
         let mut stream = client
             .subscribe(
@@ -1336,24 +1088,19 @@ mod tests {
     #[tag(integration, insecure)]
     #[test]
     async fn test_subscribe_to_empty_path_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client.subscribe(vec![""], None).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_subscribe_to_invalid_path_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client
             .subscribe(vec!["Vehicle.Some.Invalid.Path"], None)
@@ -1361,18 +1108,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_subscribe_with_invalid_buffer_size_will_return_invalid_argument() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client
             .subscribe(vec!["Vehicle.AverageSpeed"], Some(2048))
@@ -1380,18 +1122,13 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::InvalidArgument);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, InvalidArgument);
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_subscribe_without_auth_token_will_return_unauthenticated() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(None);
 
         let response = client
             .subscribe(
@@ -1405,41 +1142,64 @@ mod tests {
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::Unauthenticated);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, Unauthenticated);
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure)]
     #[test]
-    async fn test_subscribe_with_auth_token_will_return_ok() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+    async fn test_subscribe_by_id() {
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let jwt = read_jwt(Read);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
-
-        let response = client
-            .subscribe(
-                vec![
-                    "Vehicle.AverageSpeed",
-                    "Vehicle.Body.Raindetection.Intensity",
-                ],
-                None,
-            )
-            .await;
+        let vss_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
+        let signal_ids = client.resolve_ids_for_paths(vss_paths).await.unwrap();
+        let response = client.subscribe_by_id(signal_ids, None).await;
         assert!(response.is_ok());
     }
 
     #[tag(integration, insecure)]
     #[test]
+    async fn test_subscribe_by_id_with_invalid_id_will_return_not_found() {
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
+
+        let signal_ids = vec![i32::MAX];
+        let response = client.subscribe_by_id(signal_ids, None).await;
+        assert!(response.is_err());
+
+        let err = response.unwrap_err();
+        expect_status_code(err, NotFound);
+    }
+
+    #[tag(integration, insecure)]
+    #[test]
+    async fn test_subscribe_by_id_with_invalid_buffer_size_will_return_invalid_argument() {
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
+
+        let vss_paths = vec!["Vehicle.Speed"];
+        let signal_ids = client.resolve_ids_for_paths(vss_paths).await.unwrap();
+        let response = client.subscribe_by_id(signal_ids, Some(2048)).await;
+        assert!(response.is_err());
+
+        let err = response.unwrap_err();
+        expect_status_code(err, InvalidArgument);
+    }
+
+    #[tag(integration, insecure, authentication)]
+    #[test]
+    async fn test_subscribe_by_id_without_auth_token_return_unauthenticated() {
+        let mut client = KuksaClientV2::new_test_client(None);
+
+        let signal_ids = vec![0, 1, 2, 3, 4, 5];
+        let response = client.subscribe_by_id(signal_ids, Some(2048)).await;
+        assert!(response.is_err());
+
+        let err = response.unwrap_err();
+        expect_status_code(err, Unauthenticated);
+    }
+
+    #[tag(integration, insecure)]
+    #[test]
     async fn test_list_metadata() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client.list_metadata("Vehicle", "*").await;
         assert!(response.is_ok());
@@ -1451,56 +1211,31 @@ mod tests {
     #[tag(integration, insecure)]
     #[test]
     async fn test_list_metadata_with_invalid_root_will_return_not_found() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client.list_metadata("InvalidRoot", "*").await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::NotFound);
-            }
-            _ => panic!("unexpected error"),
-        }
+        expect_status_code(err, NotFound);
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_lists_metadata_without_auth_token_will_return_unauthenticated() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(None);
 
         let response = client.list_metadata("Vehicle", "*").await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
-        match err {
-            Status(status) => {
-                assert_eq!(status.code(), tonic::Code::Unauthenticated);
-            }
-            _ => panic!("unexpected error"),
-        }
-    }
-
-    #[tag(integration, authentication)]
-    #[test]
-    async fn test_lists_metadata_with_auth_token_will_return_unauthenticated() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
-
-        let jwt = read_jwt(Read);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
-
-        let response = client.list_metadata("Vehicle", "*").await;
-        assert!(response.is_ok());
+        expect_status_code(err, Unauthenticated);
     }
 
     #[tag(integration, insecure)]
     #[test]
     async fn test_get_server_info() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client.get_server_info().await;
         assert!(response.is_ok());
@@ -1511,36 +1246,25 @@ mod tests {
         assert!(!server_info.version.is_empty());
     }
 
-    #[tag(integration, authentication)]
+    #[tag(integration, insecure, authentication)]
     #[test]
     async fn test_get_server_info_without_auth_token_will_return_unauthenticated() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
+        let mut client = KuksaClientV2::new_test_client(None);
 
         let response = client.get_server_info().await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
+        expect_status_code(err, Unauthenticated);
+    }
+
+    fn expect_status_code(err: ClientError, code: tonic::Code) {
         match err {
             Status(status) => {
-                assert_eq!(status.code(), tonic::Code::Unauthenticated);
+                assert_eq!(status.code(), code);
             }
             _ => panic!("unexpected error"),
         }
-    }
-
-    #[tag(integration, authentication)]
-    #[test]
-    async fn test_get_server_info_with_auth_token_will_return_ok() {
-        let mut client = KuksaClientV2::new(Uri::from_static("http://localhost:55556"));
-
-        let jwt = read_jwt(Read);
-        client
-            .basic_client
-            .set_access_token(jwt)
-            .expect("Could not set access token");
-
-        let response = client.get_server_info().await;
-        assert!(response.is_ok());
     }
 
     fn read_jwt(token_type: TokenType) -> String {
