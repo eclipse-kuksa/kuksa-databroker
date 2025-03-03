@@ -131,7 +131,6 @@ service VAL {
   //   NOT_FOUND if the specified root branch does not exist.
   //   UNAUTHENTICATED if no credentials provided or credentials has expired
   //   INVALID_ARGUMENT if the provided path or wildcard is wrong.
-  //   UNAVAILABLE if there is no provider currently providing the signal -> do we want this error for list metadata?
   //
   rpc ListMetadata(ListMetadataRequest) returns (ListMetadataResponse);
 
@@ -266,18 +265,22 @@ message ListMetadataResponse {
   repeated Metadata metadata = 1;
 }
 
+message PublishValueResponse {
+
+}
+
 message PublishValueRequest {
   SignalID signal_id   = 1;
   Datapoint data_point = 2;
 }
 
 message PublishValuesRequest {
-  uint64 request_id                 = 1; /// Unique request id for the stream that can be used to match the corresponding response.
+  uint32 request_id                 = 1; /// Unique request id for the stream that can be used to match the corresponding response.
   map<int32, Datapoint> data_points = 2;
 }
 
 message PublishValuesResponse {
-  uint64 request_id        = 1; /// Unique request id for the stream that can be used to match the corresponding request.
+  uint32 request_id        = 1; /// Unique request id for the stream that can be used to match the corresponding request.
   map<int32, Error> status = 2;
 }
 
@@ -306,6 +309,7 @@ message BatchActuateStreamResponse {
 }
 
 message UpdateFilterRequest {
+  uint32 request_id       = 1; /// Unique request id for the stream that can be used to match the corresponding response.
   // Databroker sends filters to provider.
   // In case provider restarts, databroker will send local filters stored 
   // to continue the provider sending same signals with same filter.
@@ -314,16 +318,17 @@ message UpdateFilterRequest {
 
 // Only returned if there is a filter error on provider side
 message UpdateFilterResponse {
+  uint32 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding request.
   FilterError filter_error = 1;
 }
 
 message GetProviderValueRequest {
-  uint64 request_id       = 1; /// Unique request id for the stream that can be used to match the corresponding response.
+  uint32 request_id       = 1; /// Unique request id for the stream that can be used to match the corresponding response.
   GetValueRequest request = 2;
 }
 
 message GetProviderValueResponse {
-  uint64 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding request.
+  uint32 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding request.
   GetValueResponse response = 2;
 }
 
