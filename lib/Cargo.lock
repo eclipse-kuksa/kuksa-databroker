@@ -193,6 +193,7 @@ dependencies = [
  "kuksa",
  "kuksa-common",
  "kuksa-sdv",
+ "kuksa_val_v2",
  "prost-types",
  "tokio",
  "tokio-stream",

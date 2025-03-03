@@ -67,6 +67,11 @@ impl KuksaClientV2 {
         }
     }
 
+    pub fn from_host(host: &'static str) -> Self {
+        let uri = Uri::from_static(host);
+        Self::new(uri)
+    }
+
     /// Get the latest value of a signal
     /// If the signal exist but does not have a valid value
     /// a DataPoint where value is None shall be returned.
@@ -442,20 +447,27 @@ impl KuksaClientV2 {
         }
     }
 
+    /// Resolves the databroker ids for the specified list of paths and returns them in a HashMap<String, i32>
+    ///
+    /// Returns (GRPC error code):
+    ///   NOT_FOUND if the specified root branch does not exist.
+    ///   UNAUTHENTICATED if no credentials provided or credentials has expired
+    ///   INVALID_ARGUMENT if the provided path or wildcard is wrong.
+    ///
     pub async fn resolve_ids_for_paths(
         &mut self,
         vss_paths: Vec<&str>,
-    ) -> Result<Vec<i32>, ClientError> {
-        let mut ids = Vec::new();
+    ) -> Result<HashMap<String, i32>, ClientError> {
+        let mut hash_map = HashMap::new();
 
         for path in vss_paths {
             let vec = self.list_metadata(path, "*").await?;
             let metadata = vec.first().unwrap();
 
-            ids.push(metadata.id);
+            hash_map.insert(metadata.path.clone(), metadata.id);
         }
 
-        Ok(ids)
+        Ok(hash_map)
     }
 
     fn convert_to_vector(values: HashMap<String, Value>) -> Vec<ActuateRequest> {
@@ -1151,7 +1163,9 @@ mod tests {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let vss_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
-        let signal_ids = client.resolve_ids_for_paths(vss_paths).await.unwrap();
+        let path_id_map = client.resolve_ids_for_paths(vss_paths).await.unwrap();
+
+        let signal_ids: Vec<i32> = path_id_map.values().copied().collect();
         let response = client.subscribe_by_id(signal_ids, None).await;
         assert!(response.is_ok());
     }
@@ -1174,8 +1188,10 @@ mod tests {
     async fn test_subscribe_by_id_with_invalid_buffer_size_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let vss_paths = vec!["Vehicle.Speed"];
-        let signal_ids = client.resolve_ids_for_paths(vss_paths).await.unwrap();
+        let vss_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
+        let path_id_map = client.resolve_ids_for_paths(vss_paths).await.unwrap();
+
+        let signal_ids: Vec<i32> = path_id_map.values().copied().collect();
         let response = client.subscribe_by_id(signal_ids, Some(2048)).await;
         assert!(response.is_err());
 
