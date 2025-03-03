@@ -452,7 +452,6 @@ impl KuksaClientV2 {
     /// Returns (GRPC error code):
     ///   NOT_FOUND if the specified root branch does not exist.
     ///   UNAUTHENTICATED if no credentials provided or credentials has expired
-    ///   INVALID_ARGUMENT if the provided path or wildcard is wrong.
     ///
     pub async fn resolve_ids_for_paths(
         &mut self,

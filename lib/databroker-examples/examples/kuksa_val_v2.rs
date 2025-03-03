@@ -1,3 +1,18 @@
+/*
+ * *******************************************************************************
+ *  Copyright (c) 2025 Contributors to the Eclipse Foundation
+ *
+ *  See the NOTICE file(s) distributed with this work for additional
+ *  information regarding copyright ownership.
+ *
+ *  This program and the accompanying materials are made available under the
+ *  terms of the Apache License 2.0 which is available at
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ * ******************************************************************************
+ */
+
 use databroker_proto::kuksa::val::v2::open_provider_stream_request::Action;
 use databroker_proto::kuksa::val::v2::signal_id::Signal;
 use databroker_proto::kuksa::val::v2::value::TypedValue;
