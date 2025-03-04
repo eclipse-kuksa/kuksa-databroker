@@ -499,7 +499,13 @@ mod tests {
 
     impl KuksaClientV2 {
         fn new_test_client(token_type: Option<TokenType>) -> Self {
-            let mut client = Self::new(Uri::from_static("http://localhost:55556"));
+            let host = if cfg!(target_os = "macos") {
+                "http://localhost:55556"
+            } else {
+                "http://localhost:55555"
+            };
+
+            let mut client = Self::new(Uri::from_static(host));
 
             if (token_type.is_some()) {
                 let jwt = read_jwt(token_type.unwrap());

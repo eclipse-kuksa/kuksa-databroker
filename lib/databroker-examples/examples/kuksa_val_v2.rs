@@ -17,7 +17,7 @@ use databroker_proto::kuksa::val::v2::open_provider_stream_request::Action;
 use databroker_proto::kuksa::val::v2::signal_id::Signal;
 use databroker_proto::kuksa::val::v2::value::TypedValue;
 use databroker_proto::kuksa::val::v2::{
-    open_provider_stream_response, Datapoint, OpenProviderStreamRequest, ProvideActuationRequest,
+    open_provider_stream_response, OpenProviderStreamRequest, ProvideActuationRequest,
     SignalId, Value,
 };
 use kuksa_val_v2::KuksaClientV2;
@@ -25,7 +25,12 @@ use open_provider_stream_response::Action::BatchActuateStreamRequest;
 
 #[tokio::main]
 async fn main() {
-    let mut client: KuksaClientV2 = KuksaClientV2::from_host("http://localhost:8080");
+    let host = if cfg!(target_os = "macos") {
+        "http://localhost:55556"
+    } else {
+        "http://localhost:55555"
+    };
+    let mut client: KuksaClientV2 = KuksaClientV2::from_host(host);
 
     sample_get_signal(&mut client).await;
     sample_get_signals(&mut client).await;

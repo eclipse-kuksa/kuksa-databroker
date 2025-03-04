@@ -7,7 +7,7 @@ inputs:
     default: 'main'
   databroker-port:
     description: "Databroker Port"
-    default: '55556'
+    default: '55555'
 
 runs:
   using: "composite"
