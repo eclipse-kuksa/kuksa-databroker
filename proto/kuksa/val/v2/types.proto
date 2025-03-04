@@ -51,6 +51,20 @@ message SampleInterval {
   uint32 interval_ms = 1;
 }
 
+enum LogicOperator {
+  OP_EQUAL                 = 0;
+  OP_NOT_EQUAL             = 1;
+  OP_GREATER_THAN          = 2;
+  OP_GREATER_THAN_OR_EQUAL = 3;
+  OP_LESS_THAN             = 4;
+  OP_LESS_THAN_OR_EQUAL    = 5;
+}
+
+message OperationFilter {
+  LogicOperator logic_operator_x = 1;
+  Value value_y                  = 2;
+}
+
 enum FilterError {
   FILTER_ERROR_CODE_UNSPECIFIED      = 0;
   FILTER_ERROR_CODE_NETWORK_ERROR    = 1;
@@ -63,6 +77,8 @@ message Filter {
   uint32 duration_ms                 = 1;
   // Min desired sample update interval.
   SampleInterval min_sample_interval = 2;
+  // Fild containing the logical operator for comparision of current value.
+  OperationFilter operation_filter   = 3;
 }
 
 message SignalID {
