@@ -10,4 +10,4 @@ Feature: VISS v2 Compliance Testing
   Scenario: Subscribe with curve logging
     When I subscribe to "Vehicle.Speed" using a curvelog filter with maxerr 0.5 and bufsize 100
     Then I should receive a valid subscribe response
-    And I should receive 100 data points
+    And I should receive exactly 100 data points

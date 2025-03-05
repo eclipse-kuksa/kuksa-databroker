@@ -176,6 +176,24 @@ def search_static_range_filter(path):
     logger.debug(f"Sending WebSocket message: {request}")
     ws.send(request)
 
+@when(parsers.parse('I subscribe to "{path}" using a change filter'))
+def search_static_change_filter(path):
+    request = {
+        "action": "subscribe",
+        "path": path,
+        "filter" : {
+            "type": "change",
+            "parameter": {
+                   "logic-op":"gt",
+                   "diff":"10"
+            }
+        },
+        "requestId": "abc123"
+    }
+    request = json.dumps(request)
+    logger.debug(f"Sending WebSocket message: {request}")
+    ws.send(request)
+
 @when(parsers.parse('I send a set request for path "{path}" with the value {value}'))
 def send_set(path, value):
     global authorization
@@ -208,6 +226,9 @@ def receive_ws_read():
     assert response["requestId"] != None
     assert response["data"] != None
 
+    actual_count = len(response["data"])
+    assert actual_count > 1
+
     assert response["data"][0]['path'] != None
     assert response["data"][0]['dp'] != None
     assert 'value' in response["data"][0]['dp']
@@ -218,14 +239,15 @@ def receive_ws_read():
     assert 'value' in response["data"][1]['dp']
     assert response["data"][1]['dp']['ts'] != None
 
-@then(parsers.parse("I should receive {expected_count} data points"))
+@then(parsers.parse("I should receive exactly {expected_count} data points"))
 def receive_ws_read_expected_count(expected_count):
     response = json.loads(ws.recv())
     logger.debug(f"Received WebSocket response: {response}")
     assert response["action"] == "subscription"
     assert response["subscriptionId"] != None
     assert response["data"] != None
-    assert len(response["data"]) == expected_count
+    actual_count = len(response["data"])
+    assert actual_count == expected_count
 
 @then("I should receive an error response")
 def receive_ws_read():
