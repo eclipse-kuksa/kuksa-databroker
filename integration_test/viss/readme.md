@@ -49,7 +49,7 @@ docker run -d --rm --network host mosquitto
 
 Execute the test suite
 ```
-pytest --alluredir=reports
+pytest
 ```
 
 ## Debugging the tests
@@ -57,11 +57,5 @@ pytest --alluredir=reports
 Run `pytest` with additional arguments to disable capturing the output and to enable debug log level:
 
 ```
-pytest -s -v --alluredir=reports --log-level=DEBUG
-```
-
-## Generate reports
-
-```
-allure serve reports
+pytest -s -v --log-level=DEBUG
 ```
