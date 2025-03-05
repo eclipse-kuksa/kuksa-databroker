@@ -92,6 +92,7 @@ anyhow = "1.0"
 chrono = "^0.4"
 cucumber = { version = "0.20", default-features = false, features = ["libtest", "macros"] }
 tonic-mock = "0.3.0"
+reqwest = { version = "0.11", features = ["json"] }
 
 [[test]]
 name = "read_write_values"

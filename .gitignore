@@ -5,3 +5,4 @@ __pycache__
 databroker/thirdparty
 databroker-cli/thirdparty
 .venv/
+integration_test/viss/reports
