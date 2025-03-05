@@ -8,4 +8,7 @@ os.environ.pop("HTTPS_PROXY", None)
 os.environ["NO_PROXY"] = "*"
 
 # Point to the feature file
-scenarios("../features/viss_v2.feature")
+scenarios("../features/viss_v2_core_read.feature")
+scenarios("../features/viss_v2_core_update.feature")
+scenarios("../features/viss_v2_core_subscribe.feature")
+scenarios("../features/viss_v2_core_unsubscribe.feature")

@@ -52,6 +52,26 @@ def send_ws_subscribe(path):
     logger.debug(f"Sending WebSocket message: {request}")
     ws.send(request)
 
+@when(parsers.parse('I subscribe to "{path}" using a curvelog filter with maxerr {maxerr} and bufsize {bufsize}'))
+def subscribe_filter_curvelog(path, maxerr, bufsize):
+    request = {
+        "action": "subscribe",
+        "path": path,
+        "filter": {
+            "type":"curvelog",
+            "parameter": {
+                    "maxerr": maxerr,
+                    "bufsize": bufsize
+                }
+        }
+        ,
+        "requestId": "abc123"
+    }
+    request = json.dumps(request)
+    logger.debug(f"Sending WebSocket message: {request}")
+    ws.send(request)
+
+
 @when(parsers.parse('I send an unsubscribe request'))
 def send_ws_unsubscribe(subscriptionId):
     request = json.dumps({"action": "unsubscribe", "subscriptionId": subscriptionId, "requestId": "abc123"})
@@ -61,6 +81,98 @@ def send_ws_unsubscribe(subscriptionId):
 @when(parsers.parse('I send a read request with path "{path}"'))
 def send_read_vehicle_speed(path):
     request = json.dumps({"action": "get", "path": path, "requestId": "abc123"})
+    logger.debug(f"Sending WebSocket message: {request}")
+    ws.send(request)
+
+@when(parsers.parse('I search "{path}" using a path filter "{filter}"'))
+def search_path_filter(path, filter):
+    request = {
+        "action": "get",
+        "path": path,
+        "filter" : {
+            "type": "paths",
+            "parameter" : [
+                filter
+            ]
+        },
+        "requestId": "abc123"
+    }
+    request = json.dumps(request)
+    logger.debug(f"Sending WebSocket message: {request}")
+    ws.send(request)
+
+@when(parsers.parse('I search "{path}" using a history filter "{filter}"'))
+def search_history_filter(path, filter):
+    request = {
+        "action": "get",
+        "path": path,
+        "filter" : {
+            "type": "history",
+            "parameter": filter
+        },
+        "requestId": "abc123"
+    }
+    request = json.dumps(request)
+    logger.debug(f"Sending WebSocket message: {request}")
+    ws.send(request)
+
+@when(parsers.parse('I search "{path}" using a dynamic metadata filter "{filter}"'))
+def search_dynamic_metadata_filter(path, filter):
+    request = {
+        "action": "get",
+        "path": path,
+        "filter" : {
+            "type": "dynamic-metadata",
+            "parameter": [
+                 filter
+            ]
+        },
+        "requestId": "abc123"
+    }
+    request = json.dumps(request)
+    logger.debug(f"Sending WebSocket message: {request}")
+    ws.send(request)
+
+@when(parsers.parse('I search "{path}" using a static metadata filter "{filter}"'))
+def search_static_metadata_filter(path, filter):
+    request = {
+        "action": "get",
+        "path": path,
+        "filter" : {
+            "type": "static-metadata",
+            "parameter": [
+                filter
+            ]
+        },
+        "requestId": "abc123"
+    }
+    request = json.dumps(request)
+    logger.debug(f"Sending WebSocket message: {request}")
+    ws.send(request)
+
+@when(parsers.parse('I subscribe to "{path}" using a range filter'))
+def search_static_range_filter(path):
+    request = {
+        "action": "subscribe",
+        "path": path,
+        "filter" : {
+            "type": "range",
+            "parameter":
+                [
+                    {
+                        "boundary-op":"lt",
+                        "boundary":"50",
+                        "combination-op":"OR"
+                    },
+                    {
+                        "boundary-op":"gt",
+                        "boundary":"55"
+                    }
+                ]
+        },
+        "requestId": "abc123"
+    }
+    request = json.dumps(request)
     logger.debug(f"Sending WebSocket message: {request}")
     ws.send(request)
 
@@ -87,6 +199,42 @@ def receive_ws_read():
     # the value itself may be "None", but the key must exist
     assert 'value' in response["data"]['dp']
     assert response["data"]['dp']['ts'] != None
+
+@then("I should receive multiple data points")
+def receive_ws_read():
+    response = json.loads(ws.recv())
+    logger.debug(f"Received WebSocket response: {response}")
+    assert response["action"] == "get"
+    assert response["requestId"] != None
+    assert response["data"] != None
+
+    assert response["data"][0]['path'] != None
+    assert response["data"][0]['dp'] != None
+    assert 'value' in response["data"][0]['dp']
+    assert response["data"][0]['dp']['ts'] != None
+
+    assert response["data"][1]['path'] != None
+    assert response["data"][1]['dp'] != None
+    assert 'value' in response["data"][1]['dp']
+    assert response["data"][1]['dp']['ts'] != None
+
+@then(parsers.parse("I should receive {expected_count} data points"))
+def receive_ws_read_expected_count(expected_count):
+    response = json.loads(ws.recv())
+    logger.debug(f"Received WebSocket response: {response}")
+    assert response["action"] == "subscription"
+    assert response["subscriptionId"] != None
+    assert response["data"] != None
+    assert len(response["data"]) == expected_count
+
+@then("I should receive an error response")
+def receive_ws_read():
+    response = json.loads(ws.recv())
+    logger.debug(f"Received WebSocket response: {response}")
+    assert response["action"] == "get"
+    assert response["requestId"] != None
+    assert "error" in response
+    assert response["error"] == {"number":404,"reason":"invalid_path","message":"The specified data path does not exist."}
 
 @then("I should receive a valid subscribe response")
 def receive_ws_subscribe():

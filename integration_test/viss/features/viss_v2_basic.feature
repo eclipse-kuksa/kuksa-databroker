@@ -36,5 +36,5 @@ Feature: VISS v2 Compliance Testing
     Then I should receive a read-only error
 
   Scenario: Setting an writable signal (actuator)
-    When I send a set request for path "Vehicle.Speed" with the value 80
+    When I send a set request for path "Vehicle.Cabin.Infotainment.HMI.FontSize" with the value LARGE
     Then I should receive a valid set response
