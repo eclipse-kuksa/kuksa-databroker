@@ -9,3 +9,5 @@ os.environ["NO_PROXY"] = "*"
 
 # Point to the feature file
 scenarios("../features/viss_v2_basic.feature")
+scenarios("../features/viss_v2_multiple_paths.feature")
+scenarios("../features/viss_v2_server_capabilities.feature")

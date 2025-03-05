@@ -218,8 +218,21 @@ def receive_ws_read():
     assert 'value' in response["data"]['dp']
     assert response["data"]['dp']['ts'] != None
 
+@then("I should receive a single value from a single node")
+def receive_ws_single_value_single_node():
+    response = json.loads(ws.recv())
+    logger.debug(f"Received WebSocket response: {response}")
+    assert response["action"] == "get"
+    assert response["requestId"] != None
+    assert response["data"] != None
+    assert response["data"]['path'] != None
+    assert response["data"]['dp'] != None
+    # the value itself may be "None", but the key must exist
+    assert 'value' in response["data"]['dp']
+    assert response["data"]['dp']['ts'] != None
+
 @then("I should receive multiple data points")
-def receive_ws_read():
+def receive_ws_read_multiple_datapoints():
     response = json.loads(ws.recv())
     logger.debug(f"Received WebSocket response: {response}")
     assert response["action"] == "get"
@@ -238,6 +251,29 @@ def receive_ws_read():
     assert response["data"][1]['dp'] != None
     assert 'value' in response["data"][1]['dp']
     assert response["data"][1]['dp']['ts'] != None
+
+@then("I should receive a single value from multiple nodes")
+def receive_ws_single_value_multiple_nodes():
+    response = json.loads(ws.recv())
+    logger.debug(f"Received WebSocket response: {response}")
+    assert response["action"] == "get"
+    assert response["requestId"] != None
+    assert response["data"] != None
+
+    actual_count = len(response["data"])
+    assert actual_count > 1
+
+    assert response["data"][0]['path'] != None
+    assert response["data"][0]['dp'] != None
+    assert 'value' in response["data"][0]['dp']
+    assert response["data"][0]['dp']['ts'] != None
+
+    assert response["data"][1]['path'] != None
+    assert response["data"][1]['dp'] != None
+    assert 'value' in response["data"][1]['dp']
+    assert response["data"][1]['dp']['ts'] != None
+
+    assert response["data"][0]['path'] != response["data"][1]['path']
 
 @then(parsers.parse("I should receive exactly {expected_count} data points"))
 def receive_ws_read_expected_count(expected_count):
@@ -344,13 +380,18 @@ def receive_ws_set_readonly_error():
                                 "message": "The desired signal cannot be set since it is a read only signal."}
 
 
-@when('I publish "{message}" to the VISS MQTT topic')
-def publish_mqtt_message(message):
-    client = mqtt.Client()
-    client.connect(VISS_MQTT_BROKER, VISS_MQTT_PORT, 60)
-    client.publish("viss2/data", message)
-    client.disconnect()
-
-@then("the server should acknowledge the publication")
-def mqtt_acknowledgment():
-    assert received_message is not None
+@then("I should receive a list of server capabilities")
+def receive_ws_list_of_server_capabilities():
+    response = json.loads(ws.recv())
+    logger.debug(f"Received WebSocket response: {response}")
+    assert response == {
+        "filter": [
+            "timebased",
+            "change",
+            "dynamic_metadata"
+        ],
+        "transport_protocol": [
+            "https",
+            "wss"
+        ]
+    }
