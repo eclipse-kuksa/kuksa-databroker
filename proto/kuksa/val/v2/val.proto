@@ -183,6 +183,13 @@ service VAL {
   //        It is up to the provider to decide if the stream shall be closed,
   //        as of today Databroker will not react on the received error message.
   //
+  //    - Provider sends ProvideSignalRequest -> Databroker returns ProvideSignalResponse
+  //        Returns (GRPC error code) and closes the stream call (strict case).
+  //          NOT_FOUND if any of the signals are non-existant.
+  //          PERMISSION_DENIED if access is denied for any of the signals.
+  //          UNAUTHENTICATED if no credentials provided or credentials has expired
+  //          ALREADY_EXISTS if a provider already claimed the ownership of any signal.
+  //
   rpc OpenProviderStream(stream OpenProviderStreamRequest) returns (stream OpenProviderStreamResponse);
 
   // Get server information
@@ -313,13 +320,18 @@ message UpdateFilterRequest {
   // Databroker sends filters to provider.
   // In case provider restarts, databroker will send local filters stored 
   // to continue the provider sending same signals with same filter.
-  map<int32, Filter> filters_update = 1;
+  map<int32, Filter> filters_update = 2;
 }
 
 // Only returned if there is a filter error on provider side
 message UpdateFilterResponse {
   uint32 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding request.
-  FilterError filter_error = 1;
+  FilterError filter_error  = 2;
+}
+
+// Only returned if there is a error on provider side
+message ProviderErrorIndication {
+  ProviderError provider_error = 1;
 }
 
 message GetProviderValueRequest {
@@ -364,6 +376,8 @@ message OpenProviderStreamResponse {
     UpdateFilterRequest update_filter_request              = 5;
     // GetValue request from client forwarded to provider
     GetProviderValueRequest get_provider_value_request     = 6;
+    // Indication of error on provider side
+    ProviderErrorIndication provider_error_indication      = 7;
   }
 }
 

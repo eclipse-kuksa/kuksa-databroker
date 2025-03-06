@@ -53,9 +53,7 @@ message SampleInterval {
 
 enum FilterError {
   FILTER_ERROR_CODE_UNSPECIFIED      = 0;
-  FILTER_ERROR_CODE_NETWORK_ERROR    = 1;
-  FILTER_ERROR_CODE_OVERLOAD         = 2;
-  FILTER_ERROR_CODE_UNKNOW_SINGAL_ID = 3;
+  FILTER_ERROR_CODE_UNKNOW_SINGAL_ID = 1;
 }
 
 message Filter {
@@ -63,6 +61,13 @@ message Filter {
   uint32 duration_ms                 = 1;
   // Min desired sample update interval.
   SampleInterval min_sample_interval = 2;
+}
+
+// Could be extended in the future with more errors
+enum ProviderError {
+  CODE_UNSPECIFIED      = 0;
+  CODE_NETWORK_ERROR    = 1;
+  CODE_OVERLOAD         = 2;
 }
 
 message SignalID {
