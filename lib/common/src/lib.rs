@@ -1,5 +1,5 @@
 /********************************************************************************
-* Copyright (c) 2023 Contributors to the Eclipse Foundation
+* Copyright (c) 2025 Contributors to the Eclipse Foundation
 *
 * See the NOTICE file(s) distributed with this work for additional
 * information regarding copyright ownership.
@@ -16,7 +16,7 @@ use std::convert::TryFrom;
 use databroker_proto::kuksa::val::v1::Error;
 use http::Uri;
 use tokio_stream::wrappers::BroadcastStream;
-use tonic::transport::Channel;
+use tonic::{async_trait, transport::Channel};
 
 #[derive(Debug)]
 pub struct Client {
@@ -39,6 +39,95 @@ pub enum ClientError {
     Connection(String),
     Status(tonic::Status),
     Function(Vec<Error>),
+}
+
+#[async_trait]
+pub trait ClientTrait {
+    type SensorUpdateType;
+    type UpdateActuationType;
+    type PathType;
+    type SubscribeType;
+    type PublishResponseType;
+    type GetResponseType;
+    type SubscribeResponseType;
+    type ProvideResponseType;
+    type ActuateResponseType;
+    type MetadataResponseType;
+
+    // from deeply embedded layer providing sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn update_datapoints(
+        &mut self,
+        datapoints: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError>;
+    async fn set_current_values(
+        &mut self,
+        datapoints: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError>;
+    async fn publish(
+        &mut self,
+        datapoints: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError>;
+
+    // from application getting sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn get_datapoints(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError>;
+    async fn get_current_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError>;
+    async fn get(&mut self, paths: Self::PathType) -> Result<Self::GetResponseType, ClientError>;
+
+    // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn subscribe_target_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::ProvideResponseType, ClientError>;
+    async fn provide_actuation(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::ProvideResponseType, ClientError>;
+    // get is unary
+    async fn get_target_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError>;
+
+    // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn subscribe_current_values(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError>;
+    async fn subscribe(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError>;
+
+    // from application requesting an actuation (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn set_datapoints(
+        &mut self,
+        datapoints: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError>;
+    async fn set_target_values(
+        &mut self,
+        datapoints: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError>;
+    async fn actuate(
+        &mut self,
+        datapoints: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError>;
+
+    // general functions
+    async fn get_metadata(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::MetadataResponseType, ClientError>;
 }
 
 impl std::error::Error for ClientError {}
