@@ -251,7 +251,7 @@ impl KuksaClientV2 {
             self.basic_client.get_auth_interceptor(),
         );
 
-        let actuate_requests = Self::convert_to_vector(values);
+        let actuate_requests = Self::convert_to_actuate_requests(values);
 
         let batch_actuate_request = BatchActuateRequest { actuate_requests };
 
@@ -469,7 +469,7 @@ impl KuksaClientV2 {
         Ok(hash_map)
     }
 
-    fn convert_to_vector(values: HashMap<String, Value>) -> Vec<ActuateRequest> {
+    fn convert_to_actuate_requests(values: HashMap<String, Value>) -> Vec<ActuateRequest> {
         let mut actuate_requests = Vec::with_capacity(values.len());
         for (signal_path, value) in values {
             let actuate_request = ActuateRequest {
