@@ -123,6 +123,12 @@ where
     socket.set_linger(None)?;
     socket.set_nonblocking(true)?;
 
+    // set_quickack is a system-specific call, it does not exist on mac or win:
+    // https://github.com/rust-lang/socket2/blob/34aba73afdbcd4e3dbf0fa9ff9ece889e77926ab/src/sys/unix.rs#L1696
+    #[cfg(all(
+        feature = "default",
+        any(target_os = "android", target_os = "fuchsia", target_os = "linux")
+    ))]
     socket.set_quickack(true)?;
     socket.set_nodelay(true)?;
 

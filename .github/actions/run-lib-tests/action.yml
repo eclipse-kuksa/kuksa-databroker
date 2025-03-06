@@ -1,0 +1,27 @@
+name: Run Kuksa Lib Tests
+description: Runs Unit and Integration Test. Tests will be executed on a Databroker instance.
+
+inputs:
+  databroker-version:
+    description: "Databroker Version"
+    default: 'main'
+  databroker-port:
+    description: "Databroker Port"
+    default: '55555'
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Run insecure Databroker with authentication enabled in detached mode"
+      run: docker run --pull=always --rm --publish ${{inputs.databroker-port}}:${{inputs.databroker-port}}/tcp -v ${{github.workspace}}/certificates:/certs --detach --name databroker ghcr.io/eclipse-kuksa/kuksa-databroker:${{ inputs.databroker-version }} --port ${{inputs.databroker-port}} --insecure --jwt-public-key /certs/jwt/jwt.key.pub
+      shell: bash
+
+    - name: Run cargo tests with authentication enabled
+      working-directory: lib
+      run: "cargo test"
+      shell: bash
+
+    - name: "Stop Databroker with authentication enabled"
+      if: always()
+      run: docker stop databroker
+      shell: bash

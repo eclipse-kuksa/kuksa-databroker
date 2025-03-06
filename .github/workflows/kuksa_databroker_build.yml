@@ -101,6 +101,28 @@ jobs:
           cd lib
           cargo build
 
+  lib-tests:
+    name: Run Kuksa Lib tests
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cache/pip/
+            target/
+          key: databroker-coverage-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run Lib Tests
+        uses: ./.github/actions/run-lib-tests
+
   test:
     name: Run unit tests
     runs-on: ubuntu-latest

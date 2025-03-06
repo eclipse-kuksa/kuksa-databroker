@@ -5,7 +5,8 @@ members = [
     "common",
     "kuksa",
     "sdv",
-    "databroker-examples"
+    "databroker-examples",
+    "kuksa_val_v2",
 ]
 
 [workspace.dependencies]

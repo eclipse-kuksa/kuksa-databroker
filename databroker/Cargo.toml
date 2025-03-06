@@ -105,3 +105,6 @@ reqwest = { version = "0.11", features = ["json"] }
 [[test]]
 name = "read_write_values"
 harness = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)'] }

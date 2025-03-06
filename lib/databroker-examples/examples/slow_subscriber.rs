@@ -12,13 +12,12 @@
 ********************************************************************************/
 
 use kuksa::KuksaClient;
-use tokio::time::{sleep, Duration};
 use kuksa_common::to_uri;
 use std::thread;
+use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() {
-
     // Paths to subscribe
     let paths = vec!["Vehicle.Speed"];
 
