@@ -17,8 +17,8 @@ use databroker_proto::kuksa::val::v2::open_provider_stream_request::Action;
 use databroker_proto::kuksa::val::v2::signal_id::Signal;
 use databroker_proto::kuksa::val::v2::value::TypedValue;
 use databroker_proto::kuksa::val::v2::{
-    open_provider_stream_response, OpenProviderStreamRequest, ProvideActuationRequest,
-    SignalId, Value,
+    open_provider_stream_response, OpenProviderStreamRequest, ProvideActuationRequest, SignalId,
+    Value,
 };
 use kuksa_val_v2::KuksaClientV2;
 use open_provider_stream_response::Action::BatchActuateStreamRequest;
@@ -132,23 +132,18 @@ async fn sample_provide_actuation(client: &mut KuksaClientV2) {
             tokio::spawn(async move {
                 let result = stream.receiver_stream.message().await;
                 match result {
-                    Ok(option) => match option {
-                        None => {
-                            // handle none
-                        }
-                        Some(response) => {
-                            if let Some(BatchActuateStreamRequest(batch_actuate_stream_request)) =
-                                response.action
-                            {
-                                let actuate_requests =
-                                    batch_actuate_stream_request.actuate_requests;
-                                for actuate_request in actuate_requests {
-                                    // execute actuate_requests
-                                    println!("Received ActuateRequest: {:?}", actuate_request);
-                                }
+                    Ok(option) => {
+                        let response = option.unwrap();
+                        if let Some(BatchActuateStreamRequest(batch_actuate_stream_request)) =
+                            response.action
+                        {
+                            let actuate_requests = batch_actuate_stream_request.actuate_requests;
+                            for actuate_request in actuate_requests {
+                                // execute actuate_requests
+                                println!("Received ActuateRequest: {:?}", actuate_request);
                             }
                         }
-                    },
+                    }
                     Err(err) => {
                         println!("Error: Could not receive response {:?}", err);
                     }
@@ -172,22 +167,17 @@ async fn sample_subscribe(client: &mut KuksaClientV2) {
             tokio::spawn(async move {
                 let result = streaming.message().await;
                 match result {
-                    Ok(option) => match option {
-                        Some(response) => {
-                            if let Some(speed) = response.entries.get(path_speed) {
-                                // do something with speed
-                                println!("{}: {:?}", path_speed, speed);
-                            };
-                            if let Some(average_speed) = response.entries.get(path_avg_speed) {
-                                // do something with average_speed
-                                println!("{}: {:?}", path_avg_speed, average_speed);
-                            };
-                        }
-                        None => {
-                            // no subscribe response
-                            println!("No SubscribeResponse for {}", path_speed);
-                        }
-                    },
+                    Ok(option) => {
+                        let response = option.unwrap();
+                        if let Some(speed) = response.entries.get(path_speed) {
+                            // do something with speed
+                            println!("{}: {:?}", path_speed, speed);
+                        };
+                        if let Some(average_speed) = response.entries.get(path_avg_speed) {
+                            // do something with average_speed
+                            println!("{}: {:?}", path_avg_speed, average_speed);
+                        };
+                    }
                     Err(err) => {
                         println!("Error: Could not receive response {:?}", err);
                     }
@@ -215,26 +205,22 @@ async fn sample_subscribe_by_id(client: &mut KuksaClientV2) {
                     tokio::spawn(async move {
                         let result = streaming.message().await;
                         match result {
-                            Ok(option) => match option {
-                                Some(response) => {
-                                    if let Some(speed) =
-                                        response.entries.get(path_ids_map.get(path_speed).unwrap())
-                                    {
-                                        // do something with speed
-                                        println!("{}: {:?}", path_speed, speed);
-                                    };
-                                    if let Some(average_speed) = response
-                                        .entries
-                                        .get(path_ids_map.get(path_avg_speed).unwrap())
-                                    {
-                                        // do something with average_speed
-                                        println!("{}: {:?}", path_avg_speed, average_speed);
-                                    };
-                                }
-                                None => {
-                                    // no subscribe response
-                                }
-                            },
+                            Ok(option) => {
+                                let response = option.unwrap();
+                                if let Some(speed) =
+                                    response.entries.get(path_ids_map.get(path_speed).unwrap())
+                                {
+                                    // do something with speed
+                                    println!("{}: {:?}", path_speed, speed);
+                                };
+                                if let Some(average_speed) = response
+                                    .entries
+                                    .get(path_ids_map.get(path_avg_speed).unwrap())
+                                {
+                                    // do something with average_speed
+                                    println!("{}: {:?}", path_avg_speed, average_speed);
+                                };
+                            }
                             Err(err) => {
                                 println!("Error: Could not receive response: {:?}", err);
                             }
