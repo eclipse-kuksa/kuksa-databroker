@@ -6,6 +6,7 @@ Feature: VISS v2 Compliance Testing
 
   Background:
     Given the VISS server is running
+    Given the VISS client is connected via WebSocket
     Given I have a subscription to "Vehicle.Speed"
 
   Scenario: Unsubscribe

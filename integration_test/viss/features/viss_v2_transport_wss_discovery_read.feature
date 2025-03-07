@@ -6,6 +6,7 @@ Feature: VISS v2 Compliance Testing
 
   Background:
     Given the VISS server is running
+    Given the VISS client is connected via WebSocket
 
   Scenario: Search by dynamic metadata
     When I search "Vehicle" using a dynamic metadata filter "availability"

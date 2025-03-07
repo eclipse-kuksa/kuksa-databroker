@@ -60,6 +60,14 @@ pytest -s -v --log-level=DEBUG
 pytest -k 'basic'
 ```
 
+## MQTT Setup
+
+Run mqtt broker:
+```
+docker run -it -p 1883:1883 -v "$PWD/mosquitto-config:/mosquitto/config" eclipse-mosquitto
+```
+
+
 ## Test Reports
 
 ### Pre-Requisites

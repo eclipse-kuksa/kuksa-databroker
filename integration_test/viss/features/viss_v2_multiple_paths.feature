@@ -2,6 +2,7 @@ Feature: VISS v2 Compliance Testing
 
   Background:
     Given the VISS server is running
+    Given the VISS client is connected via WebSocket
 
   Scenario: Request for a single value from a single node
     When I send a read request with path "Vehicle.Speed"

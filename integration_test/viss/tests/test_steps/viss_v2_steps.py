@@ -141,6 +141,11 @@ def viss_client_connected_via_websocket(ws_client):
     logger.debug("Connecting via WebSocket")
     ws_client.connect()
 
+@given("the VISS client is connected via MQTT")
+def viss_client_connected_via_mqtt(mqtt_client):
+    logger.debug("Connecting via MQTT")
+    mqtt_client.connect()
+
 @given(parsers.parse("I have a subscription to \"{path}\""), target_fixture="subscription_id")
 @when(parsers.parse('I send a subscription request for "{path}"'), target_fixture="subscription_id")
 def send_subscribe(connected_clients, request_id, path):
@@ -299,7 +304,7 @@ def receive_valid_get_response(connected_clients, request_id):
 
 @then("I should receive a single value from a single node")
 def receive_ws_single_value_single_node(connected_clients, request_id):
-    response = connected_clients.find_message(request_id)
+    response = connected_clients.find_message(request_id=request_id)
 
     assert response["action"] == "get"
     assert response["requestId"] != None
@@ -462,7 +467,7 @@ def receive_ws_set_readonly_error(connected_clients,request_id):
 def receive_ws_list_of_server_capabilities(connected_clients,request_id):
     response = connected_clients.find_message(request_id=request_id)
 
-    assert response == {
+    expected_response = {
         "filter": [
             "timebased",
             "change",
@@ -473,3 +478,5 @@ def receive_ws_list_of_server_capabilities(connected_clients,request_id):
             "wss"
         ]
     }
+
+    assert expected_response == response, f"Expected server capabilites, but got: {response}"

@@ -6,7 +6,7 @@ Feature: VISS v2 Compliance Testing
 
   Background:
     Given the VISS server is running
-    When I open a WebSocket connection
+    Given the VISS client is connected via WebSocket
 
   Scenario: Requesting server capabilities
     When I search "Vehicle" using a dynamic metadata filter "server_capabilities"

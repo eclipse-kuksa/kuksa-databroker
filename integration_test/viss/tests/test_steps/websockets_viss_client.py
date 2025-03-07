@@ -33,7 +33,8 @@ class WebSocketsVISSClient:
         self._ws.send(json.dumps(message))
         envelope = {
             "timestamp": time.time(),
-            "requestId": request_id,
+            "action": message['action'],
+            "requestId": request_id.current(),
             "body": message
         }
         logger.debug(f"Storing sent envelope: {envelope}")
