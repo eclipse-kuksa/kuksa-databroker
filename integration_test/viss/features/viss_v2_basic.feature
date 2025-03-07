@@ -2,6 +2,7 @@ Feature: VISS v2 Compliance Testing
 
   Background:
     Given the VISS server is running
+    Given the VISS client is connected via WebSocket
 
   Scenario: Read a valid data path
     When I open a WebSocket connection

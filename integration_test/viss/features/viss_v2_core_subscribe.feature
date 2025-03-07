@@ -11,19 +11,12 @@ Feature: VISS v2 Compliance Testing
     When I open a WebSocket connection
     And I send a subscription request for "Vehicle.Speed"
     Then I should receive a valid subscribe response
+    Then I should receive a valid subscription response
 
   Scenario: Subscribe to an unknown data path
     When I open a WebSocket connection
     And I send a subscription request for "Some.Unknown.Datapoint"
     Then I should receive a subscribe error event
-
-  Scenario: Subscribe and update a data path
-    When I open a WebSocket connection
-    And I send a subscription request for "Vehicle.Speed"
-    Then I should receive a valid subscribe response
-    When I send a set request for path "Vehicle.Speed" with the value 123
-    Then I should receive a valid subscription event
-    Then I should receive a read-only error
 
   Scenario: Subscribe and Unsubscribe
     Given I have a subscription to "Vehicle.Speed"

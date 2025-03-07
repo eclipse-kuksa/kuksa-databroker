@@ -13,3 +13,5 @@ scenarios("../features/viss_v2_transport_wss_history_read.feature")
 scenarios("../features/viss_v2_transport_wss_discovery_read.feature")
 scenarios("../features/viss_v2_transport_wss_subscribe_curvelog.feature")
 scenarios("../features/viss_v2_transport_wss_subscribe_range.feature")
+
+scenarios("../features/viss_v2_transport_http_read.feature")

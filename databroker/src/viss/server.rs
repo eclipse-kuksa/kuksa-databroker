@@ -43,6 +43,7 @@ pub async fn serve(
     // signal: F
 ) -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
+        .route("/health", get(|| async { "OK" }))
         .route("/", get(handle_upgrade))
         .with_state(AppState {
             broker,

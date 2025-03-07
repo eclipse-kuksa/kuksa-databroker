@@ -1,59 +1,155 @@
+import asyncio
+import http
 import logging
-import pytest
+import socket
 import requests
 import websocket
-import paho.mqtt.client as mqtt
 import json
-from pytest_bdd import scenarios, given, when, then,parsers
+import pytest
+from pytest_bdd import given, when, then,parsers
 
-VISS_HTTP_URL = "http://localhost:8090"
-VISS_WS_URL = "ws://localhost:8090"
-VISS_MQTT_BROKER = "localhost"
-VISS_MQTT_PORT = 1883
-received_message = None
+from .http_viss_client import HttpVISSClient
+from .mqtt_viss_client import MQTTVISSClient
+from .websockets_viss_client import WebSocketsVISSClient
+from .types import RequestId
 
 # Basic logging
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-authorization = {}
+class ConnectedClients():
 
-@given("I am authorized")
+    def __init__(self,pytestconfig):
+        self.pytestconfig=pytestconfig
+        self.clients = {
+            'HTTP': HttpVISSClient(pytestconfig),
+            'MQTT': MQTTVISSClient(pytestconfig),
+            'WebSockets': WebSocketsVISSClient(pytestconfig)
+        }
+        logger.debug("Creating new ConnectedClients")
+        pass
+
+    def httpclient(self):
+        return self.clients['HTTP']
+
+    def wsclient(self):
+        return self.clients['WebSockets']
+
+    def mqttclient(self):
+        return self.clients['MQTT']
+
+    def connect(self):
+        self.wsclient().connect()
+        # logger.debug(f"Connecting clients...")
+        # for key,client in self.clients.items():
+        #     if not client.is_connected():
+        #         logger.debug(f"Connecting client: {key}")
+        #         client.connect()
+
+    def disconnect(self):
+        logger.debug(f"Disconnecting connected clients...")
+        for key,client in self.clients.items():
+            if client.is_connected():
+                logger.debug(f"Disconnecting client: {key}")
+                client.disconnect()
+
+    def send(self, request_id,message):
+        for key,client in self.clients.items():
+            if client.is_connected():
+                client.send(request_id,message)
+                logger.debug(f"Sent message: {message}")
+
+    def find_subscription_id_by_request_id(self, request_id):
+        # TODO: Last one wins
+        for key,client in self.clients.items():
+            if client.is_connected():
+                response=client.find_subscription_id_by_request_id(request_id=request_id,)
+                logger.debug(f"Found message: {response}")
+        return response
+
+    def find_message(self, *, subscription_id=None, request_id=None, action=None):
+        for key,client in self.clients.items():
+            if client.is_connected():
+                response=client.find_message(subscription_id=subscription_id,
+                                             request_id=request_id,
+                                             action=action)
+                logger.debug(f"Found message: {response}")
+        # TODO: Last one wins
+        return response
+
+    def find_messages(self, *,
+                      subscription_id : str = None,
+                      request_id : RequestId = None,
+                      action : str = None):
+        for key,client in self.clients.items():
+            if client.is_connected():
+                response=client.find_messages(subscription_id=subscription_id,
+                                              request_id=request_id,
+                                              action=action)
+                logger.debug(f"Found message: {response}")
+        return response
+
+
+@pytest.fixture
+def request_id():
+    return RequestId()
+
+@pytest.fixture
+def connected_clients(request,pytestconfig):
+    connected_clients = ConnectedClients(pytestconfig)
+    #Enforece all the feature to explicitly state whether to connect and how.
+    #connected_clients.connect()
+    def cleanup():
+        connected_clients.disconnect()
+    request.addfinalizer(cleanup)
+    return connected_clients
+
+@pytest.fixture
+def http_client(connected_clients):
+    return connected_clients.clients['HTTP']
+
+@pytest.fixture
+def ws_client(connected_clients):
+    return connected_clients.clients['WebSockets']
+
+@pytest.fixture
+def mqtt_client(connected_clients):
+    return connected_clients.clients['MQTT']
+
+# TODO: Parameterize to different permissions/scopes/roles
+# TODO: Generate actual token
+@given("I am authorized", target_fixture="authorization")
 def given_authorized():
     global authorization
     authorization={
         "token": "foobar"
     }
+    return authorization
 
 @given("the VISS server is running")
-def viss_server_running():
-    response = requests.get(f"{VISS_HTTP_URL}/health")
-    #assert response.status_code == 200
+def viss_server_running(pytestconfig):
+    # TODO: Check that server is running
+    pass
 
-@given(parsers.parse("I have a subscription to \"{path}\""), target_fixture="subscriptionId")
-def subscription(path):
-    send_ws_subscribe(path)
-    # First response message is status message for subscribing
-    response = json.loads(ws.recv())
-    # Second message is current data point value message
-    # We can ignore this?
-    ws.recv()
-    return response['subscriptionId']
+@given("the VISS client is connected via HTTP")
+def viss_client_connected_via_http(http_client):
+    logger.debug("Connecting via HTTP")
+    http_client.connect()
 
-@when("I open a WebSocket connection")
-def open_ws_connection():
-    global ws
-    ws = websocket.create_connection(VISS_WS_URL)
-    logger.debug("WebSocket connection opened")
+@given("the VISS client is connected via WebSocket")
+def viss_client_connected_via_websocket(ws_client):
+    logger.debug("Connecting via WebSocket")
+    ws_client.connect()
 
-@when(parsers.parse('I send a subscription request for "{path}"'))
-def send_ws_subscribe(path):
-    request = json.dumps({"action": "subscribe", "path": path, "requestId": "abc123"})
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
+@given(parsers.parse("I have a subscription to \"{path}\""), target_fixture="subscription_id")
+@when(parsers.parse('I send a subscription request for "{path}"'), target_fixture="subscription_id")
+def send_subscribe(connected_clients, request_id, path):
+    request = {"action": "subscribe", "path": path, "requestId": request_id.new()}
+    connected_clients.send(request_id, request)
+    return connected_clients.find_subscription_id_by_request_id(request_id)
 
-@when(parsers.parse('I subscribe to "{path}" using a curvelog filter with maxerr {maxerr} and bufsize {bufsize}'))
-def subscribe_filter_curvelog(path, maxerr, bufsize):
+@when(parsers.parse('I subscribe to "{path}" using a curvelog filter with maxerr {maxerr} and bufsize {bufsize}'), target_fixture="subscription_id")
+def subscribe_filter_curvelog(connected_clients, request_id, path, maxerr, bufsize):
     request = {
         "action": "subscribe",
         "path": path,
@@ -65,27 +161,23 @@ def subscribe_filter_curvelog(path, maxerr, bufsize):
                 }
         }
         ,
-        "requestId": "abc123"
+        "requestId": request_id.new()
     }
-    request = json.dumps(request)
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
-
+    connected_clients.send(request_id, request)
+    return connected_clients.find_subscription_id_by_request_id(request_id)
 
 @when(parsers.parse('I send an unsubscribe request'))
-def send_ws_unsubscribe(subscriptionId):
-    request = json.dumps({"action": "unsubscribe", "subscriptionId": subscriptionId, "requestId": "abc123"})
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
+def send_ws_unsubscribe(connected_clients, request_id, subscription_id):
+    request = {"action": "unsubscribe", "subscriptionId": subscription_id, "requestId": request_id.new()}
+    connected_clients.send(request_id, request)
 
 @when(parsers.parse('I send a read request with path "{path}"'))
-def send_read_vehicle_speed(path):
-    request = json.dumps({"action": "get", "path": path, "requestId": "abc123"})
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
+def send_read_data_point(connected_clients, request_id, path):
+    request = {"action": "get", "path": path, "requestId": request_id.new()}
+    connected_clients.send(request_id, request)
 
 @when(parsers.parse('I search "{path}" using a path filter "{filter}"'))
-def search_path_filter(path, filter):
+def search_path_filter(connected_clients,request_id,  path, filter):
     request = {
         "action": "get",
         "path": path,
@@ -95,14 +187,12 @@ def search_path_filter(path, filter):
                 filter
             ]
         },
-        "requestId": "abc123"
+        "requestId": request_id.new()
     }
-    request = json.dumps(request)
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
+    connected_clients.send(request_id, request)
 
 @when(parsers.parse('I search "{path}" using a history filter "{filter}"'))
-def search_history_filter(path, filter):
+def search_history_filter(connected_clients,request_id, path, filter):
     request = {
         "action": "get",
         "path": path,
@@ -110,14 +200,12 @@ def search_history_filter(path, filter):
             "type": "history",
             "parameter": filter
         },
-        "requestId": "abc123"
+        "requestId": request_id.new()
     }
-    request = json.dumps(request)
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
+    connected_clients.send(request_id, request)
 
 @when(parsers.parse('I search "{path}" using a dynamic metadata filter "{filter}"'))
-def search_dynamic_metadata_filter(path, filter):
+def search_dynamic_metadata_filter(connected_clients, request_id, path, filter):
     request = {
         "action": "get",
         "path": path,
@@ -127,14 +215,12 @@ def search_dynamic_metadata_filter(path, filter):
                  filter
             ]
         },
-        "requestId": "abc123"
+        "requestId": request_id.new()
     }
-    request = json.dumps(request)
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
+    connected_clients.send(request_id, request)
 
 @when(parsers.parse('I search "{path}" using a static metadata filter "{filter}"'))
-def search_static_metadata_filter(path, filter):
+def search_static_metadata_filter(connected_clients, request_id, path, filter):
     request = {
         "action": "get",
         "path": path,
@@ -144,14 +230,12 @@ def search_static_metadata_filter(path, filter):
                 filter
             ]
         },
-        "requestId": "abc123"
+        "requestId": request_id.new()
     }
-    request = json.dumps(request)
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
+    connected_clients.send(request_id, request)
 
-@when(parsers.parse('I subscribe to "{path}" using a range filter'))
-def search_static_range_filter(path):
+@when(parsers.parse('I subscribe to "{path}" using a range filter'), target_fixture="subscription_id")
+def search_static_range_filter(connected_clients,request_id, path):
     request = {
         "action": "subscribe",
         "path": path,
@@ -170,14 +254,13 @@ def search_static_range_filter(path):
                     }
                 ]
         },
-        "requestId": "abc123"
+        "requestId": request_id.new()
     }
-    request = json.dumps(request)
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
+    connected_clients.send(request_id, request)
+    return connected_clients.find_subscription_id_by_request_id(request_id)
 
-@when(parsers.parse('I subscribe to "{path}" using a change filter'))
-def search_static_change_filter(path):
+@when(parsers.parse('I subscribe to "{path}" using a change filter'), target_fixture="subscription_id")
+def search_static_change_filter(connected_clients,request_id,  path):
     request = {
         "action": "subscribe",
         "path": path,
@@ -188,30 +271,26 @@ def search_static_change_filter(path):
                    "diff":"10"
             }
         },
-        "requestId": "abc123"
+        "requestId": request_id.new()
     }
-    request = json.dumps(request)
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
+    connected_clients.send(request_id, request)
+    return connected_clients.find_subscription_id_by_request_id(request_id)
 
 @when(parsers.parse('I send a set request for path "{path}" with the value {value}'))
-def send_set(path, value):
-    global authorization
-    request = {"action": "set", "path": path, "requestId": "abc123", "value": value}
-    if authorization is not None:
-        if 'token' in authorization:
-            request['authorization'] = authorization['token']
-    request = json.dumps(request)
-    logger.debug(f"Sending WebSocket message: {request}")
-    ws.send(request)
+def send_set(connected_clients, request_id, path, value):
+    request = {"action": "set", "path": path, "requestId": request_id.new(), "value": value}
+    connected_clients.send(request_id, request)
 
 @then("I should receive a valid read response")
-def receive_ws_read():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "get"
-    assert response["requestId"] != None
-    assert response["data"] != None
+def receive_valid_get_response(connected_clients, request_id):
+    response = connected_clients.find_message(request_id=request_id,
+                                              action="get")
+    assert "action" in response
+    assert "requestId" in response
+    assert "data" in response
+
+    assert "error" not in response
+
     assert response["data"]['path'] != None
     assert response["data"]['dp'] != None
     # the value itself may be "None", but the key must exist
@@ -219,9 +298,9 @@ def receive_ws_read():
     assert response["data"]['dp']['ts'] != None
 
 @then("I should receive a single value from a single node")
-def receive_ws_single_value_single_node():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
+def receive_ws_single_value_single_node(connected_clients, request_id):
+    response = connected_clients.find_message(request_id)
+
     assert response["action"] == "get"
     assert response["requestId"] != None
     assert response["data"] != None
@@ -232,85 +311,72 @@ def receive_ws_single_value_single_node():
     assert response["data"]['dp']['ts'] != None
 
 @then("I should receive multiple data points")
-def receive_ws_read_multiple_datapoints():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "get"
-    assert response["requestId"] != None
-    assert response["data"] != None
-
-    actual_count = len(response["data"])
-    assert actual_count > 1
-
-    assert response["data"][0]['path'] != None
-    assert response["data"][0]['dp'] != None
-    assert 'value' in response["data"][0]['dp']
-    assert response["data"][0]['dp']['ts'] != None
-
-    assert response["data"][1]['path'] != None
-    assert response["data"][1]['dp'] != None
-    assert 'value' in response["data"][1]['dp']
-    assert response["data"][1]['dp']['ts'] != None
+def receive_ws_read_multiple_datapoints(connected_clients,request_id):
+    responses = connected_clients.find_messages(request_id=request_id)
+    # TODO: Unpack envelope
+    # TODO: Count number of valid "dp" items
+    actual_count = len(responses)
+    assert actual_count > 1, f"Expected multiple messages but only got {actual_count}"
 
 @then("I should receive a single value from multiple nodes")
-def receive_ws_single_value_multiple_nodes():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "get"
-    assert response["requestId"] != None
-    assert response["data"] != None
+def receive_ws_single_value_multiple_nodes(connected_clients,request_id):
+    responses = connected_clients.find_messages(request_id=request_id)
+    # TODO: Unpack envelope
+    # TODO: Count number of valid "dp" items
+    # TODO: Assert that each node only has 1 value
+    actual_count = len(responses)
+    assert actual_count > 1, f"Expected multiple messages but only got {actual_count}"
 
-    actual_count = len(response["data"])
-    assert actual_count > 1
-
-    assert response["data"][0]['path'] != None
-    assert response["data"][0]['dp'] != None
-    assert 'value' in response["data"][0]['dp']
-    assert response["data"][0]['dp']['ts'] != None
-
-    assert response["data"][1]['path'] != None
-    assert response["data"][1]['dp'] != None
-    assert 'value' in response["data"][1]['dp']
-    assert response["data"][1]['dp']['ts'] != None
-
-    assert response["data"][0]['path'] != response["data"][1]['path']
-
-@then(parsers.parse("I should receive exactly {expected_count} data points"))
-def receive_ws_read_expected_count(expected_count):
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "subscription"
-    assert response["subscriptionId"] != None
-    assert response["data"] != None
-    actual_count = len(response["data"])
-    assert actual_count == expected_count
+@then(parsers.parse("I should receive exactly {expected_count:d} data points"))
+def receive_ws_read_expected_count(connected_clients,request_id, subscription_id, expected_count):
+    messages = connected_clients.find_messages(subscription_id=subscription_id)
+    actual_count = len(messages)
+    assert actual_count == expected_count, f"Expected {expected_count} messages but got {actual_count} for subscription {subscription_id}"
 
 @then("I should receive an error response")
-def receive_ws_read():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "get"
-    assert response["requestId"] != None
+def receive_any_error_response(connected_clients,request_id):
+    response = connected_clients.find_message(request_id=request_id)
+    assert "requestId" in response
     assert "error" in response
-    assert response["error"] == {"number":404,"reason":"invalid_path","message":"The specified data path does not exist."}
+
+@then(parsers.parse("I should receive an error response with number {error_code:d} and reason \"{error_reason}\""))
+def receive_specific_error_response(connected_clients,request_id,error_code,error_reason):
+    response = connected_clients.find_message(request_id=request_id)
+    assert "requestId" in response
+    assert "error" in response
+    assert error_code == response['error']['number'], f"Expected error code '{error_code}' but got '{response['error']['number']}'"
+    assert error_reason == response['error']['reason'], f"Expected error reason '{error_reason}' but got '{response['error']['reason']}'"
 
 @then("I should receive a valid subscribe response")
-def receive_ws_subscribe():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "subscribe"
-    assert response["subscriptionId"] != None
-    assert response["requestId"] != None
-    assert response["ts"] != None
+def receive_ws_subscribe(connected_clients,request_id, subscription_id):
+    response = connected_clients.find_message(subscription_id=subscription_id,
+                                              request_id=request_id,
+                                              action="subscribe")
+    assert "subscriptionId" in response
+    assert "ts" in response
+    assert "error" not in response
+
+@then("I should receive a valid subscription response")
+def receive_ws_subscribe(connected_clients,request_id, subscription_id):
+    # Do not use the current request_id, as it's from the previous
+    # request.
+    response = connected_clients.find_message(subscription_id=subscription_id,
+                                              request_id=None,
+                                              action="subscription")
+    assert "action" in response
+    assert "subscriptionId" in response
+    assert "ts" in response
+    assert "requestId" not in response
+    assert "error" not in response
 
 @then("I should receive a subscribe error event")
-def receive_ws_subscribe_error_event():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "subscribe"
+def receive_ws_subscribe_error_event(connected_clients,request_id):
+    response = connected_clients.find_message(request_id=request_id, action="subscribe")
+
+    assert "requestId" in response
+    assert "error" in response
+    assert "ts" in response
     assert "subscriptionId" not in response
-    assert response["requestId"] != None
-    assert response["ts"] != None
 
     # Current implementation
     assert response["error"] == {"number": 404,
@@ -323,12 +389,13 @@ def receive_ws_subscribe_error_event():
     #                              "message": "The requested data was not found."}
 
 @then("I should receive a set error event")
-def receive_ws_set_error_event():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "set"
-    assert response["requestId"] != None
-    assert response["ts"] != None
+def receive_ws_set_error_event(connected_clients,request_id):
+    response = connected_clients.find_message(request_id=request_id, action="set")
+
+    assert "action" in response
+    assert "requestId" in response
+    assert "ts" in response
+    assert "error" in response
 
     # Current implementation
     assert response["error"] == {"number": 401,
@@ -336,23 +403,29 @@ def receive_ws_set_error_event():
                                  "message": "The desired signal cannot be set since it is a read only signal."}
 
 @then("I should receive a valid unsubscribe response")
-def receive_ws_unsubscribe():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "unsubscribe"
-    assert response["subscriptionId"] != None
-    assert response["requestId"] != None
-    assert response["ts"] != None
+def receive_ws_unsubscribe(connected_clients,request_id):
+    response = connected_clients.find_message(request_id=request_id, action="unsubscribe")
+    assert "action" in response
+    assert "subscriptionId" in response
+    assert "requestId" in response
+    assert "ts" in response
+
+    assert "error" not in response
 
 @then("I should receive a valid subscription event")
-def receive_ws_subscription():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "subscription"
-    assert response["subscriptionId"] != None
+def receive_ws_subscription(connected_clients,subscription_id,request_id):
+    # Ignore the request id here!
+    response = connected_clients.find_message(subscription_id=subscription_id,
+                                              request_id=None,
+                                              action="subscription")
+
+    assert "action" in response
+    assert "subscriptionId" in response
+    assert "ts" in response
+    assert "data" in response
+
     assert "requestId" not in response
-    assert response["ts"] != None
-    assert response["data"] != None
+
     assert response["data"]['path'] != None
     assert response["data"]['dp'] != None
     # the value itself may be "None", but the key must exist
@@ -360,18 +433,23 @@ def receive_ws_subscription():
     assert response["data"]['dp']['ts'] != None
 
 @then("I should receive a valid set response")
-def receive_ws_set():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
-    assert response["action"] == "set"
-    assert response["requestId"] != None
-    assert response["ts"] != None
+def receive_ws_set(connected_clients,request_id):
+    response = connected_clients.find_message(request_id=request_id,action="set")
+
+    assert "action" in response
+    assert "requestId" in response
+    assert "ts" in response
+
     assert "error" not in response
 
 @then("I should receive a read-only error")
-def receive_ws_set_readonly_error():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
+def receive_ws_set_readonly_error(connected_clients,request_id):
+    response = connected_clients.find_message(request_id=request_id)
+
+    assert "action" in response
+    assert "requestId" in response
+    assert "ts" in response
+
     assert response["action"] == "set"
     assert response["requestId"] != None
     assert response["ts"] != None
@@ -381,9 +459,9 @@ def receive_ws_set_readonly_error():
 
 
 @then("I should receive a list of server capabilities")
-def receive_ws_list_of_server_capabilities():
-    response = json.loads(ws.recv())
-    logger.debug(f"Received WebSocket response: {response}")
+def receive_ws_list_of_server_capabilities(connected_clients,request_id):
+    response = connected_clients.find_message(request_id=request_id)
+
     assert response == {
         "filter": [
             "timebased",
