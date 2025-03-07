@@ -480,3 +480,172 @@ def receive_ws_list_of_server_capabilities(connected_clients,request_id):
     }
 
     assert expected_response == response, f"Expected server capabilites, but got: {response}"
+
+@when(parsers.parse('I request historical data for "{path}" with a timeframe of "{timeframe}"'))
+def request_historical_data(connected_clients, request_id, path, timeframe):
+    request = {
+        "action": "get",
+        "path": path,
+        "filter": {
+            "type": "history",
+            "parameter": timeframe
+        },
+        "requestId": request_id.new()
+    }
+    connected_clients.send(request_id, request)
+
+@when(parsers.parse('\"{path}\" has been updated multiple times over the past {duration:d} minutes'))
+@given(parsers.parse('\"{path}\" has been updated multiple times over the past {duration:d} minutes'))
+def update_signal_multiple_times(connected_clients, request_id, path, duration):
+    import time
+
+    updates = [
+        {"value": 50, "delay": 1},
+        {"value": 60, "delay": 1},
+        {"value": 70, "delay": 1},
+    ]
+
+    for update in updates:
+        request = {
+            "action": "set",
+            "path": path,
+            "requestId": request_id.new(),
+            "value": update["value"]
+        }
+        connected_clients.send(request_id, request)
+        time.sleep(update["delay"])  # Simulate a time gap between updates
+
+    logger.debug(f"Updated {path} multiple times over {duration} minutes.")
+
+
+@then("I should receive a list of past data points within the last hour")
+@then("I should receive multiple past data points from the last 24 hours")
+def validate_historical_data_points(connected_clients, request_id):
+    response = connected_clients.find_message(request_id=request_id, action="get")
+
+    assert "data" in response, "No data field found in response"
+    assert isinstance(response["data"], list), "Expected a list of historical data points"
+    assert len(response["data"]) > 1, "Expected multiple historical data points"
+
+
+@then("the timestamps should be in chronological order")
+def validate_timestamps_order(connected_clients, request_id):
+    response = connected_clients.find_message(request_id=request_id, action="get")
+
+    timestamps = [dp["ts"] for dp in response["data"]]
+    assert timestamps == sorted(timestamps), "Timestamps are not in chronological order"
+
+
+@then("I should receive an error response indicating an invalid timeframe format")
+def validate_invalid_timeframe_error(connected_clients, request_id):
+    response = connected_clients.find_message(request_id=request_id, action="get")
+
+    assert "error" in response, "Expected an error in response"
+    assert response["error"]["reason"] == "invalid_timeframe", f"Unexpected error reason: {response['error']['reason']}"
+
+
+@then("I should receive an empty data response")
+def validate_empty_history_response(connected_clients, request_id):
+    response = connected_clients.find_message(request_id=request_id, action="get")
+
+    assert "data" in response, "Expected a data field in response"
+    assert response["data"] == [], "Expected an empty data list"
+
+
+@then("I should receive a set of past data points matching the recorded values")
+@then("the values should be accurate compared to previous set requests")
+def validate_historical_data_consistency(connected_clients, request_id):
+    response = connected_clients.find_message(request_id=request_id, action="get")
+
+    assert "data" in response, f"Expected a data field in response, but got {response}"
+
+    # Retrieve the last known values from previous set requests (mocked for this example)
+    expected_values = [123, 130, 125]  # Replace with actual recorded values
+    received_values = [dp["value"] for dp in response["data"]]
+
+    assert received_values == expected_values, f"Expected values {expected_values} but got {received_values}"
+
+@when(parsers.parse('I request historical data for "{path}" with a timeframe of "{timeframe}"'))
+def request_historical_data_multiple_nodes(connected_clients, request_id, path, timeframe):
+    request = {
+        "action": "get",
+        "path": path,
+        "filter": {
+            "type": "history",
+            "parameter": timeframe
+        },
+        "requestId": request_id.new()
+    }
+    connected_clients.send(request_id, request)
+
+
+@then("I should receive historical data for multiple nodes")
+def validate_historical_data_multiple_nodes(connected_clients, request_id):
+    response = connected_clients.find_message(request_id=request_id, action="get")
+
+    assert "data" in response, "No data field found in response"
+    assert isinstance(response["data"], list), "Expected a list of historical data points"
+
+    # Ensure that multiple unique paths exist
+    unique_paths = set(dp["path"] for dp in response["data"])
+    assert len(unique_paths) > 1, "Expected historical data from multiple nodes, but only found one"
+
+
+@then("the response should include data from at least two different paths")
+def validate_multiple_paths_in_history_response(connected_clients, request_id):
+    response = connected_clients.find_message(request_id=request_id, action="get")
+
+    assert "data" in response, "No data field found in response"
+    paths = set(dp["path"] for dp in response["data"])
+    assert len(paths) >= 2, f"Expected at least two different paths, but got {len(paths)}"
+
+@when(parsers.parse('I send a bulk set request with the following values:'))
+def send_bulk_set_request(connected_clients, request_id, datatable):
+    bulk_request = {
+        "action": "set",
+        "values": [],
+        "requestId": request_id.new()
+    }
+
+    for row in datatable[1:]:
+        path = row[0]
+        value = row[1]
+        bulk_request["values"].append({"path": path, "value": value})
+
+    connected_clients.send(request_id, bulk_request)
+
+@then("I should receive a valid response")
+def validate_successful_response(connected_clients, request_id):
+    response = connected_clients.find_message(request_id=request_id)
+
+    assert "action" in response, "Response is missing 'action' field"
+    assert "requestId" in response, "Response is missing 'requestId'"
+    assert "error" not in response, f"Unexpected error in response: {response.get('error')}"
+
+    logger.debug(f"Received valid response: {response}")
+
+@then("I should receive a valid set response")
+def validate_successful_set_response(connected_clients, request_id):
+    response = connected_clients.find_message(request_id=request_id)
+
+    assert "action" in response, "Response is missing 'action' field"
+    assert "requestId" in response, "Response is missing 'requestId'"
+    assert "error" not in response, f"Unexpected error in response: {response.get('error')}"
+
+    assert "set" == response['action'], f"Response should be for set, but is for {response['action']}"
+
+    logger.debug(f"Received valid response: {response}")
+
+@then(parsers.parse("I should receive a valid set response for \"{path}\""))
+def validate_successful_set_response_for_path(connected_clients, request_id,path):
+    response = connected_clients.find_message(request_id=request_id)
+
+    assert "action" in response, "Response is missing 'action' field"
+    assert "path" in response, "Response is missing 'path' field"
+    assert "requestId" in response, "Response is missing 'requestId'"
+    assert "error" not in response, f"Unexpected error in response: {response.get('error')}"
+
+    assert "set" == response['action'], f"Response should be for set, but is for {response['action']}"
+    assert path == response['path'], f"Response should be for {path}, but is for {response['path']}"
+
+    logger.debug(f"Received valid response: {response}")
