@@ -229,6 +229,7 @@ impl From<&broker::Metadata> for proto::Metadata {
             allowed_values: transform_allowed(&metadata.allowed),
             min: transform_min_max(&metadata.min),
             max: transform_min_max(&metadata.max),
+            min_sample_interval: None,
         }
     }
 }
