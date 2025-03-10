@@ -7,15 +7,14 @@ Feature: VISS v2 Compliance Testing
   Scenario: Bulk update multiple writable signals successfully
     When I send a bulk set request with the following values:
         | Path | Value |
-        | --- | --- |
         | Vehicle.Cabin.Infotainment.HMI.FontSize | LARGE |
         | Vehicle.Cabin.TemperatureSetpoint | 22 |
-    Then I should receive a valid set response for both paths
+    Then I should receive a valid set response for "Vehicle.Cabin.Infotainment.HMI.FontSize"
+    Then I should receive a valid set response for "Vehicle.Cabin.TemperatureSetpoint"
 
   Scenario: Bulk update with a mix of writable and read-only signals
     When I send a bulk set request with the following values:
         | Path | Value |
-        | --- | --- |
         | Vehicle.Cabin.Infotainment.HMI.FontSize | LARGE |
         | Vehicle.Speed | 100 |
     Then I should receive a valid set response for "Vehicle.Cabin.Infotainment.HMI.FontSize"
@@ -24,7 +23,6 @@ Feature: VISS v2 Compliance Testing
   Scenario: Bulk update with an invalid signal path
     When I send a bulk set request with the following values:
         | Path | Value |
-        | --- | --- |
         | Vehicle.Cabin.Infotainment.HMI.FontSize | MEDIUM |
         | Some.Unknown.Datapoint | 50 |
     Then I should receive a valid set response for "Vehicle.Cabin.Infotainment.HMI.FontSize"
@@ -34,7 +32,6 @@ Feature: VISS v2 Compliance Testing
     When the system enforces atomicity for bulk updates
     When I send a bulk set request with the following values:
         | Path | Value |
-        | --- | --- |
         | Vehicle.Cabin.Infotainment.HMI.FontSize | SMALL |
         | Vehicle.Speed | 120 |
         | Some.Unknown.Datapoint | 30 |
@@ -46,7 +43,6 @@ Feature: VISS v2 Compliance Testing
     And the VISS client is connected via HTTP
     When I send a bulk set request with the following values:
         | Path | Value |
-        | --- | --- |
         | Vehicle.Cabin.Lights.Intensity | HIGH |
         | Vehicle.Cabin.TemperatureSetpoint | 21 |
     Then I should receive a valid response

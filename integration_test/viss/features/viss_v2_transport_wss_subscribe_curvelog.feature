@@ -8,6 +8,9 @@ Feature: VISS v2 Compliance Testing
     Given the VISS server is running
     Given the VISS client is connected via WebSocket
 
+  # 5.6.1 Subscribe with curve logging filter
+  # The VISS server must support subscribing with a curve logging filter and return a valid subscribe response with the correct number of data points.
+  @MustHave
   Scenario: Subscribe with curve logging
     When I subscribe to "Vehicle.Speed" using a curvelog filter with maxerr 0.5 and bufsize 100
     Then I should receive a valid subscribe response

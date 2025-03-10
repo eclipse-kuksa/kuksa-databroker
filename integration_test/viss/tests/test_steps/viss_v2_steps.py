@@ -53,10 +53,10 @@ class ConnectedClients():
                 logger.debug(f"Disconnecting client: {key}")
                 client.disconnect()
 
-    def send(self, request_id,message):
+    def send(self, request_id,message,authorization=None):
         for key,client in self.clients.items():
             if client.is_connected():
-                client.send(request_id,message)
+                client.send(request_id,message,authorization)
                 logger.debug(f"Sent message: {message}")
 
     def find_subscription_id_by_request_id(self, request_id):
@@ -116,13 +116,20 @@ def ws_client(connected_clients):
 def mqtt_client(connected_clients):
     return connected_clients.clients['MQTT']
 
-# TODO: Parameterize to different permissions/scopes/roles
-# TODO: Generate actual token
 @given("I am authorized", target_fixture="authorization")
 def given_authorized():
     global authorization
     authorization={
         "token": "foobar"
+    }
+    return authorization
+
+@given(parsers.parse("I am authorized to read \"{path}\""), target_fixture="authorization")
+def given_authorized(path):
+    # TODO: This token is only for Vehicle.Speed
+    global authorization
+    authorization={
+        "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJsb2NhbCBkZXYiLCJpc3MiOiJjcmVhdGVUb2tlbi5weSIsImF1ZCI6WyJrdWtzYS52YWwiXSwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjE3NjcyMjU1OTksInNjb3BlIjoicHJvdmlkZTpWZWhpY2xlLlNwZWVkIn0.WlHkTSverOeprozFHG5Oo14c_Qr0NL9jv3ObAK4S10ddbqFRjWttkY9C0ehLqM6vXNUyI9uimbrM5FSPpw058mWGbOaEc8l1ImjS-DBKkDXyFkSlMoCPuWfhbamfFWTfY-K_K21kTs0hvr-FGRREC1znnZx0TFEi9HQO2YJvsSfJ7-6yo1Wfplvhf3NCa-sC5PrZEEbvYLkTB56C--0waqxkLZGx_SAo_XoRCijJ3s_LnrEbp61kT9CVYmNk017--mA9EEcjpHceOOtj1_UVjHpLKHOxitjpF-7LQNdq2kCY-Y2qv9vf8H6nAFVG8QKAUAaFb0CmYpDIdK8XSLRD7yLd6JnoRswBqmveFCUpmdrMYsSgut1JH4oCn5EnJ-c5UfZ4IRDgc7iBE5cqH9ao7j5PItsE9tYQJDAfygel3sYnIzuAd-DMYyPs1Jj9BzrAWEmI9s0PelA0KAEspmNufn9e-mjeC050e5NhhzJ4Vj_ffbOBzgx1vgLAaoMj5dOb4j3OpNC0XoUgGfR-YbTLi48h6uXEnxsXNGblOlSqTBmy2iZhYpfLBIsdvQTzKf2iYkw_TLo5LE5p9m4aUKFywcyGPMxzVcA8JIJ2g2Xp30RnIAxUlDTXcuYDGYRgKiGJb0rq1yQVl3RCnKaxTVHg8qqHkts_B-cbItlZP8bJA5M"
     }
     return authorization
 
@@ -177,12 +184,12 @@ def send_ws_unsubscribe(connected_clients, request_id, subscription_id):
     connected_clients.send(request_id, request)
 
 @when(parsers.parse('I send a read request with path "{path}"'))
-def send_read_data_point(connected_clients, request_id, path):
+def send_read_data_point(connected_clients, request_id, path, authorization):
     request = {"action": "get", "path": path, "requestId": request_id.new()}
-    connected_clients.send(request_id, request)
+    connected_clients.send(request_id, request, authorization)
 
 @when(parsers.parse('I search "{path}" using a path filter "{filter}"'))
-def search_path_filter(connected_clients,request_id,  path, filter):
+def search_path_filter(connected_clients,request_id,  path, filter, authorization):
     request = {
         "action": "get",
         "path": path,
@@ -288,11 +295,15 @@ def send_set(connected_clients, request_id, path, value):
 
 @then("I should receive a valid read response")
 def receive_valid_get_response(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id,
+    envelope = connected_clients.find_message(request_id=request_id,
                                               action="get")
-    assert "action" in response
-    assert "requestId" in response
+    response = envelope["body"]
     assert "data" in response
+
+    # HTTP response messages do not contain "action" or "requestId"
+    if envelope["protocol"] != "http":
+        assert "action" in response
+        assert "requestId" in response
 
     assert "error" not in response
 
@@ -304,8 +315,8 @@ def receive_valid_get_response(connected_clients, request_id):
 
 @then("I should receive a single value from a single node")
 def receive_ws_single_value_single_node(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id)
-
+    envelope = connected_clients.find_message(request_id=request_id)
+    response = envelope["body"]
     assert response["action"] == "get"
     assert response["requestId"] != None
     assert response["data"] != None
@@ -340,13 +351,15 @@ def receive_ws_read_expected_count(connected_clients,request_id, subscription_id
 
 @then("I should receive an error response")
 def receive_any_error_response(connected_clients,request_id):
-    response = connected_clients.find_message(request_id=request_id)
+    envelope = connected_clients.find_message(request_id=request_id)
+    response = envelope["body"]
     assert "requestId" in response
     assert "error" in response
 
 @then(parsers.parse("I should receive an error response with number {error_code:d} and reason \"{error_reason}\""))
 def receive_specific_error_response(connected_clients,request_id,error_code,error_reason):
-    response = connected_clients.find_message(request_id=request_id)
+    envelope = connected_clients.find_message(request_id=request_id)
+    response = envelope["body"]
     assert "requestId" in response
     assert "error" in response
     assert error_code == response['error']['number'], f"Expected error code '{error_code}' but got '{response['error']['number']}'"
@@ -354,9 +367,10 @@ def receive_specific_error_response(connected_clients,request_id,error_code,erro
 
 @then("I should receive a valid subscribe response")
 def receive_ws_subscribe(connected_clients,request_id, subscription_id):
-    response = connected_clients.find_message(subscription_id=subscription_id,
+    envelope = connected_clients.find_message(subscription_id=subscription_id,
                                               request_id=request_id,
                                               action="subscribe")
+    response = envelope["body"]
     assert "subscriptionId" in response
     assert "ts" in response
     assert "error" not in response
@@ -365,9 +379,10 @@ def receive_ws_subscribe(connected_clients,request_id, subscription_id):
 def receive_ws_subscribe(connected_clients,request_id, subscription_id):
     # Do not use the current request_id, as it's from the previous
     # request.
-    response = connected_clients.find_message(subscription_id=subscription_id,
+    envelope = connected_clients.find_message(subscription_id=subscription_id,
                                               request_id=None,
                                               action="subscription")
+    response = envelope["body"]
     assert "action" in response
     assert "subscriptionId" in response
     assert "ts" in response
@@ -376,8 +391,8 @@ def receive_ws_subscribe(connected_clients,request_id, subscription_id):
 
 @then("I should receive a subscribe error event")
 def receive_ws_subscribe_error_event(connected_clients,request_id):
-    response = connected_clients.find_message(request_id=request_id, action="subscribe")
-
+    envelope = connected_clients.find_message(request_id=request_id, action="subscribe")
+    response = envelope["body"]
     assert "requestId" in response
     assert "error" in response
     assert "ts" in response
@@ -395,8 +410,8 @@ def receive_ws_subscribe_error_event(connected_clients,request_id):
 
 @then("I should receive a set error event")
 def receive_ws_set_error_event(connected_clients,request_id):
-    response = connected_clients.find_message(request_id=request_id, action="set")
-
+    envelope = connected_clients.find_message(request_id=request_id, action="set")
+    response = envelope["body"]
     assert "action" in response
     assert "requestId" in response
     assert "ts" in response
@@ -409,7 +424,8 @@ def receive_ws_set_error_event(connected_clients,request_id):
 
 @then("I should receive a valid unsubscribe response")
 def receive_ws_unsubscribe(connected_clients,request_id):
-    response = connected_clients.find_message(request_id=request_id, action="unsubscribe")
+    envelope = connected_clients.find_message(request_id=request_id, action="unsubscribe")
+    response = envelope["body"]
     assert "action" in response
     assert "subscriptionId" in response
     assert "requestId" in response
@@ -420,10 +436,10 @@ def receive_ws_unsubscribe(connected_clients,request_id):
 @then("I should receive a valid subscription event")
 def receive_ws_subscription(connected_clients,subscription_id,request_id):
     # Ignore the request id here!
-    response = connected_clients.find_message(subscription_id=subscription_id,
+    envelope = connected_clients.find_message(subscription_id=subscription_id,
                                               request_id=None,
                                               action="subscription")
-
+    response = envelope["body"]
     assert "action" in response
     assert "subscriptionId" in response
     assert "ts" in response
@@ -439,8 +455,8 @@ def receive_ws_subscription(connected_clients,subscription_id,request_id):
 
 @then("I should receive a valid set response")
 def receive_ws_set(connected_clients,request_id):
-    response = connected_clients.find_message(request_id=request_id,action="set")
-
+    envelope = connected_clients.find_message(request_id=request_id,action="set")
+    response = envelope["body"]
     assert "action" in response
     assert "requestId" in response
     assert "ts" in response
@@ -449,8 +465,8 @@ def receive_ws_set(connected_clients,request_id):
 
 @then("I should receive a read-only error")
 def receive_ws_set_readonly_error(connected_clients,request_id):
-    response = connected_clients.find_message(request_id=request_id)
-
+    envelope = connected_clients.find_message(request_id=request_id)
+    response = envelope["body"]
     assert "action" in response
     assert "requestId" in response
     assert "ts" in response
@@ -465,8 +481,8 @@ def receive_ws_set_readonly_error(connected_clients,request_id):
 
 @then("I should receive a list of server capabilities")
 def receive_ws_list_of_server_capabilities(connected_clients,request_id):
-    response = connected_clients.find_message(request_id=request_id)
-
+    envelope = connected_clients.find_message(request_id=request_id)
+    response = envelope["body"]
     expected_response = {
         "filter": [
             "timebased",
@@ -521,8 +537,8 @@ def update_signal_multiple_times(connected_clients, request_id, path, duration):
 @then("I should receive a list of past data points within the last hour")
 @then("I should receive multiple past data points from the last 24 hours")
 def validate_historical_data_points(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id, action="get")
-
+    envelope = connected_clients.find_message(request_id=request_id, action="get")
+    response = envelope["body"]
     assert "data" in response, "No data field found in response"
     assert isinstance(response["data"], list), "Expected a list of historical data points"
     assert len(response["data"]) > 1, "Expected multiple historical data points"
@@ -530,24 +546,24 @@ def validate_historical_data_points(connected_clients, request_id):
 
 @then("the timestamps should be in chronological order")
 def validate_timestamps_order(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id, action="get")
-
+    envelope = connected_clients.find_message(request_id=request_id, action="get")
+    response = envelope["body"]
     timestamps = [dp["ts"] for dp in response["data"]]
     assert timestamps == sorted(timestamps), "Timestamps are not in chronological order"
 
 
 @then("I should receive an error response indicating an invalid timeframe format")
 def validate_invalid_timeframe_error(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id, action="get")
-
+    envelope = connected_clients.find_message(request_id=request_id, action="get")
+    response = envelope["body"]
     assert "error" in response, "Expected an error in response"
     assert response["error"]["reason"] == "invalid_timeframe", f"Unexpected error reason: {response['error']['reason']}"
 
 
 @then("I should receive an empty data response")
 def validate_empty_history_response(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id, action="get")
-
+    envelope = connected_clients.find_message(request_id=request_id, action="get")
+    response = envelope["body"]
     assert "data" in response, "Expected a data field in response"
     assert response["data"] == [], "Expected an empty data list"
 
@@ -555,8 +571,8 @@ def validate_empty_history_response(connected_clients, request_id):
 @then("I should receive a set of past data points matching the recorded values")
 @then("the values should be accurate compared to previous set requests")
 def validate_historical_data_consistency(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id, action="get")
-
+    envelope = connected_clients.find_message(request_id=request_id, action="get")
+    response = envelope["body"]
     assert "data" in response, f"Expected a data field in response, but got {response}"
 
     # Retrieve the last known values from previous set requests (mocked for this example)
@@ -581,8 +597,8 @@ def request_historical_data_multiple_nodes(connected_clients, request_id, path, 
 
 @then("I should receive historical data for multiple nodes")
 def validate_historical_data_multiple_nodes(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id, action="get")
-
+    envelope = connected_clients.find_message(request_id=request_id, action="get")
+    response = envelope["body"]
     assert "data" in response, "No data field found in response"
     assert isinstance(response["data"], list), "Expected a list of historical data points"
 
@@ -593,8 +609,8 @@ def validate_historical_data_multiple_nodes(connected_clients, request_id):
 
 @then("the response should include data from at least two different paths")
 def validate_multiple_paths_in_history_response(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id, action="get")
-
+    envelope = connected_clients.find_message(request_id=request_id, action="get")
+    response = envelope["body"]
     assert "data" in response, "No data field found in response"
     paths = set(dp["path"] for dp in response["data"])
     assert len(paths) >= 2, f"Expected at least two different paths, but got {len(paths)}"
@@ -616,8 +632,8 @@ def send_bulk_set_request(connected_clients, request_id, datatable):
 
 @then("I should receive a valid response")
 def validate_successful_response(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id)
-
+    envelope = connected_clients.find_message(request_id=request_id)
+    response = envelope["body"]
     assert "action" in response, "Response is missing 'action' field"
     assert "requestId" in response, "Response is missing 'requestId'"
     assert "error" not in response, f"Unexpected error in response: {response.get('error')}"
@@ -627,8 +643,8 @@ def validate_successful_response(connected_clients, request_id):
 # TODO: There seems to be a duplicate function
 @then("I should receive a valid set response")
 def validate_successful_set_response(connected_clients, request_id):
-    response = connected_clients.find_message(request_id=request_id)
-
+    envelope = connected_clients.find_message(request_id=request_id)
+    response = envelope["body"]
     assert "action" in response, "Response is missing 'action' field"
     assert "requestId" in response, "Response is missing 'requestId'"
     assert "error" not in response, f"Unexpected error in response: {response.get('error')}"
@@ -639,8 +655,8 @@ def validate_successful_set_response(connected_clients, request_id):
 
 @then(parsers.parse("I should receive a valid set response for \"{path}\""))
 def validate_successful_set_response_for_path(connected_clients, request_id,path):
-    response = connected_clients.find_message(request_id=request_id)
-
+    envelope = connected_clients.find_message(request_id=request_id)
+    response = envelope["body"]
     assert "action" in response, "Response is missing 'action' field"
     assert "path" in response, "Response is missing 'path' field"
     assert "requestId" in response, "Response is missing 'requestId'"

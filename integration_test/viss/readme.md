@@ -12,7 +12,8 @@
 - Python 3
 - Databroker
 - VSS Release 4.0
-- MQTT broker
+- Optional: MQTT broker for testing MQTT transport protocol
+- kuksa-common for `jwt.key.pub` to test Authorization / Access Control
 
 ### Enable VISS feature
 
@@ -37,7 +38,7 @@ pip install pytest pytest-bdd allure-pytest requests websocket-client paho-mqtt 
 
 Start databroker from project root:
 ```
-RUST_LOG=debug cargo run --bin databroker --release --features viss -- --vss data/vss-core/vss_release_4.0.json --insecure --enable-databroker-v1 --enable-viss --viss-address 0.0.0.0 --viss-port 8090
+RUST_LOG=debug cargo run --bin databroker --release --features viss -- --vss data/vss-core/vss_release_4.0.json --insecure --enable-databroker-v1 --enable-viss --viss-address 0.0.0.0 --viss-port 8090 --jwt-public-key kuksa-common/jwt/jwt.key.pub
 ```
 
 > RUST_LOG=debug enables debug log messages of databroker, which shows incoming and outgoing VISS requests and makes it easier to troubleshoot failing tests.
@@ -60,10 +61,16 @@ pytest -s -v --log-level=DEBUG
 pytest -k 'basic'
 ```
 
-## MQTT Setup
+## Authoriazation
+
+
+
+## MQTT Setup (optional)
 
 Run mqtt broker:
 ```
+# Run in integration_test/viss:
+
 docker run -it -p 1883:1883 -v "$PWD/mosquitto-config:/mosquitto/config" eclipse-mosquitto
 ```
 

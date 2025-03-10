@@ -28,10 +28,14 @@ class WebSocketsVISSClient:
     def disconnect(self):
         self._client_is_connected = False
 
-    def send(self,request_id,message):
+    def send(self,request_id,message,authorization=None):
         # TODO: request_id is already in message. Why duplicate?
+        if authorization:
+            logger.debug("Injecting authorization token to websocket message")
+            message["authorization"] = authorization["token"]
         self._ws.send(json.dumps(message))
         envelope = {
+            "protocol": "websockets",
             "timestamp": time.time(),
             "action": message['action'],
             "requestId": request_id.current(),
@@ -50,6 +54,7 @@ class WebSocketsVISSClient:
             try:
                 message = json.loads(self._ws.recv())
                 envelope = {
+                    "protocol": "websockets",
                     "timestamp": time.time(),
                     "body": message
                 }
@@ -110,14 +115,10 @@ class WebSocketsVISSClient:
         logger.debug(f"Query template: {search_template}")
         results = self.received_messages.search(search_template)
         logger.debug(f"Found messages: {results}")
-        # TODO: "results" is a list of "envelop", but we need to return a list of the message bodies?
         return results
 
     def find_message(self, subscription_id=None, request_id=None, action=None):
         results = self.find_messages(subscription_id=subscription_id,request_id=request_id,action=action)
         result = max(results,key=lambda x: x["timestamp"], default=None)
         logger.debug(f"Found latest message: {result}")
-        if result:
-            if "body" in result:
-                return result['body']
-        return None
+        return result

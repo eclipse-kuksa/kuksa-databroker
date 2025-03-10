@@ -49,6 +49,7 @@ class MQTTVISSClient:
 
         body = json.loads(message.payload)
         envelope = {
+            "protocol": "mqtt",
             "timestamp": time.time(),
             "body": body
         }
@@ -105,6 +106,7 @@ class MQTTVISSClient:
         info.wait_for_publish(timeout=1.0)
         logger.debug(f"publish: topic={topic} payload={message}")
         envelope = {
+            "protocol": "mqtt",
             "timestamp": time.time(),
             "action": message['action'],
             "requestId": request_id.current(),
@@ -188,7 +190,4 @@ class MQTTVISSClient:
         results = self.find_messages(subscription_id=subscription_id,request_id=request_id,action=action)
         result = max(results,key=lambda x: x["timestamp"], default=None)
         logger.debug(f"Found latest message: {result}")
-        if result:
-            if "body" in result:
-                return result['body']
-        return None
+        return result

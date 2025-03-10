@@ -25,32 +25,39 @@ class HttpVISSClient:
     def disconnect(self):
         self._client_is_connected = False
 
-    def send(self,request_id,message):
+    def send(self,request_id,message, authorization):
         path = message["path"]
         uripath=path.replace('.','/')
 
         baseurl = self.pytestconfig.getini('viss_http_base_url')
         timeout=float(self.pytestconfig.getini('viss_connect_timeout'))
 
+        headers={}
+        if authorization:
+            logger.debug("Injecting authorization token to HTTP request")
+            headers["Authorization"] = f"Bearer {authorization["token"]}"
+
         if "get" == message['action']:
-            response = requests.get(f"{baseurl}/{uripath}",timeout=timeout)
+            response = requests.get(f"{baseurl}/{uripath}",timeout=timeout,headers=headers)
         else:
             pytest.exit('unimplemented test code')
         logger.debug(f"HTTP Response: {response}")
 
         envelope_sent = {
                     "timestamp": time.time(),
+                    "protocol": "http",
                     "requestId": request_id.current(),
                     "action": message['action'],
                     "body": message
         }
-        logger.debug(f"HTTP Envelope Sent: {envelope_sent}")
+        logger.debug(f"HTTP Envelope sent: {envelope_sent}")
 
         envelope_received = {
                     "timestamp": time.time(),
+                    "protocol": "http",
                     "requestId": request_id.current(),
                     "action": message['action'],
-                    "body": response
+                    "body": json.loads(response.content)
         }
         if response.status_code != 200:
             envelope_received['error'] = {
@@ -58,7 +65,7 @@ class HttpVISSClient:
                 "reason": response.reason,
                 "message": response.content
             }
-        logger.debug(f"HTTP Envelope Sent: {envelope_received}")
+        logger.debug(f"HTTP Envelope received: {envelope_received}")
 
         self.sent_messages.insert(envelope_sent)
         self.received_messages.insert(envelope_received)
