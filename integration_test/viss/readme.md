@@ -30,7 +30,7 @@ The integration tests require additional Python libraries to be installed:
 python -m venv .venv
 source .venv/bin/activate
 
-pip install pytest pytest-bdd allure-pytest requests websocket-client paho-mqtt
+pip install pytest pytest-bdd allure-pytest requests websocket-client paho-mqtt tinydb
 ```
 
 ## Running the tests
@@ -44,7 +44,7 @@ RUST_LOG=debug cargo run --bin databroker --release --features viss -- --vss dat
 
 Execute the test suite
 ```
-# Just run all tests
+# Just run all tests in ./integration_test/viss
 pytest
 
 # Generate reporting data

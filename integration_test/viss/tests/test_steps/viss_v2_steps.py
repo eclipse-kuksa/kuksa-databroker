@@ -624,6 +624,7 @@ def validate_successful_response(connected_clients, request_id):
 
     logger.debug(f"Received valid response: {response}")
 
+# TODO: There seems to be a duplicate function
 @then("I should receive a valid set response")
 def validate_successful_set_response(connected_clients, request_id):
     response = connected_clients.find_message(request_id=request_id)
