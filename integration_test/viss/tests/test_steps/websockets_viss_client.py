@@ -28,7 +28,7 @@ class WebSocketsVISSClient:
     def disconnect(self):
         self._client_is_connected = False
 
-    def send(self,request_id,message,authorization=None):
+    def send(self, request_id, message, authorization=None):
         # TODO: request_id is already in message. Why duplicate?
         if authorization:
             logger.debug("Injecting authorization token to websocket message")
@@ -88,10 +88,11 @@ class WebSocketsVISSClient:
         # where no subscription is actually created
         return None
 
-    def find_messages(self,
+    def find_messages(self, *,
                       subscription_id : str = None,
                       request_id : RequestId = None,
-                      action : str = None):
+                      action : str = None,
+                      authorization = None):
         # Initialize a list to hold conditions
         conditions = []
 
@@ -117,8 +118,15 @@ class WebSocketsVISSClient:
         logger.debug(f"Found messages: {results}")
         return results
 
-    def find_message(self, subscription_id=None, request_id=None, action=None):
-        results = self.find_messages(subscription_id=subscription_id,request_id=request_id,action=action)
+    def find_message(self, *,
+                     subscription_id=None,
+                     request_id=None,
+                     action=None,
+                     authorization=None):
+        results = self.find_messages(subscription_id=subscription_id,
+                                     request_id=request_id,
+                                     action=action,
+                                     authorization=authorization)
         result = max(results,key=lambda x: x["timestamp"], default=None)
         logger.debug(f"Found latest message: {result}")
         return result

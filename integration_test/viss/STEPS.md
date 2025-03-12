@@ -12,6 +12,10 @@ The steps in the test scenarios follow the following Gherkin syntax:
 
 The client will have an authorized token when communicating with the VISS server.
 
+> Given I am authorized to read "_VSS Path_"
+
+Authorize with a token which allows to read the given VSS path.
+
 > Given the VISS server is running
 
 The client will test that the VISS server is up and running. The test step actually doesn't do anything and this is more for readability of the test cases.

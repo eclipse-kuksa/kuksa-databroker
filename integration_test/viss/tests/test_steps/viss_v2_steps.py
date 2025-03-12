@@ -1,10 +1,7 @@
-import asyncio
-import http
 import logging
-import socket
+import os
+import signal
 import requests
-import websocket
-import json
 import pytest
 from pytest_bdd import given, when, then,parsers
 
@@ -39,12 +36,11 @@ class ConnectedClients():
         return self.clients['MQTT']
 
     def connect(self):
-        self.wsclient().connect()
-        # logger.debug(f"Connecting clients...")
-        # for key,client in self.clients.items():
-        #     if not client.is_connected():
-        #         logger.debug(f"Connecting client: {key}")
-        #         client.connect()
+        logger.debug(f"Connecting clients...")
+        for key,client in self.clients.items():
+            if not client.is_connected():
+                logger.debug(f"Connecting client: {key}")
+                client.connect()
 
     def disconnect(self):
         logger.debug(f"Disconnecting connected clients...")
@@ -67,12 +63,17 @@ class ConnectedClients():
                 logger.debug(f"Found message: {response}")
         return response
 
-    def find_message(self, *, subscription_id=None, request_id=None, action=None):
+    def find_message(self, *,
+                     subscription_id=None,
+                     request_id=None,
+                     action=None,
+                     authorization=None):
         for key,client in self.clients.items():
             if client.is_connected():
                 response=client.find_message(subscription_id=subscription_id,
                                              request_id=request_id,
-                                             action=action)
+                                             action=action,
+                                             authorization=authorization)
                 logger.debug(f"Found message: {response}")
         # TODO: Last one wins
         return response
@@ -80,12 +81,14 @@ class ConnectedClients():
     def find_messages(self, *,
                       subscription_id : str = None,
                       request_id : RequestId = None,
-                      action : str = None):
+                      action : str = None,
+                      authorization = None):
         for key,client in self.clients.items():
             if client.is_connected():
                 response=client.find_messages(subscription_id=subscription_id,
                                               request_id=request_id,
-                                              action=action)
+                                              action=action,
+                                              authorization=authorization)
                 logger.debug(f"Found message: {response}")
         return response
 
@@ -97,8 +100,6 @@ def request_id():
 @pytest.fixture
 def connected_clients(request,pytestconfig):
     connected_clients = ConnectedClients(pytestconfig)
-    #Enforece all the feature to explicitly state whether to connect and how.
-    #connected_clients.connect()
     def cleanup():
         connected_clients.disconnect()
     request.addfinalizer(cleanup)
@@ -116,26 +117,59 @@ def ws_client(connected_clients):
 def mqtt_client(connected_clients):
     return connected_clients.clients['MQTT']
 
+@pytest.fixture
+def mqtt_client(connected_clients):
+    return connected_clients.clients['MQTT']
+
+@pytest.fixture
+def authorization():
+    empty_authorization = {}
+    return empty_authorization
+
 @given("I am authorized", target_fixture="authorization")
-def given_authorized():
-    global authorization
-    authorization={
-        "token": "foobar"
-    }
-    return authorization
+def given_authorized(authorization):
+    return given_authorized_vsspath(authorization, "Vehicle.Speed")
 
 @given(parsers.parse("I am authorized to read \"{path}\""), target_fixture="authorization")
-def given_authorized(path):
+def given_authorized_vsspath(authorization,path):
     # TODO: This token is only for Vehicle.Speed
-    global authorization
+    if "Vehicle.Speed" != path:
+        raise NameError("Authorizing for other VSS paths than Vehicle.Speed not yet supported.")
     authorization={
         "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJsb2NhbCBkZXYiLCJpc3MiOiJjcmVhdGVUb2tlbi5weSIsImF1ZCI6WyJrdWtzYS52YWwiXSwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjE3NjcyMjU1OTksInNjb3BlIjoicHJvdmlkZTpWZWhpY2xlLlNwZWVkIn0.WlHkTSverOeprozFHG5Oo14c_Qr0NL9jv3ObAK4S10ddbqFRjWttkY9C0ehLqM6vXNUyI9uimbrM5FSPpw058mWGbOaEc8l1ImjS-DBKkDXyFkSlMoCPuWfhbamfFWTfY-K_K21kTs0hvr-FGRREC1znnZx0TFEi9HQO2YJvsSfJ7-6yo1Wfplvhf3NCa-sC5PrZEEbvYLkTB56C--0waqxkLZGx_SAo_XoRCijJ3s_LnrEbp61kT9CVYmNk017--mA9EEcjpHceOOtj1_UVjHpLKHOxitjpF-7LQNdq2kCY-Y2qv9vf8H6nAFVG8QKAUAaFb0CmYpDIdK8XSLRD7yLd6JnoRswBqmveFCUpmdrMYsSgut1JH4oCn5EnJ-c5UfZ4IRDgc7iBE5cqH9ao7j5PItsE9tYQJDAfygel3sYnIzuAd-DMYyPs1Jj9BzrAWEmI9s0PelA0KAEspmNufn9e-mjeC050e5NhhzJ4Vj_ffbOBzgx1vgLAaoMj5dOb4j3OpNC0XoUgGfR-YbTLi48h6uXEnxsXNGblOlSqTBmy2iZhYpfLBIsdvQTzKf2iYkw_TLo5LE5p9m4aUKFywcyGPMxzVcA8JIJ2g2Xp30RnIAxUlDTXcuYDGYRgKiGJb0rq1yQVl3RCnKaxTVHg8qqHkts_B-cbItlZP8bJA5M"
     }
     return authorization
 
+
+@pytest.fixture(scope='session')
+def server(pytestconfig):
+    """Run the server subprocess and handle its stdout."""
+    url = pytestconfig.getini("viss_http_base_url")
+    try:
+        requests.get(url, timeout=float(pytestconfig.getini("viss_connect_timeout")))
+    except requests.exceptions.ConnectionError:
+        logger.error("Databroker not running, exiting...")
+        pytest.exit(f"FATAL: Databroker not running at {url}")
+
+@pytest.fixture(scope='session')
+def secured_server(pytestconfig,command):
+    """Run the server subprocess and handle its stdout."""
+    url = pytestconfig.getini("viss_http_base_url")
+    try:
+        requests.get(url, timeout=float(pytestconfig.getini("viss_connect_timeout")))
+    except requests.exceptions.ConnectionError:
+        logger.error("Databroker not running, exiting...")
+        pytest.exit(f"FATAL: Databroker not running at {url}")
+
+
 @given("the VISS server is running")
-def viss_server_running(pytestconfig):
-    # TODO: Check that server is running
+def viss_server_running(pytestconfig, server):
+    # Just ensure the server is running
+    pass
+
+@given("the secured VISS server is running")
+def viss_server_running_secured(pytestconfig, secured_server):
+    # Just ensure the server is running
     pass
 
 @given("the VISS client is connected via HTTP")
@@ -654,6 +688,7 @@ def validate_successful_set_response(connected_clients, request_id):
     logger.debug(f"Received valid response: {response}")
 
 @then(parsers.parse("I should receive a valid set response for \"{path}\""))
+
 def validate_successful_set_response_for_path(connected_clients, request_id,path):
     envelope = connected_clients.find_message(request_id=request_id)
     response = envelope["body"]

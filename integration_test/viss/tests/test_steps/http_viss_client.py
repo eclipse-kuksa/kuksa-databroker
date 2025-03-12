@@ -25,7 +25,7 @@ class HttpVISSClient:
     def disconnect(self):
         self._client_is_connected = False
 
-    def send(self,request_id,message, authorization):
+    def send(self, request_id, message, authorization):
         path = message["path"]
         uripath=path.replace('.','/')
 
@@ -70,10 +70,11 @@ class HttpVISSClient:
         self.sent_messages.insert(envelope_sent)
         self.received_messages.insert(envelope_received)
 
-    def find_messages(self,
+    def find_messages(self, *,
                       subscription_id : str = None,
                       request_id : RequestId = None,
-                      action : str = None):
+                      action : str = None,
+                      authorization = None):
         if subscription_id and not isinstance(subscription_id, str):
             raise TypeError(f"subscription_id must be str, not {type(subscription_id)}")
         if request_id and not isinstance(request_id, RequestId):
@@ -105,8 +106,15 @@ class HttpVISSClient:
         # TODO: "results" is a list of "envelop", but we need to return a list of the message bodies?
         return results
 
-    def find_message(self, subscription_id=None, request_id=None, action=None):
-        results = self.find_messages(subscription_id=subscription_id,request_id=request_id,action=action)
+    def find_message(self, *,
+                     subscription_id=None,
+                     request_id=None,
+                     action=None,
+                     authorization=None):
+        results = self.find_messages(subscription_id=subscription_id,
+                                     request_id=request_id,
+                                     action=action,
+                                     authorization=authorization)
         result = max(results,key=lambda x: x["timestamp"], default=None)
         logger.debug(f"Found latest message: {result}")
         return result

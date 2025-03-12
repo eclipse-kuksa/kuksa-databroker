@@ -1,5 +1,11 @@
+import asyncio
 import requests
 import pytest
+import logging
+
+# Basic logging
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 # Fail early if databroker is not up and running
 @pytest.fixture(autouse=True, scope='session')
@@ -9,16 +15,13 @@ def my_fixture(pytestconfig):
     try:
         requests.get(url, timeout=float(pytestconfig.getini("viss_connect_timeout")))
     except requests.exceptions.ConnectionError:
+        logger.error("Databroker not running, exiting...")
         pytest.exit(f"FATAL: Databroker not running at {url}")
-
-    yield
-
-    # teardown_stuff
 
 # Additional custom configuratio parameters
 def pytest_addoption(parser):
-    parser.addini('viss_ws_base_url', 'URL to Databroker VISS WebSocket endpoint (ws://hostname:port)')
-    parser.addini('viss_http_base_url', 'URL to Databroker VISS HTTP endpoint (http://hostname:port)')
-    parser.addini('viss_mqtt_base_url', 'URL to Databroker VISS MQTT endpoint (mqtt://hostname:port)')
-    parser.addini('viss_connect_timeout', 'Connect timeout for VISS clients (float in seconds)')
-    parser.addini('viss_message_timeout', 'Connect timeout for VISS clients (float in seconds)')
+    parser.addini('viss_ws_base_url', 'URL to Databroker VISS WebSocket endpoint (ws://hostname:port)', type="string", default="ws://localhost:8090")
+    parser.addini('viss_http_base_url', 'URL to Databroker VISS HTTP endpoint (http://hostname:port)', type="string", default="http://localhost:8090")
+    parser.addini('viss_mqtt_base_url', 'URL to Databroker VISS MQTT endpoint (mqtt://hostname:port)', type="string", default="mqtt://localhost:1883")
+    parser.addini('viss_connect_timeout', 'Connect timeout for VISS clients (float in seconds)', type="string", default="1.0")
+    parser.addini('viss_message_timeout', 'Connect timeout for VISS clients (float in seconds)', type="string", default="0.5")

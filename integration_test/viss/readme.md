@@ -28,6 +28,7 @@ cargo build --bin databroker --features viss --release
 The integration tests require additional Python libraries to be installed:
 
 ```
+cd integration_test/viss/
 python -m venv .venv
 source .venv/bin/activate
 
@@ -38,7 +39,7 @@ pip install pytest pytest-bdd allure-pytest requests websocket-client paho-mqtt 
 
 Start databroker from project root:
 ```
-RUST_LOG=debug cargo run --bin databroker --release --features viss -- --vss data/vss-core/vss_release_4.0.json --insecure --enable-databroker-v1 --enable-viss --viss-address 0.0.0.0 --viss-port 8090 --jwt-public-key kuksa-common/jwt/jwt.key.pub
+RUST_LOG=debug cargo run --bin databroker --release --features viss -- --vss data/vss-core/vss_release_4.0.json --insecure --enable-databroker-v1 --enable-viss --viss-address 0.0.0.0 --viss-port 8090
 ```
 
 > RUST_LOG=debug enables debug log messages of databroker, which shows incoming and outgoing VISS requests and makes it easier to troubleshoot failing tests.
@@ -52,18 +53,19 @@ pytest
 pytest --alluredir allure-results
 ```
 
+### Troubleshooting tests
+
 Debugging the tests: run `pytest` with additional arguments to disable capturing the output and to enable debug log level:
 ```
 # Run all tests and show test-code log messages, e.g. outgoing client requests
 pytest -s -v --log-level=DEBUG
 
+# Only run tests which have the "@MustHave" marker:
+pytest -m MustHave
+
 # Run only specific tests using the keyword option, e.g. 'basic' or 'http' etc.
 pytest -k 'basic'
 ```
-
-## Authoriazation
-
-
 
 ## MQTT Setup (optional)
 
@@ -74,6 +76,19 @@ Run mqtt broker:
 docker run -it -p 1883:1883 -v "$PWD/mosquitto-config:/mosquitto/config" eclipse-mosquitto
 ```
 
+## Authorization
+
+_Setup:_ Clone kuksa-common for pre-built JWT tokens for testing purposes.
+
+Start databroker with public key using `--jwt-public-key` to enable validation of access tokens:
+
+```
+RUST_LOG=debug cargo run --bin databroker --release --features viss -- --vss data/vss-core/vss_release_4.0.json --insecure --enable-databroker-v1 --enable-viss --viss-address 0.0.0.0 --viss-port 8090 --jwt-public-key kuksa-common/jwt/jwt.key.pub
+```
+
+Re-run tests:
+```
+```
 
 ## Test Reports
 

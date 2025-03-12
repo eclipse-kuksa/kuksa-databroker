@@ -97,8 +97,11 @@ class MQTTVISSClient:
         # TODO: Remove
         self.servermock.disconnect()
 
-    def send(self,request_id,message):
+    def send(self,request_id,message,authorization):
         topic="VID/Vehicle"
+        if "authorization" in authorization:
+            logger.debug("Injecting authorization into MQTT payload")
+            message["authorization"] = authorization["token"]
         payload=json.dumps(message)
         info = self.mqttc.publish(topic=topic,
                                 payload=payload)
@@ -151,10 +154,11 @@ class MQTTVISSClient:
         return None
 
 
-    def find_messages(self,
+    def find_messages(self, *,
                       subscription_id : str = None,
                       request_id : RequestId = None,
-                      action : str = None):
+                      action : str = None,
+                      authorization = None):
         # Initialize a list to hold conditions
         logger.debug("Find messages...")
         conditions = []
@@ -185,9 +189,16 @@ class MQTTVISSClient:
         # TODO: "results" is a list of "envelop", but we need to return a list of the message bodies?
         return results
 
-    def find_message(self, subscription_id=None, request_id=None, action=None):
+    def find_message(self, *,
+                     subscription_id=None,
+                     request_id=None,
+                     action=None,
+                     authorization=None):
         logger.debug("Find message...")
-        results = self.find_messages(subscription_id=subscription_id,request_id=request_id,action=action)
+        results = self.find_messages(subscription_id=subscription_id,
+                                     request_id=request_id,
+                                     action=action,
+                                     authorization=authorization)
         result = max(results,key=lambda x: x["timestamp"], default=None)
         logger.debug(f"Found latest message: {result}")
         return result
