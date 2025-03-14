@@ -11,22 +11,26 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
+use crate::filter_manager::filter_manager::FilterManager;
 use crate::permissions::{PermissionError, Permissions};
 pub use crate::types;
 
-use crate::query;
 pub use crate::types::{ChangeType, DataType, DataValue, EntryType};
+use crate::{filter_manager, query};
 
-use tokio::sync::{broadcast, mpsc, RwLock};
-use tokio_stream::wrappers::BroadcastStream;
+use tokio::sync::{broadcast, mpsc, Mutex, RwLock, RwLockReadGuard};
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::wrappers::{BroadcastStream, IntervalStream};
 use tokio_stream::{Stream, StreamExt};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
+use std::result;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
+use uuid::Uuid;
 
 use crate::query::{CompiledQuery, ExecutionInput};
 use crate::types::ExecutionInputImplData;
@@ -45,6 +49,15 @@ pub enum ActuationError {
     PermissionDenied,
     PermissionExpired,
     ProviderNotAvailable,
+    ProviderAlreadyExists,
+    TransmissionFailure,
+}
+
+#[derive(Debug)]
+pub enum SignalClaimError {
+    NotFound,
+    PermissionDenied,
+    PermissionExpired,
     ProviderAlreadyExists,
     TransmissionFailure,
 }
@@ -124,7 +137,8 @@ pub struct Database {
 pub struct Subscriptions {
     actuation_subscriptions: Vec<ActuationSubscription>,
     query_subscriptions: Vec<QuerySubscription>,
-    change_subscriptions: Vec<ChangeSubscription>,
+    change_subscriptions: HashMap<Uuid, ChangeSubscription>,
+    signal_provider_subscriptions: HashMap<u32, SignalProviderSubscription>,
 }
 
 #[derive(Debug, Clone)]
@@ -171,6 +185,7 @@ pub struct DataBroker {
     version: String,
     commit_sha: String,
     shutdown_trigger: broadcast::Sender<()>,
+    filter_manager: Arc<RwLock<FilterManager>>,
 }
 
 #[async_trait::async_trait]
@@ -179,6 +194,15 @@ pub trait ActuationProvider {
         &self,
         actuation_changes: Vec<ActuationChange>,
     ) -> Result<(), (ActuationError, String)>;
+    fn is_available(&self) -> bool;
+}
+
+#[async_trait::async_trait]
+pub trait SignalProvider {
+    async fn update_filter(
+        &self,
+        update_fiters: HashMap<i32, u32>,
+    ) -> Result<(), (SignalClaimError, String)>;
     fn is_available(&self) -> bool;
 }
 
@@ -194,6 +218,12 @@ pub struct ActuationSubscription {
     permissions: Permissions,
 }
 
+pub struct SignalProviderSubscription {
+    vss_ids: HashSet<i32>,
+    signal_provider: Box<dyn SignalProvider + Send + Sync + 'static>,
+    permissions: Permissions,
+}
+
 pub struct QuerySubscription {
     query: query::CompiledQuery,
     sender: mpsc::Sender<QueryResponse>,
@@ -204,6 +234,8 @@ pub struct ChangeSubscription {
     entries: HashMap<i32, HashSet<Field>>,
     sender: broadcast::Sender<EntryUpdates>,
     permissions: Permissions,
+    interval_ms: Duration,
+    last_emitted: Arc<RwLock<Instant>>,
 }
 
 #[derive(Debug)]
@@ -757,8 +789,19 @@ impl Subscriptions {
     }
 
     #[cfg_attr(feature="otel", tracing::instrument(name="subscriptions_add_change_subscription",skip(self, subscription), fields(timestamp=chrono::Utc::now().to_string())))]
-    pub fn add_change_subscription(&mut self, subscription: ChangeSubscription) {
-        self.change_subscriptions.push(subscription)
+    pub fn add_change_subscription(&mut self, subscription: ChangeSubscription) -> Uuid {
+        let uuid = Uuid::new_v4();
+        self.change_subscriptions.insert(uuid, subscription);
+        uuid
+    }
+
+    pub fn add_signal_provider_subscription(
+        &mut self,
+        subscription: SignalProviderSubscription,
+    ) -> u32 {
+        let key = self.signal_provider_subscriptions.len() as u32 + 1;
+        self.signal_provider_subscriptions.insert(key, subscription);
+        key
     }
 
     #[cfg_attr(
@@ -786,7 +829,7 @@ impl Subscriptions {
             }
         }
 
-        for sub in &self.change_subscriptions {
+        for (_, sub) in &self.change_subscriptions {
             match sub.notify(changed, db).await {
                 Ok(_) => {}
                 Err(err) => error = Some(err),
@@ -821,8 +864,39 @@ impl Subscriptions {
                 true
             }
         });
-        self.change_subscriptions.retain(|sub| {
+
+        self.actuation_subscriptions.retain(|sub| {
+            if !sub.actuation_provider.is_available() {
+                info!("Actuation Provider gone: removing provided actuation");
+                false
+            } else if sub.permissions.is_expired() {
+                info!("Permissions of Provider expired: removing provided actuation");
+                false
+            } else {
+                true
+            }
+        });
+
+        self.signal_provider_subscriptions
+            .retain(|_, signal_provider| {
+                if !signal_provider.signal_provider.is_available() {
+                    info!("Singal Provider gone: removing provided actuation");
+                    false
+                } else if signal_provider.permissions.is_expired() {
+                    info!("Permissions of Provider expired: removing provided actuation");
+                    false
+                } else {
+                    true
+                }
+            });
+    }
+
+    #[cfg_attr(feature="otel", tracing::instrument(name="change_subscriptions_cleanup", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
+    pub fn cleanup_change_subscriptions(&mut self) -> Vec<Uuid> {
+        let mut closed_subscriptions_uuids: Vec<Uuid> = Vec::new();
+        self.change_subscriptions.retain(|uuid, sub| {
             if sub.sender.receiver_count() == 0 {
+                closed_subscriptions_uuids.push(*uuid);
                 info!("Subscriber gone: removing subscription");
                 false
             } else if sub.permissions.is_expired() {
@@ -832,18 +906,7 @@ impl Subscriptions {
                 true
             }
         });
-
-        self.actuation_subscriptions.retain(|sub| {
-            if !sub.actuation_provider.is_available() {
-                info!("Provider gone: removing provided actuation");
-                false
-            } else if sub.permissions.is_expired() {
-                info!("Permissions of Provider expired: removing provided actuation");
-                false
-            } else {
-                true
-            }
-        });
+        return closed_subscriptions_uuids;
     }
 }
 
@@ -857,6 +920,10 @@ impl ChangeSubscription {
         changed: Option<&HashMap<i32, HashSet<Field>>>,
         db: &Database,
     ) -> Result<(), NotificationError> {
+        if self.last_emitted.read().await.elapsed().as_millis() < self.interval_ms.as_millis() {
+            return Ok(());
+        }
+
         let db_read = db.authorized_read_access(&self.permissions);
         match changed {
             Some(changed) => {
@@ -920,7 +987,11 @@ impl ChangeSubscription {
                         Ok(())
                     } else {
                         match self.sender.send(notifications) {
-                            Ok(_number_of_receivers) => Ok(()),
+                            Ok(_number_of_receivers) => {
+                                let mut last_emitted = self.last_emitted.write().await;
+                                *last_emitted = Instant::now();
+                                Ok(())
+                            }
                             Err(err) => {
                                 debug!("Send error for entry{}: ", err);
                                 Err(NotificationError {})
@@ -964,7 +1035,11 @@ impl ChangeSubscription {
                     notifications
                 };
                 match self.sender.send(notifications) {
-                    Ok(_number_of_receivers) => Ok(()),
+                    Ok(_number_of_receivers) => {
+                        let mut last_emitted = self.last_emitted.write().await;
+                        *last_emitted = Instant::now();
+                        Ok(())
+                    }
                     Err(err) => {
                         debug!("Send error for entry{}: ", err);
                         Err(NotificationError {})
@@ -1670,6 +1745,7 @@ impl AuthorizedAccess<'_, '_> {
         &self,
         valid_entries: HashMap<i32, HashSet<Field>>,
         buffer_size: Option<usize>,
+        interval_ms: Option<u32>,
     ) -> Result<impl Stream<Item = EntryUpdates>, SubscriptionError> {
         if valid_entries.is_empty() {
             return Err(SubscriptionError::InvalidInput);
@@ -1688,9 +1764,11 @@ impl AuthorizedAccess<'_, '_> {
 
         let (sender, receiver) = broadcast::channel(channel_capacity);
         let subscription = ChangeSubscription {
-            entries: valid_entries,
+            entries: valid_entries.clone(),
             sender,
             permissions: self.permissions.clone(),
+            interval_ms: Duration::from_millis(interval_ms.unwrap() as u64),
+            last_emitted: Arc::new(RwLock::new(Instant::now())),
         };
 
         {
@@ -1701,11 +1779,20 @@ impl AuthorizedAccess<'_, '_> {
             }
         }
 
-        self.broker
+        let uuid_subscription = self
+            .broker
             .subscriptions
             .write()
             .await
             .add_change_subscription(subscription);
+
+        let _ = self
+            .handle_subscribe_filter(
+                interval_ms.unwrap(),
+                valid_entries.keys().cloned().collect(),
+                uuid_subscription,
+            )
+            .await;
 
         let stream = BroadcastStream::new(receiver).filter_map(move |result| match result {
             Ok(message) => Some(message),
@@ -1718,6 +1805,66 @@ impl AuthorizedAccess<'_, '_> {
             }
         });
         Ok(stream)
+    }
+
+    async fn handle_subscribe_filter(
+        &self,
+        interval_ms: u32,
+        signal_ids: Vec<i32>,
+        uuid_subscription: Uuid,
+    ) {
+        let mut disjoint_map = HashMap::<i32, u32>::new();
+
+        let current_filter_map = self
+            .broker
+            .filter_manager
+            .read()
+            .await
+            .get_signals_ids_with_lowest_interval();
+
+        for signal_id in signal_ids {
+            self.broker.filter_manager.write().await.insert_filter(
+                signal_id,
+                interval_ms,
+                uuid_subscription,
+            );
+        }
+
+        let target_filter_map = self
+            .broker
+            .filter_manager
+            .read()
+            .await
+            .get_signals_ids_with_lowest_interval();
+
+        //assert_eq!(current_filter_map.len(), target_filter_map.len());
+
+        if current_filter_map.len() > 0 {
+            disjoint_map = target_filter_map
+                .into_iter()
+                .filter_map(|(k, v1)| {
+                    let value = current_filter_map.get(&k);
+                    match value {
+                        Some(sample_interval) => {
+                            if *sample_interval != v1 {
+                                return Some((k, v1));
+                            } else {
+                                return None;
+                            }
+                        }
+                        None => return Some((k, v1)),
+                    }
+                })
+                .collect();
+        } else {
+            disjoint_map = target_filter_map;
+        }
+
+        DataBroker::update_filters_to_providers(
+            disjoint_map,
+            self.broker.subscriptions.read().await,
+        )
+        .await;
     }
 
     pub async fn subscribe_query(
@@ -2048,6 +2195,90 @@ impl AuthorizedAccess<'_, '_> {
             )),
         }
     }
+
+    pub async fn register_signals(
+        &self,
+        vss_ids: HashSet<i32>,
+        signal_provider: Box<dyn SignalProvider + Send + Sync + 'static>,
+    ) -> Result<u32, (SignalClaimError, String)> {
+        let registered_vss_ids: HashSet<i32> = self
+            .broker
+            .subscriptions
+            .read()
+            .await
+            .signal_provider_subscriptions
+            .iter()
+            .flat_map(|provider_entry| provider_entry.1.vss_ids.clone())
+            .collect();
+        let intersection: HashSet<&i32> = vss_ids
+            .iter()
+            .filter(|&x| registered_vss_ids.contains(x))
+            .collect();
+        if !intersection.is_empty() {
+            let message = format!(
+                "Providers for the following vss_ids already registered: {:?}",
+                intersection
+            );
+            return Err((SignalClaimError::ProviderAlreadyExists, message));
+        }
+
+        let signal_subscription = SignalProviderSubscription {
+            vss_ids,
+            signal_provider,
+            permissions: self.permissions.clone(),
+        };
+        let provider_id = self
+            .broker
+            .subscriptions
+            .write()
+            .await
+            .add_signal_provider_subscription(signal_subscription);
+
+        Ok((provider_id))
+    }
+
+    pub async fn publish_provider_error(&self, provider_id: i32) {
+        let subscriptions = self.broker.subscriptions.read().await;
+        let key_set = &subscriptions
+            .signal_provider_subscriptions
+            .get(&(provider_id as u32))
+            .as_ref()
+            .unwrap()
+            .vss_ids;
+
+        let mut db = self.broker.database.write().await;
+        let mut db_write = db.authorized_write_access(self.permissions);
+        key_set.iter().for_each(|signal_id| {
+            let entry_update = EntryUpdate {
+                path: None,
+                datapoint: None,
+                actuator_target: None,
+                entry_type: None,
+                data_type: None,
+                description: None,
+                allowed: None,
+                min: None,
+                max: None,
+                unit: None,
+            };
+            db_write.update(*signal_id, entry_update);
+        });
+    }
+
+    pub async fn valid_provider_publish_signals(
+        &self,
+        provider_id: i32,
+        signal_request: &HashSet<i32>,
+    ) -> bool {
+        let subscriptions = self.broker.subscriptions.read().await;
+        let key_set = &subscriptions
+            .signal_provider_subscriptions
+            .get(&(provider_id as u32))
+            .as_ref()
+            .unwrap()
+            .vss_ids;
+        key_set.is_subset(signal_request)
+    }
 }
 
 impl DataBroker {
@@ -2060,6 +2291,7 @@ impl DataBroker {
             version: version.into(),
             commit_sha: commit_sha.into(),
             shutdown_trigger,
+            filter_manager: Default::default(),
         }
     }
 
@@ -2077,16 +2309,109 @@ impl DataBroker {
     pub fn start_housekeeping_task(&self) {
         info!("Starting housekeeping task");
         let subscriptions = self.subscriptions.clone();
+        let filter_manager = self.filter_manager.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+
+            let mut num_providers = 0;
 
             loop {
                 interval.tick().await;
 
                 subscriptions.write().await.cleanup(); // Cleanup dropped subscriptions
+
+                // Cleanup change subscriptions and update filters
+                let closed_change_subscriptions =
+                    subscriptions.write().await.cleanup_change_subscriptions();
+                let num_providers_connected = subscriptions
+                    .read()
+                    .await
+                    .signal_provider_subscriptions
+                    .len();
+                if !closed_change_subscriptions.is_empty()
+                    || num_providers_connected > num_providers
+                {
+                    let change_subscription_closed = closed_change_subscriptions.is_empty();
+                    num_providers += 1;
+
+                    let mut disjoint_map = HashMap::<i32, u32>::new();
+
+                    let current_filter_map = filter_manager
+                        .read()
+                        .await
+                        .get_signals_ids_with_lowest_interval();
+
+                    if !change_subscription_closed {
+                        filter_manager
+                            .write()
+                            .await
+                            .remove_interval_by_uuid(closed_change_subscriptions);
+                    }
+
+                    let target_filter_map = filter_manager
+                        .read()
+                        .await
+                        .get_signals_ids_with_lowest_interval();
+
+                    if !change_subscription_closed {
+                        disjoint_map = current_filter_map
+                            .into_iter()
+                            .filter_map(|(k, v1)| {
+                                let value = target_filter_map.get(&k);
+                                match value {
+                                    Some(sample_interval) => {
+                                        if *sample_interval != v1 {
+                                            return Some((k, *sample_interval));
+                                        } else {
+                                            return None;
+                                        }
+                                    }
+                                    None => return Some((k, 0)),
+                                }
+                            })
+                            .collect();
+                    } else {
+                        disjoint_map = current_filter_map;
+                    }
+
+                    Self::update_filters_to_providers(disjoint_map, subscriptions.read().await)
+                        .await;
+                }
+
+                if num_providers_connected < num_providers {
+                    num_providers -= 1;
+                }
             }
         });
+    }
+
+    async fn update_filters_to_providers(
+        update_signal_intervals: HashMap<i32, u32>,
+        subscriptions: RwLockReadGuard<'_, Subscriptions>,
+    ) {
+        let providers = &(subscriptions.signal_provider_subscriptions);
+
+        for (_, provider) in providers {
+            let update_signal_map: HashMap<i32, u32> = provider
+                .vss_ids
+                .iter()
+                .filter_map(|&signal_id| update_signal_intervals.get_key_value(&signal_id))
+                .map(|(&k, v)| {
+                    let signal_id = k;
+                    let interval_ms = v.clone();
+                    (signal_id, interval_ms)
+                })
+                .collect();
+
+            if !update_signal_map.is_empty() {
+                provider
+                    .signal_provider
+                    .update_filter(update_signal_map)
+                    .await
+                    .unwrap();
+            }
+        }
     }
 
     pub async fn shutdown(&self) {

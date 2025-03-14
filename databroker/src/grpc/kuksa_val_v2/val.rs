@@ -11,11 +11,15 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use std::{collections::HashMap, pin::Pin};
+use std::{
+    collections::{BTreeSet, HashMap},
+    pin::Pin,
+};
 
 use crate::{
     broker::{
-        self, ActuationChange, ActuationProvider, AuthorizedAccess, ReadError, SubscriptionError,
+        self, ActuationChange, ActuationProvider, AuthorizedAccess, ReadError, SignalClaimError,
+        SignalProvider, SubscriptionError,
     },
     glob::Matcher,
     permissions::Permissions,
@@ -26,18 +30,19 @@ use databroker_proto::kuksa::val::v2::{
     self as proto,
     open_provider_stream_request::Action::{
         BatchActuateStreamResponse, GetProviderValueResponse, ProvideActuationRequest,
-        ProvideSignalRequest, ProviderErrorIndication, PublishValuesRequest, UpdateFilterResponse,
+        ProvideSignalRequest, PublishValuesRequest, UpdateFilterResponse,
     },
     open_provider_stream_response, OpenProviderStreamResponse, PublishValuesResponse,
 };
 
 use kuksa::proto::v2::{
     signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ErrorCode,
-    ListMetadataResponse, ProvideActuationResponse,
+    ListMetadataResponse, ProvideActuationResponse, ProvideSignalResponse,
 };
 use std::collections::HashSet;
 use tokio::{select, sync::mpsc};
 use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
+use tonic::Request;
 use tracing::debug;
 
 const MAX_REQUEST_PATH_LENGTH: usize = 1000;
@@ -81,6 +86,55 @@ impl ActuationProvider for Provider {
                 "An error occured while sending the data".to_string(),
             ));
         }
+        return Ok(());
+    }
+
+    fn is_available(&self) -> bool {
+        !self.sender.is_closed()
+    }
+}
+
+#[async_trait::async_trait]
+impl SignalProvider for Provider {
+    async fn update_filter(
+        &self,
+        update_filter: HashMap<i32, u32>,
+    ) -> Result<(), (SignalClaimError, String)> {
+        let mut filters_update: HashMap<i32, proto::Filter> = HashMap::new();
+        for (signal_id, interval_ms) in update_filter {
+            let min_sample_interval = if interval_ms != 0 {
+                Some(proto::SampleInterval {
+                    interval_ms: interval_ms,
+                })
+            } else {
+                None
+            };
+            let filter = proto::Filter {
+                duration_ms: 0,
+                min_sample_interval: min_sample_interval,
+            };
+            filters_update.insert(signal_id, filter);
+        }
+
+        let filter_request = proto::UpdateFilterRequest {
+            request_id: 1,
+            filters_update,
+        };
+
+        let filter_stream_request =
+            open_provider_stream_response::Action::UpdateFilterRequest(filter_request);
+
+        let response = OpenProviderStreamResponse {
+            action: Some(filter_stream_request),
+        };
+
+        let result = self.sender.send(Ok(response)).await;
+        // if result.is_err() {
+        //     return Err((
+        //         broker::SignalProvider::TransmissionFailure,
+        //         "An error occured while sending the data".to_string(),
+        //     ));
+        // }
         return Ok(());
     }
 
@@ -248,8 +302,22 @@ impl proto::val_server::Val for broker::DataBroker {
             );
         }
 
+        let interval_ms = if let Some(filter) = request.filter {
+            if let Some(min_sample_interval) = filter.min_sample_interval {
+                Some(min_sample_interval.interval_ms)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         match broker
-            .subscribe(valid_requests, Some(request.buffer_size as usize))
+            .subscribe(
+                valid_requests,
+                Some(request.buffer_size as usize),
+                interval_ms,
+            )
             .await
         {
             Ok(stream) => {
@@ -321,8 +389,22 @@ impl proto::val_server::Val for broker::DataBroker {
             );
         }
 
+        let interval_ms = if let Some(filter) = request.filter {
+            if let Some(min_sample_interval) = filter.min_sample_interval {
+                Some(min_sample_interval.interval_ms)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         match broker
-            .subscribe(valid_requests, Some(request.buffer_size as usize))
+            .subscribe(
+                valid_requests,
+                Some(request.buffer_size as usize),
+                interval_ms,
+            )
             .await
         {
             Ok(stream) => {
@@ -735,6 +817,7 @@ impl proto::val_server::Val for broker::DataBroker {
         tokio::spawn(async move {
             let permissions = permissions;
             let broker = broker.authorized_access(&permissions);
+            let mut provider_id: Option<u32> = None;
             loop {
                 select! {
                     message = stream.message() => {
@@ -751,15 +834,18 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
                                             },
                                             Some(PublishValuesRequest(publish_values_request)) => {
-                                                let response = publish_values(&broker, &publish_values_request).await;
-                                                if let Some(value) = response {
-                                                    if let Err(err) = response_stream_sender.send(Ok(value)).await {
-                                                        debug!("Failed to send error response: {}", err);
+                                                if provider_id.is_some() {
+                                                    let response = publish_values(&broker, provider_id.unwrap(), &publish_values_request).await;
+                                                    if let Some(value) = response {
+                                                        if let Err(err) = response_stream_sender.send(value).await {
+                                                            debug!("Failed to send error response: {}", err);
+                                                        }
                                                     }
+                                                } else if let Err(err) = response_stream_sender.send(Err(tonic::Status::aborted("Provider has not provided the signals, please call ProvideSignalRequest first"))).await {
+                                                    debug!("Failed to send error response: {}", err);
                                                 }
                                             },
                                             Some(BatchActuateStreamResponse(batch_actuate_stream_response)) => {
-
                                                 if let Some(error) = batch_actuate_stream_response.error {
                                                     match error.code() {
                                                         ErrorCode::Ok  => {},
@@ -783,8 +869,25 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
 
                                             },
-                                            Some(ProvideSignalRequest(_provide_signal_request)) => {
-                                                todo!();
+                                            Some(ProvideSignalRequest(provide_signal_request)) => {
+                                                //Register provider and channel to receive filter requests.
+                                                //provider_id = Some(broker.generate_provider_id().await);
+                                                let response = register_provided_signals(&broker, &provide_signal_request, response_stream_sender.clone()).await;
+                                                match response {
+                                                    Ok(value) => {
+                                                        provider_id = Some(value.0);
+                                                        if let Err(err) = response_stream_sender.send(Ok(value.1)).await
+                                                        {
+                                                            debug!("Failed to send response: {}", err)
+                                                        }
+                                                    },
+                                                    Err(tonic_error) => {
+                                                        if let Err(err) = response_stream_sender.send(Err(tonic_error)).await
+                                                        {
+                                                            debug!("Failed to send tonic error: {}", err)
+                                                        }
+                                                    }
+                                                }
                                             }
                                             Some(UpdateFilterResponse(_update_filter_response)) => {
                                                 todo!();
@@ -792,8 +895,8 @@ impl proto::val_server::Val for broker::DataBroker {
                                             Some(GetProviderValueResponse(_get_provider_value_response)) => {
                                                 todo!();
                                             }
-                                            Some(ProviderErrorIndication(_provide_error_indication)) => {
-                                                todo!();
+                                            Some(ProviderErrorIndication(_provider_error_indication)) => {
+                                                publish_provider_error(&broker, provider_id.unwrap().try_into().unwrap()).await;
                                             }
                                             None => {
 
@@ -906,14 +1009,49 @@ async fn provide_actuation(
     }
 }
 
+async fn register_provided_signals(
+    broker: &AuthorizedAccess<'_, '_>,
+    request: &databroker_proto::kuksa::val::v2::ProvideSignalRequest,
+    sender: mpsc::Sender<Result<OpenProviderStreamResponse, tonic::Status>>,
+) -> Result<(u32, OpenProviderStreamResponse), tonic::Status> {
+    let provider = Provider { sender };
+
+    let all_vss_ids = request.signals_sample_intervals.keys().copied().collect();
+
+    match broker
+        .register_signals(all_vss_ids, Box::new(provider))
+        .await
+    {
+        Ok(provider_id) => {
+            let provide_signal_response = ProvideSignalResponse {};
+            let response = OpenProviderStreamResponse {
+                action: Some(
+                    open_provider_stream_response::Action::ProvideSignalResponse(
+                        provide_signal_response,
+                    ),
+                ),
+            };
+            Ok((provider_id, response))
+        }
+        Err(error) => Err(error.0.to_tonic_status(error.1)),
+    }
+}
+
+async fn publish_provider_error(broker: &AuthorizedAccess<'_, '_>, provide_id: i32) {
+    let provider_list = broker.publish_provider_error(provide_id);
+}
+
 async fn publish_values(
     broker: &AuthorizedAccess<'_, '_>,
+    provider_id: u32,
     request: &databroker_proto::kuksa::val::v2::PublishValuesRequest,
-) -> Option<OpenProviderStreamResponse> {
+) -> Option<Result<OpenProviderStreamResponse, tonic::Status>> {
+    let mut request_signal_set: HashSet<i32> = HashSet::new();
     let ids: Vec<(i32, broker::EntryUpdate)> = request
         .data_points
         .iter()
         .map(|(id, datapoint)| {
+            request_signal_set.insert(*id);
             (
                 *id,
                 broker::EntryUpdate {
@@ -932,22 +1070,30 @@ async fn publish_values(
         })
         .collect();
 
-    // TODO check if provider is allowed to update the entries for the provided signals?
-    match broker.update_entries(ids).await {
-        Ok(_) => None,
-        Err(err) => Some(OpenProviderStreamResponse {
-            action: Some(
-                open_provider_stream_response::Action::PublishValuesResponse(
-                    PublishValuesResponse {
-                        request_id: request.request_id,
-                        status: err
-                            .iter()
-                            .map(|(id, error)| (*id, proto::Error::from(error)))
-                            .collect(),
-                    },
+    if broker
+        .valid_provider_publish_signals(provider_id as i32, &request_signal_set)
+        .await
+    {
+        match broker.update_entries(ids).await {
+            Ok(_) => None,
+            Err(err) => Some(Ok(OpenProviderStreamResponse {
+                action: Some(
+                    open_provider_stream_response::Action::PublishValuesResponse(
+                        PublishValuesResponse {
+                            request_id: request.request_id,
+                            status: err
+                                .iter()
+                                .map(|(id, error)| (*id, proto::Error::from(error)))
+                                .collect(),
+                        },
+                    ),
                 ),
-            ),
-        }),
+            })),
+        }
+    } else {
+        return Some(Err(tonic::Status::already_exists(
+            "Signals already registered by another provider",
+        )));
     }
 }
 

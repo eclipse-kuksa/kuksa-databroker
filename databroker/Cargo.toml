@@ -67,7 +67,7 @@ async-trait = "0.1.82"
 # VISS
 axum = { version = "0.6.20", optional = true, features = ["ws"] }
 chrono = { version = "0.4.31", optional = true, features = ["std"] }
-uuid = { version = "1.4.1", optional = true, features = ["v4"] }
+uuid = { version = "1.4.1", features = ["v4"] }
 
 # OTEL
 opentelemetry = { version = "0.19.0", optional = true, features = ["rt-tokio", "trace"] }
@@ -83,7 +83,7 @@ sd-notify = "0.4.1"
 default = ["tls"]
 tls = ["tonic/tls", "kuksa-common/tls", "kuksa/tls"]
 jemalloc = ["dep:jemallocator"]
-viss = ["dep:axum", "dep:chrono", "dep:uuid"]
+viss = ["dep:axum", "dep:chrono"]
 libtest = []
 otel = ["dep:chrono", "dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry-semantic-conventions", "dep:tracing-opentelemetry"]
 

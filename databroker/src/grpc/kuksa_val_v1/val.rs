@@ -610,7 +610,7 @@ impl proto::val_server::Val for broker::DataBroker {
             }
         }
 
-        match broker.subscribe(entries, None).await {
+        match broker.subscribe(entries, None, None).await {
             Ok(stream) => {
                 let stream = convert_to_proto_stream(stream);
                 Ok(tonic::Response::new(Box::pin(stream)))
