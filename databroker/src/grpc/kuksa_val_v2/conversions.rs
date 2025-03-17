@@ -28,10 +28,8 @@ impl From<&proto::Datapoint> for broker::Datapoint {
 
         match &datapoint.timestamp {
             Some(source_timestamp) => {
-                let source: Option<SystemTime> = match source_timestamp.clone().try_into() {
-                    Ok(source) => Some(source),
-                    Err(_) => None,
-                };
+                let source: Option<SystemTime> = source_timestamp.clone().try_into().ok();
+
                 broker::Datapoint {
                     ts,
                     source_ts: source,
@@ -535,6 +533,24 @@ impl broker::ActuationError {
             broker::ActuationError::ProviderNotAvailable => tonic::Status::unavailable(message),
             broker::ActuationError::ProviderAlreadyExists => tonic::Status::already_exists(message),
             broker::ActuationError::TransmissionFailure => tonic::Status::data_loss(message),
+        }
+    }
+}
+
+impl broker::RegisterSignalError {
+    pub fn to_tonic_status(&self, message: String) -> tonic::Status {
+        match self {
+            broker::RegisterSignalError::NotFound => tonic::Status::not_found(message),
+            broker::RegisterSignalError::PermissionDenied => {
+                tonic::Status::permission_denied(message)
+            }
+            broker::RegisterSignalError::PermissionExpired => {
+                tonic::Status::unauthenticated(message)
+            }
+            broker::RegisterSignalError::SignalAlreadyRegistered => {
+                tonic::Status::already_exists(message)
+            }
+            broker::RegisterSignalError::TransmissionFailure => tonic::Status::data_loss(message),
         }
     }
 }
