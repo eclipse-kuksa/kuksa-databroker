@@ -92,6 +92,8 @@ impl Viss for Server {
     async fn get(&self, request: GetRequest) -> Result<GetSuccessResponse, GetErrorResponse> {
         let request_id = request.request_id;
 
+        let mut request_matcher: Vec<(Matcher, String, bool)> = Vec::new();
+
         if let Some(Filter::StaticMetadata(_)) = &request.filter {
             // Authorization not required for metadata, don't bail if an
             // access token is missing.
