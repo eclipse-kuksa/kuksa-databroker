@@ -104,14 +104,20 @@ impl Viss for Server {
                 metadata,
             }));
         } else if let Some(Filter::Paths(paths_filter)) = &request.filter {
-            let request_path = request.path.as_ref();
-            if request_path.contains('*') {
+            if request.path.as_ref().contains('*') {
                 return Err(GetErrorResponse {
                     request_id,
                     ts: SystemTime::now().into(),
                     error: Error::NotFoundInvalidPath,
                 });
             }
+            for path in &paths_filter.parameter {
+                let new_path = format!("{}{}", request.path.clone().as_ref(), path);
+                if let Ok(matcher) = Matcher::new(&new_path) {
+                    request_matcher.push((matcher, request.path.clone().into(), false));
+                }
+            }
+        }
 
             let permissions = resolve_permissions(&self.authorization, &request.authorization)
                 .map_err(|error| GetErrorResponse {
