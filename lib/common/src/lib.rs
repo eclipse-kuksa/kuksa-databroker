@@ -11,6 +11,9 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
+pub mod conversion;
+pub mod types;
+
 use std::convert::TryFrom;
 
 use databroker_proto::kuksa::val::v1::Error;
@@ -42,7 +45,7 @@ pub enum ClientError {
 }
 
 #[async_trait]
-pub trait ClientTrait {
+pub trait SDVClientTraitV1 {
     type SensorUpdateType;
     type UpdateActuationType;
     type PathType;
@@ -60,14 +63,6 @@ pub trait ClientTrait {
         &mut self,
         datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError>;
-    async fn set_current_values(
-        &mut self,
-        datapoints: Self::SensorUpdateType,
-    ) -> Result<Self::PublishResponseType, ClientError>;
-    async fn publish(
-        &mut self,
-        datapoints: Self::SensorUpdateType,
-    ) -> Result<Self::PublishResponseType, ClientError>;
 
     // from application getting sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
     // if we do not want to put in the effort just give an unimplemented error for the function
@@ -75,19 +70,58 @@ pub trait ClientTrait {
         &mut self,
         paths: Self::PathType,
     ) -> Result<Self::GetResponseType, ClientError>;
+
+    // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn subscribe(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError>;
+
+    // from application requesting an actuation (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn set_datapoints(
+        &mut self,
+        datapoints: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError>;
+
+    // general functions
+    async fn get_metadata(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::MetadataResponseType, ClientError>;
+}
+
+#[async_trait]
+pub trait ClientTraitV1 {
+    type SensorUpdateType;
+    type UpdateActuationType;
+    type PathType;
+    type SubscribeType;
+    type PublishResponseType;
+    type GetResponseType;
+    type SubscribeResponseType;
+    type ProvideResponseType;
+    type ActuateResponseType;
+    type MetadataResponseType;
+
+    // from deeply embedded layer providing sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn set_current_values(
+        &mut self,
+        datapoints: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError>;
+
+    // from application getting sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
     async fn get_current_values(
         &mut self,
         paths: Self::PathType,
     ) -> Result<Self::GetResponseType, ClientError>;
-    async fn get(&mut self, paths: Self::PathType) -> Result<Self::GetResponseType, ClientError>;
 
     // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
     // if we do not want to put in the effort just give an unimplemented error for the function
     async fn subscribe_target_values(
-        &mut self,
-        paths: Self::PathType,
-    ) -> Result<Self::ProvideResponseType, ClientError>;
-    async fn provide_actuation(
         &mut self,
         paths: Self::PathType,
     ) -> Result<Self::ProvideResponseType, ClientError>;
@@ -110,15 +144,7 @@ pub trait ClientTrait {
 
     // from application requesting an actuation (to keep backwards compatibility the naming is different for the corresponding interfaces)
     // if we do not want to put in the effort just give an unimplemented error for the function
-    async fn set_datapoints(
-        &mut self,
-        datapoints: Self::UpdateActuationType,
-    ) -> Result<Self::ActuateResponseType, ClientError>;
     async fn set_target_values(
-        &mut self,
-        datapoints: Self::UpdateActuationType,
-    ) -> Result<Self::ActuateResponseType, ClientError>;
-    async fn actuate(
         &mut self,
         datapoints: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError>;
@@ -128,6 +154,83 @@ pub trait ClientTrait {
         &mut self,
         paths: Self::PathType,
     ) -> Result<Self::MetadataResponseType, ClientError>;
+}
+
+#[async_trait]
+pub trait ClientTraitV2 {
+    type SensorUpdateType;
+    type UpdateActuationType;
+    type UpdateActuationsType;
+    type PathType;
+    type PathsType;
+    type SubscribeType;
+    type PublishResponseType;
+    type GetResponseType;
+    type MultipleGetResponseType;
+    type SubscribeResponseType;
+    type SubscribeByIdResponseType;
+    type ProvideResponseType;
+    type ActuateResponseType;
+    type OpenProviderStreamResponseType;
+    type MetadataType;
+    type MetadataResponseType;
+    type ServerInfoType;
+
+    // from deeply embedded layer providing sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn publish_value(
+        &mut self,
+        signal_path: Self::PathType,
+        value: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError>;
+
+    // from application getting sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn get_value(
+        &mut self,
+        path: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError>;
+    async fn get_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::MultipleGetResponseType, ClientError>;
+
+    // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn provide_actuation(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::ProvideResponseType, ClientError>;
+
+    // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn subscribe(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError>;
+    async fn subscribe_by_id(
+        &mut self,
+        paths: Self::PathsType,
+    ) -> Result<Self::SubscribeByIdResponseType, ClientError>;
+
+    // from application requesting an actuation (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn actuate(
+        &mut self,
+        datapoints: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError>;
+    async fn batch_actuate(
+        &mut self,
+        datapoints: Self::UpdateActuationsType,
+    ) -> Result<Self::ActuateResponseType, ClientError>;
+
+    // general functions
+    async fn list_metadata(
+        &mut self,
+        tuple: Self::MetadataType,
+    ) -> Result<Self::MetadataResponseType, ClientError>;
+    async fn open_provider_stream() -> Self::OpenProviderStreamResponseType;
+    async fn get_server_info() -> Self::ServerInfoType;
 }
 
 impl std::error::Error for ClientError {}
