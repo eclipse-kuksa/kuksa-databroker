@@ -352,13 +352,13 @@ message ProviderErrorIndication {
 }
 
 message GetProviderValueRequest {
-  uint32 request_id       = 1; /// Unique request id for the stream that can be used to match the corresponding response.
-  GetValueRequest request = 2;
+  uint32 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding response.
+  repeated int32 signal_ids = 2;
 }
 
 message GetProviderValueResponse {
-  uint32 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding request.
-  GetValueResponse response = 2;
+  uint32 request_id             = 1; /// Unique request id for the stream that can be used to match the corresponding request.
+  map<int32, Datapoint> entries = 2;
 }
 
 message OpenProviderStreamRequest {

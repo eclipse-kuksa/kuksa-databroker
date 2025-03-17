@@ -538,3 +538,21 @@ impl broker::ActuationError {
         }
     }
 }
+
+impl broker::RegisterSignalError {
+    pub fn to_tonic_status(&self, message: String) -> tonic::Status {
+        match self {
+            broker::RegisterSignalError::NotFound => tonic::Status::not_found(message),
+            broker::RegisterSignalError::PermissionDenied => {
+                tonic::Status::permission_denied(message)
+            }
+            broker::RegisterSignalError::PermissionExpired => {
+                tonic::Status::unauthenticated(message)
+            }
+            broker::RegisterSignalError::SignalAlreadyRegistered => {
+                tonic::Status::already_exists(message)
+            }
+            broker::RegisterSignalError::TransmissionFailure => tonic::Status::data_loss(message),
+        }
+    }
+}

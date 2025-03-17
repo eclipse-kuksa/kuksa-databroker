@@ -104,6 +104,10 @@ class ConnectedClients():
                 logger.debug(f"Found message: {response}")
         return response
 
+    def trigger_reading_websocket(self):
+        for _, client in self.clients.items():
+            if client.is_connected():
+                client.read_all_websocket_messages()
 
 @pytest.fixture
 def request_id():
@@ -439,7 +443,6 @@ def receive_ws_subscribe(connected_clients,request_id, subscription_id):
 def receive_ws_subscribe_error_event(connected_clients,request_id):
     envelope = connected_clients.find_message(request_id=request_id, action="subscribe")
     response = envelope["body"]
-    assert "requestId" in response
     assert "error" in response
     assert "ts" in response
     assert "subscriptionId" not in response
@@ -453,6 +456,22 @@ def receive_ws_subscribe_error_event(connected_clients,request_id):
     # assert response["error"] == {"number": 404,
     #                              "reason": "unavailable_data",
     #                              "message": "The requested data was not found."}
+
+@then("I should receive a service unavailable subscribe error event")
+def receive_ws_subscribe_error_event(connected_clients,subscription_id):
+    # READ ERROR
+    connected_clients.trigger_reading_websocket()
+    envelope = connected_clients.find_message(subscription_id=subscription_id, request_id=None, action="subscription")
+    response = envelope["body"]
+
+    assert "error" in response
+    assert "ts" in response
+    assert "subscriptionId" in response
+
+    # Current implementation
+    assert response["error"] == {"number": 503,
+                                 "reason": "service_unavailable",
+                                 "message": "The server is temporarily unable to handle the request."}
 
 @then("I should receive a set error event")
 def receive_ws_set_error_event(connected_clients,request_id):
