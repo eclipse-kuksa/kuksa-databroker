@@ -377,7 +377,7 @@ def receive_ws_read_multiple_datapoints(connected_clients,request_id):
     responses = connected_clients.find_messages(request_id=request_id)
     # TODO: Unpack envelope
     # TODO: Count number of valid "dp" items
-    actual_count = len(responses)
+    actual_count = len(responses[0]["body"]["data"])
     assert actual_count > 1, f"Expected multiple messages but only got {actual_count}"
 
 @then("I should receive a single value from multiple nodes")

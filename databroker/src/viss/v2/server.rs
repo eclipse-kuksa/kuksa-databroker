@@ -29,6 +29,7 @@ use tracing::warn;
 use crate::{
     authorization::Authorization,
     broker::{self, AuthorizedAccess, UpdateError},
+    glob::Matcher,
     permissions::{self, Permissions},
 };
 
@@ -100,36 +101,141 @@ impl Viss for Server {
                 request_id,
                 metadata,
             }));
-        }
-        let permissions = resolve_permissions(&self.authorization, &request.authorization)
-            .map_err(|error| GetErrorResponse {
-                request_id: request_id.clone(),
-                error,
-                ts: SystemTime::now().into(),
-            })?;
-        let broker = self.broker.authorized_access(&permissions);
+        } else if let Some(Filter::Paths(paths_filter)) = &request.filter {
+            let request_path = request.path.as_ref();
+            if request_path.contains('*') {
+                return Err(GetErrorResponse {
+                    request_id,
+                    ts: SystemTime::now().into(),
+                    error: Error::NotFoundInvalidPath,
+                });
+            }
 
-        // Get datapoints
-        match broker.get_datapoint_by_path(request.path.as_ref()).await {
-            Ok(datapoint) => {
-                let dp = DataPoint::from(datapoint);
+            let permissions = resolve_permissions(&self.authorization, &request.authorization)
+                .map_err(|error| GetErrorResponse {
+                    request_id: request_id.clone(),
+                    error,
+                    ts: SystemTime::now().into(),
+                })?;
+            let broker = self.broker.authorized_access(&permissions);
+
+            let mut request_matcher: Vec<(Matcher, bool)> = Vec::new();
+            let mut entries_data = Vec::new();
+            let mut signal_errors = Vec::new();
+
+            for path in &paths_filter.parameter {
+                let new_path = format!("{}.{}", request_path, path);
+                if let Ok(matcher) = Matcher::new(&new_path) {
+                    request_matcher.push((matcher, false));
+                }
+            }
+
+            if !request_matcher.is_empty() {
+                for (matcher, is_match) in &mut request_matcher {
+                    broker
+                        .for_each_entry(|entry| {
+                            let glob_path = &entry.metadata().glob_path;
+                            let path = entry.metadata().path.clone();
+                            if matcher.is_match(glob_path) {
+                                match entry.datapoint() {
+                                    Ok(datapoint) => {
+                                        let dp = DataPoint::from(datapoint.clone());
+                                        *is_match = true;
+                                        entries_data.push(DataObject {
+                                            path: Path::from(path),
+                                            dp,
+                                        });
+                                    }
+                                    Err(_) => {
+                                        signal_errors.push(path);
+                                    }
+                                }
+                            }
+                        })
+                        .await;
+
+                    // Not found any matches meaning it could be a branch path request
+                    // Only support branches like Vehicle.Cabin.Sunroof but not like **.Sunroof
+                    if !matcher.as_string().starts_with("**")
+                        && !matcher.as_string().ends_with("/**")
+                        && !(*is_match)
+                    {
+                        if let Ok(branch_matcher) = Matcher::new(&(matcher.as_string() + "/**")) {
+                            broker
+                                .for_each_entry(|entry| {
+                                    let glob_path = &entry.metadata().glob_path;
+                                    let path = entry.metadata().path.clone();
+                                    if branch_matcher.is_match(glob_path) {
+                                        match entry.datapoint() {
+                                            Ok(datapoint) => {
+                                                let dp = DataPoint::from(datapoint.clone());
+                                                *is_match = true;
+                                                entries_data.push(DataObject {
+                                                    path: Path::from(path),
+                                                    dp,
+                                                });
+                                            }
+                                            Err(_) => {
+                                                signal_errors.push(path);
+                                            }
+                                        }
+                                    }
+                                })
+                                .await;
+                        }
+                    }
+                }
+            }
+
+            // https://w3c.github.io/automotive/spec/VISSv2_Core.html#error-handling
+            if signal_errors.is_empty() {
                 Ok(GetSuccessResponse::Data(DataResponse {
                     request_id,
-                    data: Data::Object(DataObject {
-                        path: request.path,
-                        dp,
-                    }),
+                    data: Data::Array(entries_data),
                 }))
+            } else {
+                Err(GetErrorResponse {
+                    request_id,
+                    ts: SystemTime::now().into(),
+                    error: Error::Forbidden {
+                        msg: Some(format!(
+                            "Permission denied for some signal: {}",
+                            signal_errors.join(", ")
+                        )),
+                    },
+                })
             }
-            Err(err) => Err(GetErrorResponse {
-                request_id,
-                ts: SystemTime::now().into(),
-                error: match err {
-                    broker::ReadError::NotFound => Error::NotFoundInvalidPath,
-                    broker::ReadError::PermissionDenied => Error::Forbidden,
-                    broker::ReadError::PermissionExpired => Error::UnauthorizedTokenExpired,
-                },
-            }),
+        } else {
+            let permissions = resolve_permissions(&self.authorization, &request.authorization)
+                .map_err(|error| GetErrorResponse {
+                    request_id: request_id.clone(),
+                    error,
+                    ts: SystemTime::now().into(),
+                })?;
+            let broker = self.broker.authorized_access(&permissions);
+
+            // Get datapoints
+            match broker.get_datapoint_by_path(request.path.as_ref()).await {
+                Ok(datapoint) => {
+                    let dp = DataPoint::from(datapoint);
+                    Ok(GetSuccessResponse::Data(DataResponse {
+                        request_id,
+                        data: Data::Object(DataObject {
+                            path: request.path,
+                            dp,
+                        }),
+                    }))
+                }
+                Err(err) => Err(GetErrorResponse {
+                    request_id,
+                    ts: SystemTime::now().into(),
+                    error: match err {
+                        broker::ReadError::NotFound => Error::NotFoundInvalidPath,
+                        broker::ReadError::PermissionDenied => Error::Forbidden { msg: None },
+                        broker::ReadError::PermissionExpired => Error::UnauthorizedTokenExpired,
+                    },
+                }),
+            }
         }
     }
 
@@ -211,7 +317,7 @@ impl Viss for Server {
                                 UpdateError::UnsupportedType => Error::BadRequest {
                                     msg: Some("Unsupported data type.".into()),
                                 },
-                                UpdateError::PermissionDenied => Error::Forbidden,
+                                UpdateError::PermissionDenied => Error::Forbidden { msg: None },
                                 UpdateError::PermissionExpired => Error::UnauthorizedTokenExpired,
                             }
                         } else {
