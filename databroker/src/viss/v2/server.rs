@@ -29,6 +29,7 @@ use tracing::warn;
 use crate::{
     authorization::Authorization,
     broker::{self, AuthorizedAccess, UpdateError},
+    glob::Matcher,
     permissions::{self, Permissions},
 };
 
@@ -91,6 +92,8 @@ impl Viss for Server {
     async fn get(&self, request: GetRequest) -> Result<GetSuccessResponse, GetErrorResponse> {
         let request_id = request.request_id;
 
+        let mut request_matcher: Vec<(Matcher, String, bool)> = Vec::new();
+
         if let Some(Filter::StaticMetadata(_)) = &request.filter {
             // Authorization not required for metadata, don't bail if an
             // access token is missing.
@@ -100,7 +103,18 @@ impl Viss for Server {
                 request_id,
                 metadata,
             }));
+        } else if let Some(Filter::Paths(paths_filter)) = &request.filter {
+            for path in &paths_filter.parameter {
+                let new_path = format!("{}{}", request.path.clone().as_ref(), path);
+                match Matcher::new(&new_path) {
+                    Ok(matcher) => {
+                        request_matcher.push((matcher, request.path.clone().into(), false));
+                    }
+                    Err(_) => {}
+                }
+            }
         }
+
         let permissions = resolve_permissions(&self.authorization, &request.authorization)
             .map_err(|error| GetErrorResponse {
                 request_id: request_id.clone(),
@@ -109,27 +123,83 @@ impl Viss for Server {
             })?;
         let broker = self.broker.authorized_access(&permissions);
 
-        // Get datapoints
-        match broker.get_datapoint_by_path(request.path.as_ref()).await {
-            Ok(datapoint) => {
-                let dp = DataPoint::from(datapoint);
-                Ok(GetSuccessResponse::Data(DataResponse {
-                    request_id,
-                    data: Data::Object(DataObject {
-                        path: request.path,
-                        dp,
-                    }),
-                }))
+        let mut entries_data = Vec::new();
+        let mut signal_errors = Vec::new();
+
+        if !request_matcher.is_empty() {
+            for (matcher, _, is_match) in &mut request_matcher {
+                broker
+                    .for_each_entry(|entry| {
+                        let glob_path = &entry.metadata().glob_path;
+                        let path = entry.metadata().path.clone();
+                        if matcher.is_match(glob_path) {
+                            match entry.datapoint() {
+                                Ok(datapoint) => {
+                                    let dp = DataPoint::from(datapoint.clone());
+                                    *is_match = true;
+                                    entries_data.push(Data::Object(DataObject {
+                                        path: Path::from(path),
+                                        dp,
+                                    }));
+                                }
+                                Err(_) => {
+                                    signal_errors.push(path);
+                                }
+                            }
+                        }
+                    })
+                    .await;
+
+                // Not found any matches meaning it could be a branch path request
+                // Only support branches like Vehicle.Cabin.Sunroof but not like **.Sunroof
+                if !matcher.as_string().starts_with("**")
+                    && !matcher.as_string().ends_with("/**")
+                    && !(*is_match)
+                {
+                    if let Ok(branch_matcher) = Matcher::new(&(matcher.as_string() + "/**")) {
+                        broker
+                            .for_each_entry(|entry| {
+                                let glob_path = &entry.metadata().glob_path;
+                                let path = entry.metadata().path.clone();
+                                if branch_matcher.is_match(glob_path) {
+                                    match entry.datapoint() {
+                                        Ok(datapoint) => {
+                                            let dp = DataPoint::from(datapoint.clone());
+                                            *is_match = true;
+                                            entries_data.push(Data::Object(DataObject {
+                                                path: Path::from(path),
+                                                dp,
+                                            }));
+                                        }
+                                        Err(_) => {
+                                            signal_errors.push(path);
+                                        }
+                                    }
+                                }
+                            })
+                            .await;
+                    }
+                }
             }
-            Err(err) => Err(GetErrorResponse {
+        }
+
+        // https://w3c.github.io/automotive/spec/VISSv2_Core.html#error-handling
+        if signal_errors.is_empty() {
+            Ok(GetSuccessResponse::Data(DataResponse {
+                request_id,
+                data: entries_data,
+            }))
+        } else {
+            Err(GetErrorResponse {
                 request_id,
                 ts: SystemTime::now().into(),
-                error: match err {
-                    broker::ReadError::NotFound => Error::NotFoundInvalidPath,
-                    broker::ReadError::PermissionDenied => Error::Forbidden,
-                    broker::ReadError::PermissionExpired => Error::UnauthorizedTokenExpired,
+                error: Error::Forbidden {
+                    msg: Some(format!(
+                        "Permission denied for some signal: {}",
+                        signal_errors.join(", ")
+                    )),
                 },
-            }),
+            })
         }
     }
 
@@ -211,7 +281,7 @@ impl Viss for Server {
                                 UpdateError::UnsupportedType => Error::BadRequest {
                                     msg: Some("Unsupported data type.".into()),
                                 },
-                                UpdateError::PermissionDenied => Error::Forbidden,
+                                UpdateError::PermissionDenied => Error::Forbidden { msg: None },
                                 UpdateError::PermissionExpired => Error::UnauthorizedTokenExpired,
                             }
                         } else {

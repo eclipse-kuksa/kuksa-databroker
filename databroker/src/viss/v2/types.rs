@@ -69,7 +69,7 @@ pub enum GetSuccessResponse {
 #[serde(tag = "action", rename = "get", rename_all = "camelCase")]
 pub struct DataResponse {
     pub request_id: RequestId,
-    pub data: Data,
+    pub data: Vec<Data>,
 }
 
 #[derive(Serialize)]
@@ -196,6 +196,14 @@ pub struct GenericErrorResponse {
 pub enum Filter {
     #[serde(rename = "static-metadata")]
     StaticMetadata(StaticMetadataFilter),
+    #[serde(rename = "paths")]
+    Paths(PathsFilter),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathsFilter {
+    pub parameter: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -389,7 +397,7 @@ pub enum Error {
     UnauthorizedTokenInvalid,
     UnauthorizedTokenMissing,
     UnauthorizedReadOnly,
-    Forbidden,
+    Forbidden { msg: Option<String> },
     NotFoundInvalidPath,
     NotFoundUnavailableData,
     NotFoundInvalidSubscriptionId,
@@ -437,10 +445,10 @@ impl From<Error> for ErrorSpec {
                 message: "The desired signal cannot be set since it is a read only signal.".into(),
             },
             // Forbidden           403  user_forbidden            The user is not permitted to access the requested resource. Retrying does not help.
-            Error::Forbidden => ErrorSpec {
+            Error::Forbidden{ msg: custom_msg } => ErrorSpec {
                 number: 403,
                 reason: "user_forbidden".into(),
-                message: "The user is not permitted to access the requested resource. Retrying does not help.".into(),
+                message: custom_msg.unwrap_or("The user is not permitted to access the requested resource. Retrying does not help.".into()),
             },
             // Forbidden           403  user_unknown              The user is unknown. Retrying does not help.
             // Forbidden           403  device_forbidden          The device is not permitted to access the requested resource. Retrying does not help.
