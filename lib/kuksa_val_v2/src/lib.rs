@@ -31,22 +31,12 @@ use std::time::SystemTime;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::Streaming;
 
-#[derive(Debug)]
-pub struct ServerInfo {
-    pub name: String,
-    pub commit_hash: String,
-    pub version: String,
-}
-
-pub struct OpenProviderStream {
-    pub sender: tokio::sync::mpsc::Sender<OpenProviderStreamRequest>,
-    pub receiver_stream: Streaming<OpenProviderStreamResponse>,
-}
+use kuksa_common::types::{ OpenProviderStream, ServerInfo};
 
 impl OpenProviderStream {
     fn new(
-        sender: tokio::sync::mpsc::Sender<OpenProviderStreamRequest>,
-        receiver_stream: Streaming<OpenProviderStreamResponse>,
+        sender: tokio::sync::mpsc::Sender<protoV2::OpenProviderStreamRequest>,
+        receiver_stream: tonic::Streaming<protoV2::OpenProviderStreamResponse>,
     ) -> Self {
         OpenProviderStream {
             sender,
@@ -72,6 +62,142 @@ impl KuksaClientV2 {
         Self::new(uri)
     }
 
+    /// Resolves the databroker ids for the specified list of paths and returns them in a HashMap<String, i32>
+    ///
+    /// Returns (GRPC error code):
+    ///   NOT_FOUND if the specified root branch does not exist.
+    ///   UNAUTHENTICATED if no credentials provided or credentials has expired
+    ///
+    pub async fn resolve_ids_for_paths(
+        &mut self,
+        vss_paths: Vec<&str>,
+    ) -> Result<HashMap<String, i32>, ClientError> {
+        let mut hash_map = HashMap::new();
+
+        for path in vss_paths {
+            let vec = self.list_metadata(path, "*").await?;
+            let metadata = vec.first().unwrap();
+
+            hash_map.insert(metadata.path.clone(), metadata.id);
+        }
+
+        Ok(hash_map)
+    }
+
+    fn convert_to_actuate_requests(values: HashMap<String, Value>) -> Vec<ActuateRequest> {
+        let mut actuate_requests = Vec::with_capacity(values.len());
+        for (signal_path, value) in values {
+            let actuate_request = ActuateRequest {
+                signal_id: Some(SignalId {
+                    signal: Some(Path(signal_path)),
+                }),
+                value: Some(value),
+            };
+
+            actuate_requests.push(actuate_request)
+        }
+        actuate_requests
+    }
+}
+
+#[async_trait]
+impl kuksa_common::ClientTraitV1 for KuksaClientV2 {
+    type SensorUpdateType = kuksa_common::types::SensorUpdateTypeV1;
+    type UpdateActuationType = kuksa_common::types::UpdateActuationTypeV1;
+    type PathType = kuksa_common::types::PathTypeV1;
+    type SubscribeType = kuksa_common::types::SubscribeTypeV1;
+    type PublishResponseType = kuksa_common::types::PublishResponseTypeV1;
+    type GetResponseType = kuksa_common::types::GetResponseTypeV1;
+    type SubscribeResponseType = kuksa_common::types::SubscribeResponseTypeV1;
+    type ProvideResponseType = kuksa_common::types::ProvideResponseTypeV1;
+    type ActuateResponseType = kuksa_common::types::ActuateResponseTypeV1;
+    type MetadataResponseType = kuksa_common::types::MetadataResponseTypeV1;
+
+    async fn set_current_values(
+        &mut self,
+        datapoints: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError> {
+        for (signal_path, datapoint) in datapoints{
+            self.publish_value(signal_path, datapoint.convert_to_v2()).await;
+        }
+        Ok(())
+    }
+
+    async fn get_current_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError> {
+        Ok(self.get_values(paths.convert_to_v2()).await.unwrap().convert_to_v1())
+    }
+
+    async fn subscribe_target_values(
+        &mut self,
+        _paths: Self::PathType,
+    ) -> Result<Self::ProvideResponseType, ClientError> {
+        unimplemented!("The concept behind target and current value has changed! Target values will not get stored anymore.")
+        // here we could default to call a kuksa.val.v1 function as well but I would not recommend.
+        // This would suggerate that it still works which it won't
+        // Other option would be to open a provider stream here and return stuff but this would change the return type aka the dev has to adapt anyways.
+    }
+
+    async fn get_target_values(
+        &mut self,
+        _paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError> {
+        unimplemented!("The concept behind target and current value has changed! Target values will not get stored anymore.")
+        // here we could default to call a kuksa.val.v1 function as well but I would not recommend.
+        // This would suggerate that it still works which it won't
+        // Other option would be to open a provider stream here and return stuff but this would change the return type aka the dev has to adapt anyways.
+    }
+
+    async fn subscribe_current_values(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError> {
+        Ok(ClientTraitV2::subscribe(self, paths.convert_to_v2()).await.unwrap().convert_to_v1())
+    }
+
+    async fn subscribe(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError> {
+        Ok(ClientTraitV2::subscribe(self, paths.convert_to_v2()).await.unwrap().convert_to_v1())
+    }
+
+    async fn set_target_values(
+        &mut self,
+        datapoints: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError> {
+        Ok(self.batch_actuate(datapoints.convert_to_v2()).await.unwrap().convert_to_v1())
+    }
+
+    async fn get_metadata(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::MetadataResponseType, ClientError> {
+        Ok(list_metadata(self, paths.convert_to_v2()).await.unwrap().convert_to_v1())
+    }
+}
+
+impl ClientTraitV2 for KuksaClientV2{
+    type SensorUpdateType = kuksa_common::types::SensorUpdateTypeV2;
+    type UpdateActuationType = kuksa_common::types::UpdateActuationTypeV2;
+    type PathType = kuksa_common::types::PathTypeV2;
+    type PathsType = kuksa_common::types::PathsTypeV2;
+    type IdsType = kuksa_common::types::IdsTypeV2;
+    type SubscribeType = kuksa_common::types::SubscribeTypeV2;
+    type SubscribeByIdType = kuksa_common::types::SubscribeByIdTypeV2;
+    type PublishResponseType = kuksa_common::types::PublishResponseTypeV2;
+    type GetResponseType = kuksa_common::types::GetResponseTypeV2;
+    type MultipleGetResponseType = kuksa_common::types::MultipleGetResponseTypeV2;
+    type SubscribeResponseType = kuksa_common::types::SubscribeResponseTypeV2;
+    type ProvideResponseType = kuksa_common::types::ProvideResponseTypeV2;
+    type ActuateResponseType = kuksa_common::types::ActuateResponseTypeV2;
+    type OpenProviderStreamResponseType = kuksa_common::types::OpenProviderStreamResponseTypeV2;
+    type MetadataType = kuksa::common::MetadataTypeV2;
+    type MetadataResponseType = kuksa_common::types::MetadataResponseTypeV2;
+    type ServerInfoType = kuksa_common::types::ServerInfoTypeV2;
+
     /// Get the latest value of a signal
     /// If the signal exist but does not have a valid value
     /// a DataPoint where value is None shall be returned.
@@ -83,7 +209,7 @@ impl KuksaClientV2 {
     ///   INVALID_ARGUMENT if the request is empty or provided path is too long
     ///       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
     ///
-    pub async fn get_value(&mut self, path: &str) -> Result<Option<Datapoint>, ClientError> {
+    async fn get_value(&mut self, path: PathType) -> Result<GetResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -91,7 +217,7 @@ impl KuksaClientV2 {
 
         let get_value_request = GetValueRequest {
             signal_id: Some(SignalId {
-                signal: Some(Path(path.to_string())),
+                signal: Some(Path(path)),
             }),
         };
 
@@ -115,10 +241,10 @@ impl KuksaClientV2 {
     ///   INVALID_ARGUMENT if the request is empty or provided path is too long
     ///       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
     ///
-    pub async fn get_values(
+    async fn get_values(
         &mut self,
-        signal_paths: Vec<&str>,
-    ) -> Result<Vec<Datapoint>, ClientError> {
+        signal_paths: PathsType,
+    ) -> Result<MultipleGetResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -127,7 +253,7 @@ impl KuksaClientV2 {
         let signal_ids: Vec<SignalId> = signal_paths
             .iter()
             .map(move |signal_path| SignalId {
-                signal: Some(Path(signal_path.to_string())),
+                signal: Some(Path(signal_path)),
             })
             .collect();
 
@@ -156,11 +282,11 @@ impl KuksaClientV2 {
     ///            e.g. if sending an unsupported enum value
     ///       - if the published value is out of the min/max range specified
     ///
-    pub async fn publish_value(
+    async fn publish_value(
         &mut self,
-        signal_path: &str,
-        value: Value,
-    ) -> Result<(), ClientError> {
+        signal_path: PathType,
+        value: SensorUpdateType,
+    ) -> Result<PublishResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -175,7 +301,7 @@ impl KuksaClientV2 {
 
         let publish_value_request = PublishValueRequest {
             signal_id: Some(SignalId {
-                signal: Some(Path(signal_path.to_string())),
+                signal: Some(Path(signal_path)),
             }),
             data_point: Some(Datapoint {
                 timestamp: Some(Timestamp { seconds, nanos }),
@@ -205,7 +331,7 @@ impl KuksaClientV2 {
     ///            e.g. if sending an unsupported enum value
     ///       - if the provided value is out of the min/max range specified
     ///
-    pub async fn actuate(&mut self, signal_path: &str, value: Value) -> Result<(), ClientError> {
+    async fn actuate(&mut self, signal_path: PathType, value: UpdateActuationType) -> Result<ActuateResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -213,7 +339,7 @@ impl KuksaClientV2 {
 
         let actuate_request = ActuateRequest {
             signal_id: Some(SignalId {
-                signal: Some(Path(signal_path.to_string())),
+                signal: Some(Path(signal_path)),
             }),
             value: Some(value),
         };
@@ -242,10 +368,10 @@ impl KuksaClientV2 {
     ///            e.g. if sending an unsupported enum value
     ///       - if any of the provided actuators values are out of the min/max range specified
     ///
-    pub async fn batch_actuate(
+    async fn batch_actuate(
         &mut self,
-        values: HashMap<String, Value>,
-    ) -> Result<(), ClientError> {
+        values: UpdateActuationsType,
+    ) -> Result<ActuateResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -279,20 +405,18 @@ impl KuksaClientV2 {
     /// If a subscriber is slow to consume signals, messages will be buffered up
     /// to the specified buffer_size before the oldest messages are dropped.
     ///
-    pub async fn subscribe(
+    async fn subscribe(
         &mut self,
-        signal_paths: Vec<&str>,
+        signal_paths: SubscribeType,
         buffer_size: Option<u32>,
-    ) -> Result<Streaming<SubscribeResponse>, ClientError> {
+    ) -> Result<SubscribeResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
         );
 
-        let paths: Vec<String> = signal_paths.iter().map(|&s| s.to_string()).collect();
-
         let subscribe_request = SubscribeRequest {
-            signal_paths: paths,
+            signal_paths,
             buffer_size: buffer_size.unwrap_or(0),
         };
 
@@ -320,11 +444,11 @@ impl KuksaClientV2 {
     /// If a subscriber is slow to consume signals, messages will be buffered up
     /// to the specified buffer_size before the oldest messages are dropped.
     ///
-    pub async fn subscribe_by_id(
+    async fn subscribe_by_id(
         &mut self,
-        signal_ids: Vec<i32>,
+        signal_ids: SubscribeByIdType,
         buffer_size: Option<u32>,
-    ) -> Result<Streaming<SubscribeByIdResponse>, ClientError> {
+    ) -> Result<SubscribeByIdResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -372,10 +496,10 @@ impl KuksaClientV2 {
     ///    - Provider returns BatchActuateStreamResponse <- Databroker sends BatchActuateStreamRequest
     ///        No error definition, a BatchActuateStreamResponse is expected from provider.
     ///
-    pub async fn open_provider_stream(
+    async fn open_provider_stream(
         &mut self,
         buffer_size: Option<usize>,
-    ) -> Result<OpenProviderStream, ClientError> {
+    ) -> Result<OpenProviderStreamResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -400,19 +524,18 @@ impl KuksaClientV2 {
     ///   UNAUTHENTICATED if no credentials provided or credentials has expired
     ///   INVALID_ARGUMENT if the provided path or wildcard is wrong.
     ///
-    pub async fn list_metadata(
+    async fn list_metadata(
         &mut self,
-        root: &str,
-        filter: &str,
-    ) -> Result<Vec<Metadata>, ClientError> {
+        tuple: MetadataType
+    ) -> Result<MetadataResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
         );
 
         let list_metadata_request = ListMetadataRequest {
-            root: root.to_string(),
-            filter: filter.to_string(),
+            root,
+            filter,
         };
 
         match client.list_metadata(list_metadata_request).await {
@@ -425,7 +548,7 @@ impl KuksaClientV2 {
     }
 
     /// Get server information
-    pub async fn get_server_info(&mut self) -> Result<ServerInfo, ClientError> {
+    async fn get_server_info(&mut self) -> Result<ServerInfoType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -445,43 +568,6 @@ impl KuksaClientV2 {
             }
             Err(err) => Err(Status(err)),
         }
-    }
-
-    /// Resolves the databroker ids for the specified list of paths and returns them in a HashMap<String, i32>
-    ///
-    /// Returns (GRPC error code):
-    ///   NOT_FOUND if the specified root branch does not exist.
-    ///   UNAUTHENTICATED if no credentials provided or credentials has expired
-    ///
-    pub async fn resolve_ids_for_paths(
-        &mut self,
-        vss_paths: Vec<&str>,
-    ) -> Result<HashMap<String, i32>, ClientError> {
-        let mut hash_map = HashMap::new();
-
-        for path in vss_paths {
-            let vec = self.list_metadata(path, "*").await?;
-            let metadata = vec.first().unwrap();
-
-            hash_map.insert(metadata.path.clone(), metadata.id);
-        }
-
-        Ok(hash_map)
-    }
-
-    fn convert_to_actuate_requests(values: HashMap<String, Value>) -> Vec<ActuateRequest> {
-        let mut actuate_requests = Vec::with_capacity(values.len());
-        for (signal_path, value) in values {
-            let actuate_request = ActuateRequest {
-                signal_id: Some(SignalId {
-                    signal: Some(Path(signal_path)),
-                }),
-                value: Some(value),
-            };
-
-            actuate_requests.push(actuate_request)
-        }
-        actuate_requests
     }
 }
 
