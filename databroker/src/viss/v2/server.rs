@@ -106,11 +106,8 @@ impl Viss for Server {
         } else if let Some(Filter::Paths(paths_filter)) = &request.filter {
             for path in &paths_filter.parameter {
                 let new_path = format!("{}{}", request.path.clone().as_ref(), path);
-                match Matcher::new(&new_path) {
-                    Ok(matcher) => {
-                        request_matcher.push((matcher, request.path.clone().into(), false));
-                    }
-                    Err(_) => {}
+                if let Ok(matcher) = Matcher::new(&new_path) {
+                    request_matcher.push((matcher, request.path.clone().into(), false));
                 }
             }
         }
