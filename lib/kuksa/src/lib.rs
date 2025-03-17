@@ -12,7 +12,8 @@
 ********************************************************************************/
 
 use http::Uri;
-use std::collections::HashMap;
+use kuksa_common::conversion::{ConvertToSDV, ConvertToV1};
+use kuksa_common::ClientTraitV1;
 use tonic::async_trait;
 
 pub use databroker_proto::kuksa::val::{self as proto, v1::DataEntry};
@@ -108,24 +109,85 @@ impl KuksaClient {
 }
 
 #[async_trait]
-impl kuksa_common::ClientTrait for KuksaClient {
-    type SensorUpdateType = HashMap<String, proto::v1::Datapoint>;
-    type UpdateActuationType = HashMap<String, proto::v1::Datapoint>;
-    type PathType = Vec<String>;
-    type SubscribeType = Self::PathType;
-    type PublishResponseType = ();
-    type GetResponseType = Vec<DataEntry>;
-    type SubscribeResponseType = tonic::Streaming<proto::v1::SubscribeResponse>;
-    type ProvideResponseType = tonic::Streaming<proto::v1::SubscribeResponse>;
-    type ActuateResponseType = ();
-    type MetadataResponseType = Vec<DataEntry>;
+impl kuksa_common::SDVClientTraitV1 for KuksaClient {
+    type SensorUpdateType = kuksa_common::types::SensorUpdateSDVTypeV1;
+    type UpdateActuationType = kuksa_common::types::UpdateActuationSDVTypeV1;
+    type PathType = kuksa_common::types::PathSDVTypeV1;
+    type SubscribeType = kuksa_common::types::SubscribeSDVTypeV1;
+    type PublishResponseType = kuksa_common::types::PublishResponseSDVTypeV1;
+    type GetResponseType = kuksa_common::types::GetResponseSDVTypeV1;
+    type SubscribeResponseType = kuksa_common::types::SubscribeResponseSDVTypeV1;
+    type ProvideResponseType = kuksa_common::types::ProvideResponseSDVTypeV1;
+    type ActuateResponseType = kuksa_common::types::ActuateResponseSDVTypeV1;
+    type MetadataResponseType = kuksa_common::types::MetadataResponseSDVTypeV1;
 
     async fn update_datapoints(
         &mut self,
         datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError> {
-        self.set_current_values(datapoints).await
+        let result = self
+            .set_current_values(datapoints.convert_to_v1())
+            .await
+            .unwrap();
+        let converted_result = result.convert_to_sdv();
+        Ok(converted_result)
     }
+
+    async fn get_datapoints(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError> {
+        Ok(self
+            .get_current_values(paths.convert_to_v1())
+            .await
+            .unwrap()
+            .convert_to_sdv())
+    }
+
+    async fn subscribe(
+        &mut self,
+        _paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError> {
+        unimplemented!("Subscribe mechanism has changed. SQL queries not supported anymore")
+    }
+
+    async fn set_datapoints(
+        &mut self,
+        datapoints: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError> {
+        let result = self
+            .set_target_values(datapoints.convert_to_v1())
+            .await
+            .unwrap();
+        let converted_result = result.convert_to_sdv();
+        Ok(converted_result)
+    }
+
+    async fn get_metadata(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::MetadataResponseType, ClientError> {
+        Ok(
+            kuksa_common::ClientTraitV1::get_metadata(self, paths.convert_to_v1())
+                .await
+                .unwrap()
+                .convert_to_sdv(),
+        )
+    }
+}
+
+#[async_trait]
+impl kuksa_common::ClientTraitV1 for KuksaClient {
+    type SensorUpdateType = kuksa_common::types::SensorUpdateTypeV1;
+    type UpdateActuationType = kuksa_common::types::UpdateActuationTypeV1;
+    type PathType = kuksa_common::types::PathTypeV1;
+    type SubscribeType = Self::PathType;
+    type PublishResponseType = kuksa_common::types::PublishResponseTypeV1;
+    type GetResponseType = kuksa_common::types::GetResponseTypeV1;
+    type SubscribeResponseType = kuksa_common::types::SubscribeResponseTypeV1;
+    type ProvideResponseType = kuksa_common::types::ProvideResponseTypeV1;
+    type ActuateResponseType = kuksa_common::types::ActuateResponseTypeV1;
+    type MetadataResponseType = kuksa_common::types::MetadataResponseTypeV1;
 
     async fn set_current_values(
         &mut self,
@@ -157,20 +219,6 @@ impl kuksa_common::ClientTrait for KuksaClient {
         Ok(())
     }
 
-    async fn publish(
-        &mut self,
-        datapoints: Self::SensorUpdateType,
-    ) -> Result<Self::PublishResponseType, ClientError> {
-        self.set_current_values(datapoints).await
-    }
-
-    async fn get_datapoints(
-        &mut self,
-        paths: Self::PathType,
-    ) -> Result<Self::GetResponseType, ClientError> {
-        self.get_current_values(paths).await
-    }
-
     async fn get_current_values(
         &mut self,
         paths: Self::PathType,
@@ -197,11 +245,6 @@ impl kuksa_common::ClientTrait for KuksaClient {
         Ok(get_result)
     }
 
-    async fn get(&mut self, paths: Self::PathType) -> Result<Self::GetResponseType, ClientError> {
-        // Implement the logic to get values
-        self.get_current_values(paths).await
-    }
-
     async fn subscribe_target_values(
         &mut self,
         paths: Self::PathType,
@@ -225,14 +268,6 @@ impl kuksa_common::ClientTrait for KuksaClient {
             Ok(response) => Ok(response.into_inner()),
             Err(err) => Err(ClientError::Status(err)),
         }
-    }
-
-    async fn provide_actuation(
-        &mut self,
-        paths: Self::PathType,
-    ) -> Result<Self::ProvideResponseType, ClientError> {
-        println!("Actuation concept has changed with kuksa.val.v2 only supported by it! Defaulting to subscribing to target values.");
-        self.subscribe_target_values(paths).await
     }
 
     async fn get_target_values(
@@ -297,13 +332,6 @@ impl kuksa_common::ClientTrait for KuksaClient {
         self.subscribe_current_values(paths).await
     }
 
-    async fn set_datapoints(
-        &mut self,
-        datapoints: Self::UpdateActuationType,
-    ) -> Result<Self::ActuateResponseType, ClientError> {
-        self.set_target_values(datapoints).await
-    }
-
     async fn set_target_values(
         &mut self,
         datapoints: Self::UpdateActuationType,
@@ -332,14 +360,6 @@ impl kuksa_common::ClientTrait for KuksaClient {
         }
 
         Ok(())
-    }
-
-    async fn actuate(
-        &mut self,
-        datapoints: Self::UpdateActuationType,
-    ) -> Result<Self::ActuateResponseType, ClientError> {
-        println!("Actuation concept has changed with kuksa.val.v2 only supported by it! Defaulting to setting target values.");
-        self.set_target_values(datapoints).await
     }
 
     async fn get_metadata(
