@@ -13,7 +13,7 @@
 
 use databroker_proto::kuksa::val as proto;
 use kuksa::*;
-use kuksa_common::ClientTrait;
+use kuksa_common::ClientTraitV1;
 
 use prost_types::Timestamp;
 use tokio_stream::StreamExt;

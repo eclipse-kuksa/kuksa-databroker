@@ -12,7 +12,7 @@
 ********************************************************************************/
 
 use databroker_proto::sdv::databroker as proto;
-use kuksa_common::ClientTrait;
+use kuksa_common::SDVClientTraitV1;
 use kuksa_sdv::*;
 
 use prost_types::Timestamp;
