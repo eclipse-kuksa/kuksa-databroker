@@ -54,12 +54,12 @@ impl KuksaClientV2 {
     ///
     pub async fn resolve_ids_for_paths(
         &mut self,
-        vss_paths: Vec<&str>,
+        vss_paths: Vec<String>,
     ) -> Result<HashMap<String, i32>, ClientError> {
         let mut hash_map = HashMap::new();
 
         for path in vss_paths {
-            let vec = self.list_metadata(path, "*").await?;
+            let vec = self.list_metadata((path, "*".to_string())).await?;
             let metadata = vec.first().unwrap();
 
             hash_map.insert(metadata.path.clone(), metadata.id);
@@ -601,7 +601,7 @@ mod tests {
     async fn test_get_value() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.get_value("Vehicle.Speed").await;
+        let response = client.get_value("Vehicle.Speed".to_string()).await;
         assert!(response.is_ok());
     }
 
@@ -610,7 +610,7 @@ mod tests {
     async fn test_get_value_with_empty_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.get_value("").await;
+        let response = client.get_value("".to_string()).await;
 
         let err = response.unwrap_err();
         expect_status_code(err, NotFound);
@@ -621,7 +621,7 @@ mod tests {
     async fn test_get_value_with_invalid_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.get_value("Vehicle.Some.Invalid.Path").await;
+        let response = client.get_value("Vehicle.Some.Invalid.Path".to_string()).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -634,7 +634,7 @@ mod tests {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let long_path = "Vehicle.".repeat(200) + "Speed";
-        let response = client.get_value(&long_path).await;
+        let response = client.get_value(long_path).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -646,7 +646,7 @@ mod tests {
     async fn test_get_value_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let response = client.get_value("Vehicle.Speed").await;
+        let response = client.get_value("Vehicle.Speed".to_string()).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -658,7 +658,7 @@ mod tests {
     async fn test_get_values_will_return_ok() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
+        let signal_paths = vec!["Vehicle.Speed".to_string(), "Vehicle.AverageSpeed".to_string()];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_ok());
     }
@@ -668,7 +668,7 @@ mod tests {
     async fn test_get_values_with_empty_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_paths = vec!["Vehicle.Speed", ""];
+        let signal_paths = vec!["Vehicle.Speed".to_string(), "".to_string()];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_err());
 
@@ -681,7 +681,7 @@ mod tests {
     async fn test_get_values_with_invalid_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_paths = vec!["Vehicle.Speed", "Vehicle.Some.Invalid.Path"];
+        let signal_paths = vec!["Vehicle.Speed".to_string(), "Vehicle.Some.Invalid.Path".to_string()];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_err());
 
@@ -694,7 +694,7 @@ mod tests {
     async fn test_get_values_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let signal_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
+        let signal_paths = vec!["Vehicle.Speed".to_string(), "Vehicle.AverageSpeed".to_string()];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_err());
 
@@ -707,12 +707,12 @@ mod tests {
     async fn test_publish_value_will_return_ok() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.Speed";
+        let signal_path = "Vehicle.Speed".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Float(120.0)),
         };
 
-        let response = client.publish_value(signal_path, value.clone()).await;
+        let response = client.publish_value(signal_path.clone(), value.clone()).await;
         assert!(response.is_ok());
 
         let datapoint_option = client.get_value(signal_path).await.unwrap();
@@ -726,7 +726,7 @@ mod tests {
     async fn test_publish_value_with_invalid_data_type_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.Speed";
+        let signal_path = "Vehicle.Speed".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Int32(100)),
         };
@@ -743,7 +743,7 @@ mod tests {
     async fn test_publish_value_with_invalid_value_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.Powertrain.Type";
+        let signal_path = "Vehicle.Powertrain.Type".to_string();
         let value = Value {
             typed_value: Some(TypedValue::String("Unknown".to_string())),
         };
@@ -760,7 +760,7 @@ mod tests {
     async fn test_publish_value_with_invalid_min_max_value_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.ADAS.PowerOptimizeLevel";
+        let signal_path = "Vehicle.ADAS.PowerOptimizeLevel".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Uint32(100)),
         };
@@ -777,7 +777,7 @@ mod tests {
     async fn test_publish_value_with_empty_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_path = "";
+        let signal_path = "".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Float(120.0)),
         };
@@ -794,7 +794,7 @@ mod tests {
     async fn test_publish_value_with_invalid_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_path = "Vehicle.Some.Invalid.Path";
+        let signal_path = "Vehicle.Some.Invalid.Path".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Float(120.0)),
         };
@@ -810,7 +810,7 @@ mod tests {
     async fn test_publish_value_to_an_actuator_will_return_ok() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.ADAS.ABS.IsEnabled"; // is an actuator
+        let signal_path = "Vehicle.ADAS.ABS.IsEnabled".to_string(); // is an actuator
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
         };
@@ -824,7 +824,7 @@ mod tests {
     async fn test_publish_value_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let signal_path = "Vehicle.Driver.HeartRate";
+        let signal_path = "Vehicle.Driver.HeartRate".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Uint32(80)),
         };
@@ -841,7 +841,7 @@ mod tests {
     async fn test_publish_value_with_read_auth_token_will_return_permission_denied() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_path = "Vehicle.Driver.HeartRate";
+        let signal_path = "Vehicle.Driver.HeartRate".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Uint32(80)),
         };
@@ -858,7 +858,7 @@ mod tests {
     async fn test_actuate() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.ADAS.ABS.IsEnabled"; // is an actuator
+        let signal_path = "Vehicle.ADAS.ABS.IsEnabled".to_string(); // is an actuator
 
         let mut stream = client.open_provider_stream(None).await.unwrap();
 
@@ -886,7 +886,7 @@ mod tests {
     async fn test_actuate_with_no_actuation_provider_will_return_unavailable() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.ADAS.CruiseControl.IsActive"; // is an actuator
+        let signal_path = "Vehicle.ADAS.CruiseControl.IsActive".to_string(); // is an actuator
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
         };
@@ -903,7 +903,7 @@ mod tests {
     async fn test_actuate_a_sensor_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.Speed";
+        let signal_path = "Vehicle.Speed".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Float(100.0)),
         };
@@ -920,7 +920,7 @@ mod tests {
     async fn test_actuate_with_invalid_signal_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.Some.Invalid.Path";
+        let signal_path = "Vehicle.Some.Invalid.Path".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
         };
@@ -937,7 +937,7 @@ mod tests {
     async fn test_actuate_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let signal_path = "Vehicle.ADAS.ESC.IsEnabled"; // is an actuator
+        let signal_path = "Vehicle.ADAS.ESC.IsEnabled".to_string(); // is an actuator
 
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
@@ -955,7 +955,7 @@ mod tests {
     async fn test_actuate_with_read_auth_token_will_return_permission_denied() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_path = "Vehicle.ADAS.ESC.IsEnabled"; // is an actuator
+        let signal_path = "Vehicle.ADAS.ESC.IsEnabled".to_string(); // is an actuator
 
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
@@ -973,8 +973,8 @@ mod tests {
     async fn test_batch_actuate() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled";
-        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled";
+        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled".to_string();
+        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled".to_string();
 
         let mut values = HashMap::new();
         values.insert(
@@ -1057,8 +1057,8 @@ mod tests {
     async fn test_batch_actuate_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled";
-        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled";
+        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled".to_string();
+        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled".to_string();
 
         let mut values = HashMap::new();
         values.insert(
@@ -1086,8 +1086,8 @@ mod tests {
     async fn test_batch_actuate_with_read_auth_token_will_return_permission_denied() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled";
-        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled";
+        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled".to_string();
+        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled".to_string();
 
         let mut values = HashMap::new();
         values.insert(
@@ -1118,8 +1118,8 @@ mod tests {
         let mut stream = client
             .subscribe(
                 vec![
-                    "Vehicle.AverageSpeed",
-                    "Vehicle.Body.Raindetection.Intensity",
+                    "Vehicle.AverageSpeed".to_string(),
+                    "Vehicle.Body.Raindetection.Intensity".to_string(),
                 ],
                 None,
             )
@@ -1142,8 +1142,8 @@ mod tests {
         let mut stream = client
             .subscribe(
                 vec![
-                    "Vehicle.AverageSpeed",
-                    "Vehicle.Body.Raindetection.Intensity",
+                    "Vehicle.AverageSpeed".to_string(),
+                    "Vehicle.Body.Raindetection.Intensity".to_string(),
                 ],
                 None,
             )
@@ -1154,7 +1154,7 @@ mod tests {
             typed_value: Some(TypedValue::Float(100.0)),
         };
         client
-            .publish_value("Vehicle.AverageSpeed", value)
+            .publish_value("Vehicle.AverageSpeed".to_string(), value)
             .await
             .expect("Could not publish Vehicle.AverageSpeed");
 
@@ -1184,7 +1184,7 @@ mod tests {
     async fn test_subscribe_to_empty_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.subscribe(vec![""], None).await;
+        let response = client.subscribe(vec!["".to_string()], None).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -1197,7 +1197,7 @@ mod tests {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client
-            .subscribe(vec!["Vehicle.Some.Invalid.Path"], None)
+            .subscribe(vec!["Vehicle.Some.Invalid.Path".to_string()], None)
             .await;
         assert!(response.is_err());
 
@@ -1211,7 +1211,7 @@ mod tests {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client
-            .subscribe(vec!["Vehicle.AverageSpeed"], Some(2048))
+            .subscribe(vec!["Vehicle.AverageSpeed".to_string()], Some(2048))
             .await;
         assert!(response.is_err());
 
@@ -1227,8 +1227,8 @@ mod tests {
         let response = client
             .subscribe(
                 vec![
-                    "Vehicle.AverageSpeed",
-                    "Vehicle.Body.Raindetection.Intensity",
+                    "Vehicle.AverageSpeed".to_string(),
+                    "Vehicle.Body.Raindetection.Intensity".to_string(),
                 ],
                 None,
             )
@@ -1244,7 +1244,7 @@ mod tests {
     async fn test_subscribe_by_id() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let vss_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
+        let vss_paths = vec!["Vehicle.Speed".to_string(), "Vehicle.AverageSpeed".to_string()];
         let path_id_map = client.resolve_ids_for_paths(vss_paths).await.unwrap();
 
         let signal_ids: Vec<i32> = path_id_map.values().copied().collect();
@@ -1270,7 +1270,7 @@ mod tests {
     async fn test_subscribe_by_id_with_invalid_buffer_size_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let vss_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
+        let vss_paths = vec!["Vehicle.Speed".to_string(), "Vehicle.AverageSpeed".to_string()];
         let path_id_map = client.resolve_ids_for_paths(vss_paths).await.unwrap();
 
         let signal_ids: Vec<i32> = path_id_map.values().copied().collect();
@@ -1299,7 +1299,7 @@ mod tests {
     async fn test_list_metadata() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.list_metadata("Vehicle", "*").await;
+        let response = client.list_metadata(("Vehicle".to_string(), "*".to_string())).await;
         assert!(response.is_ok());
 
         let metadata_list = response.unwrap();
@@ -1311,7 +1311,7 @@ mod tests {
     async fn test_list_metadata_with_invalid_root_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.list_metadata("InvalidRoot", "*").await;
+        let response = client.list_metadata(("InvalidRoot".to_string(), "*".to_string())).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -1323,7 +1323,7 @@ mod tests {
     async fn test_lists_metadata_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let response = client.list_metadata("Vehicle", "*").await;
+        let response = client.list_metadata(("Vehicle".to_string(), "*".to_string())).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -1358,7 +1358,7 @@ mod tests {
 
     fn expect_status_code(err: ClientError, code: tonic::Code) {
         match err {
-            Status(status) => {
+            ClientError::Status(status) => {
                 assert_eq!(status.code(), code);
             }
             _ => panic!("unexpected error"),
