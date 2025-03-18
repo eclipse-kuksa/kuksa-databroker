@@ -11,13 +11,14 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
+use crate::types::MetadataTypeV2;
 use crate::types::{
     ActuateResponseSDVTypeV1, ActuateResponseTypeV1, ActuateResponseTypeV2, GetResponseSDVTypeV1,
     GetResponseTypeV1, MetadataResponseSDVTypeV1, MetadataResponseTypeV1, MetadataResponseTypeV2,
     MultipleGetResponseTypeV2, PathSDVTypeV1, PathTypeV1, PathsTypeV2, PublishResponseSDVTypeV1,
     PublishResponseTypeV1, SensorUpdateSDVTypeV1, SensorUpdateTypeV1, SensorUpdateTypeV2,
     SubscribeResponseSDVTypeV1, SubscribeResponseTypeV1, SubscribeResponseTypeV2,
-    SubscribeSDVTypeV1, SubscribeTypeV1, UpdateActuationTypeV1, UpdateActuationsTypeV2,
+    SubscribeSDVTypeV1, SubscribeTypeV1, UpdateActuationTypeV1, MultipleUpdateActuationTypeV2,
 };
 use databroker_proto::kuksa::val::v1 as protoV1;
 use databroker_proto::kuksa::val::v2 as protoV2;
@@ -25,6 +26,29 @@ use databroker_proto::sdv::databroker::v1 as SDVprotoV1;
 use std::collections::HashMap;
 
 // Idea: in the future we could use databroker internal datapoint structure and define it here then the conversion from databroker can be reused
+
+fn find_common_root(paths: Vec<String>) -> String {
+    if paths.is_empty() {
+        return String::new();
+    }
+
+    let split_paths: Vec<Vec<&str>> = paths.iter().map(|s| s.split('.').collect()).collect();
+    
+    // Take the first path as a reference
+    let first_path = &split_paths[0];
+
+    let mut common_root = Vec::new();
+
+    for (i, segment) in first_path.iter().enumerate() {
+        if split_paths.iter().all(|path| path.get(i) == Some(segment)) {
+            common_root.push(*segment);
+        } else {
+            break;
+        }
+    }
+
+    common_root.join(".")
+}
 
 pub trait ConvertToSDV<T> {
     fn convert_to_sdv(self) -> T;
@@ -486,222 +510,15 @@ impl ConvertToV1<Option<protoV1::datapoint::Value>> for SDVprotoV1::Datapoint {
     }
 }
 
-pub trait ConvertToV2<T> {
-    fn convert_to_v2(self) -> T;
-}
-
-impl ConvertToV2<SensorUpdateTypeV2> for protoV1::Datapoint {
-    fn convert_to_v2(self) -> SensorUpdateTypeV2 {
-        match self.value {
-            Some(value) => match value {
-                protoV1::datapoint::Value::String(val) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::String(val)),
-                },
-                protoV1::datapoint::Value::Bool(val) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Bool(val)),
-                },
-                protoV1::datapoint::Value::Int32(val) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Int32(val)),
-                },
-                protoV1::datapoint::Value::Int64(val) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Int64(val)),
-                },
-                protoV1::datapoint::Value::Uint32(val) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Uint32(val)),
-                },
-                protoV1::datapoint::Value::Uint64(val) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Uint64(val)),
-                },
-                protoV1::datapoint::Value::Float(val) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Float(val)),
-                },
-                protoV1::datapoint::Value::Double(val) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Double(val)),
-                },
-                protoV1::datapoint::Value::StringArray(string_array) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::StringArray(
-                        protoV2::StringArray {
-                            values: string_array.values,
-                        },
-                    )),
-                },
-                protoV1::datapoint::Value::BoolArray(bool_array) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::BoolArray(protoV2::BoolArray {
-                        values: bool_array.values,
-                    })),
-                },
-                protoV1::datapoint::Value::Int32Array(int32_array) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Int32Array(
-                        protoV2::Int32Array {
-                            values: int32_array.values,
-                        },
-                    )),
-                },
-                protoV1::datapoint::Value::Int64Array(int64_array) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Int64Array(
-                        protoV2::Int64Array {
-                            values: int64_array.values,
-                        },
-                    )),
-                },
-                protoV1::datapoint::Value::Uint32Array(uint32_array) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Uint32Array(
-                        protoV2::Uint32Array {
-                            values: uint32_array.values,
-                        },
-                    )),
-                },
-                protoV1::datapoint::Value::Uint64Array(uint64_array) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Uint64Array(
-                        protoV2::Uint64Array {
-                            values: uint64_array.values,
-                        },
-                    )),
-                },
-                protoV1::datapoint::Value::FloatArray(float_array) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::FloatArray(
-                        protoV2::FloatArray {
-                            values: float_array.values,
-                        },
-                    )),
-                },
-                protoV1::datapoint::Value::DoubleArray(double_array) => protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::DoubleArray(
-                        protoV2::DoubleArray {
-                            values: double_array.values,
-                        },
-                    )),
-                },
-            },
-            None => protoV2::Value { typed_value: None },
-        }
-    }
-}
-
-impl ConvertToV1<Option<protoV1::datapoint::Value>> for Option<protoV2::Value> {
-    fn convert_to_v1(self) -> Option<protoV1::datapoint::Value> {
-        match self {
-            Some(value) => match value.typed_value {
-                Some(protoV2::value::TypedValue::String(val)) => {
-                    Some(protoV1::datapoint::Value::String(val))
-                }
-                Some(protoV2::value::TypedValue::Bool(val)) => {
-                    Some(protoV1::datapoint::Value::Bool(val))
-                }
-                Some(protoV2::value::TypedValue::Int32(val)) => {
-                    Some(protoV1::datapoint::Value::Int32(val))
-                }
-                Some(protoV2::value::TypedValue::Int64(val)) => {
-                    Some(protoV1::datapoint::Value::Int64(val))
-                }
-                Some(protoV2::value::TypedValue::Uint32(val)) => {
-                    Some(protoV1::datapoint::Value::Uint32(val))
-                }
-                Some(protoV2::value::TypedValue::Uint64(val)) => {
-                    Some(protoV1::datapoint::Value::Uint64(val))
-                }
-                Some(protoV2::value::TypedValue::Float(val)) => {
-                    Some(protoV1::datapoint::Value::Float(val))
-                }
-                Some(protoV2::value::TypedValue::Double(val)) => {
-                    Some(protoV1::datapoint::Value::Double(val))
-                }
-                Some(protoV2::value::TypedValue::StringArray(arr)) => {
-                    Some(protoV1::datapoint::Value::StringArray(
-                        protoV1::StringArray { values: arr.values },
-                    ))
-                }
-                Some(protoV2::value::TypedValue::BoolArray(arr)) => {
-                    Some(protoV1::datapoint::Value::BoolArray(protoV1::BoolArray {
-                        values: arr.values,
-                    }))
-                }
-                Some(protoV2::value::TypedValue::Int32Array(arr)) => {
-                    Some(protoV1::datapoint::Value::Int32Array(protoV1::Int32Array {
-                        values: arr.values,
-                    }))
-                }
-                Some(protoV2::value::TypedValue::Int64Array(arr)) => {
-                    Some(protoV1::datapoint::Value::Int64Array(protoV1::Int64Array {
-                        values: arr.values,
-                    }))
-                }
-                Some(protoV2::value::TypedValue::Uint32Array(arr)) => {
-                    Some(protoV1::datapoint::Value::Uint32Array(
-                        protoV1::Uint32Array { values: arr.values },
-                    ))
-                }
-                Some(protoV2::value::TypedValue::Uint64Array(arr)) => {
-                    Some(protoV1::datapoint::Value::Uint64Array(
-                        protoV1::Uint64Array { values: arr.values },
-                    ))
-                }
-                Some(protoV2::value::TypedValue::FloatArray(arr)) => {
-                    Some(protoV1::datapoint::Value::FloatArray(protoV1::FloatArray {
-                        values: arr.values,
-                    }))
-                }
-                Some(protoV2::value::TypedValue::DoubleArray(arr)) => {
-                    Some(protoV1::datapoint::Value::DoubleArray(
-                        protoV1::DoubleArray { values: arr.values },
-                    ))
-                }
-                None => None,
-            },
-            None => None,
-        }
-    }
-}
-
-// Since SubscribeTypeV2 is PathsTypeV2 we do not need to have a separate conversion for that one
-impl ConvertToV2<PathsTypeV2> for PathTypeV1 {
-    fn convert_to_v2(self) -> PathsTypeV2 {
+impl ConvertToV1<ActuateResponseTypeV1> for ActuateResponseTypeV2 {
+    fn convert_to_v1(self) -> ActuateResponseTypeV1 {
         self
     }
 }
 
-impl ConvertToV1<protoV1::Datapoint> for protoV2::Datapoint {
-    fn convert_to_v1(self) -> protoV1::Datapoint {
-        protoV1::Datapoint {
-            timestamp: self.timestamp,
-            value: self.value.convert_to_v1(),
-        }
-    }
-}
-
-impl ConvertToV1<GetResponseTypeV1> for MultipleGetResponseTypeV2 {
-    fn convert_to_v1(self) -> GetResponseTypeV1 {
-        //log::warn("This method is deprecated and conversion can not figure out which path the datapoint maps to. Dev must do this in his own code. E.g. by going through the requested paths.");
-        self.iter()
-            .map(|value| protoV1::DataEntry {
-                path: "Unknown".to_string(),
-                value: Some(value.clone().convert_to_v1()),
-                actuator_target: None,
-                metadata: None,
-            })
-            .collect()
-    }
-}
-
-impl ConvertToV2<SubscribeResponseTypeV2> for SubscribeResponseTypeV1 {
-    fn convert_to_v2(self) -> SubscribeResponseTypeV2 {
+impl ConvertToV1<SubscribeResponseTypeV1> for SubscribeResponseTypeV2 {
+    fn convert_to_v1(self) -> SubscribeResponseTypeV1 {
         unimplemented!("Not possible to convert stream objects!")
-    }
-}
-
-impl ConvertToV2<UpdateActuationsTypeV2> for UpdateActuationTypeV1 {
-    fn convert_to_v2(self) -> UpdateActuationsTypeV2 {
-        let transformed_map: HashMap<String, protoV2::Value> = self
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone().convert_to_v2()))
-            .collect();
-        transformed_map
-    }
-}
-
-impl ConvertToV2<ActuateResponseTypeV2> for ActuateResponseTypeV1 {
-    fn convert_to_v2(self) -> ActuateResponseTypeV2 {
-        self
     }
 }
 
@@ -899,6 +716,231 @@ impl ConvertToV1<protoV1::Metadata> for protoV2::Metadata {
             value_restriction: self.allowed_values.map(|allowed| allowed.convert_to_v1()),
             entry_specific: None,
         }
+    }
+}
+
+impl ConvertToV1<Option<protoV1::datapoint::Value>> for Option<protoV2::Value> {
+    fn convert_to_v1(self) -> Option<protoV1::datapoint::Value> {
+        match self {
+            Some(value) => match value.typed_value {
+                Some(protoV2::value::TypedValue::String(val)) => {
+                    Some(protoV1::datapoint::Value::String(val))
+                }
+                Some(protoV2::value::TypedValue::Bool(val)) => {
+                    Some(protoV1::datapoint::Value::Bool(val))
+                }
+                Some(protoV2::value::TypedValue::Int32(val)) => {
+                    Some(protoV1::datapoint::Value::Int32(val))
+                }
+                Some(protoV2::value::TypedValue::Int64(val)) => {
+                    Some(protoV1::datapoint::Value::Int64(val))
+                }
+                Some(protoV2::value::TypedValue::Uint32(val)) => {
+                    Some(protoV1::datapoint::Value::Uint32(val))
+                }
+                Some(protoV2::value::TypedValue::Uint64(val)) => {
+                    Some(protoV1::datapoint::Value::Uint64(val))
+                }
+                Some(protoV2::value::TypedValue::Float(val)) => {
+                    Some(protoV1::datapoint::Value::Float(val))
+                }
+                Some(protoV2::value::TypedValue::Double(val)) => {
+                    Some(protoV1::datapoint::Value::Double(val))
+                }
+                Some(protoV2::value::TypedValue::StringArray(arr)) => {
+                    Some(protoV1::datapoint::Value::StringArray(
+                        protoV1::StringArray { values: arr.values },
+                    ))
+                }
+                Some(protoV2::value::TypedValue::BoolArray(arr)) => {
+                    Some(protoV1::datapoint::Value::BoolArray(protoV1::BoolArray {
+                        values: arr.values,
+                    }))
+                }
+                Some(protoV2::value::TypedValue::Int32Array(arr)) => {
+                    Some(protoV1::datapoint::Value::Int32Array(protoV1::Int32Array {
+                        values: arr.values,
+                    }))
+                }
+                Some(protoV2::value::TypedValue::Int64Array(arr)) => {
+                    Some(protoV1::datapoint::Value::Int64Array(protoV1::Int64Array {
+                        values: arr.values,
+                    }))
+                }
+                Some(protoV2::value::TypedValue::Uint32Array(arr)) => {
+                    Some(protoV1::datapoint::Value::Uint32Array(
+                        protoV1::Uint32Array { values: arr.values },
+                    ))
+                }
+                Some(protoV2::value::TypedValue::Uint64Array(arr)) => {
+                    Some(protoV1::datapoint::Value::Uint64Array(
+                        protoV1::Uint64Array { values: arr.values },
+                    ))
+                }
+                Some(protoV2::value::TypedValue::FloatArray(arr)) => {
+                    Some(protoV1::datapoint::Value::FloatArray(protoV1::FloatArray {
+                        values: arr.values,
+                    }))
+                }
+                Some(protoV2::value::TypedValue::DoubleArray(arr)) => {
+                    Some(protoV1::datapoint::Value::DoubleArray(
+                        protoV1::DoubleArray { values: arr.values },
+                    ))
+                }
+                None => None,
+            },
+            None => None,
+        }
+    }
+}
+
+impl ConvertToV1<Option<protoV1::Datapoint>> for Option<protoV2::Datapoint> {
+    fn convert_to_v1(self) -> Option<protoV1::Datapoint> {
+        match self {
+            Some(datapoint) => {
+                Some(protoV1::Datapoint {
+                    timestamp: datapoint.timestamp,
+                    value: datapoint.value.convert_to_v1(),
+                })
+            },
+            None => None,
+        }
+    }
+}
+
+impl ConvertToV1<GetResponseTypeV1> for MultipleGetResponseTypeV2 {
+    fn convert_to_v1(self) -> GetResponseTypeV1 {
+        //log::warn("This method is deprecated and conversion can not figure out which path the datapoint maps to. Dev must do this in his own code. E.g. by going through the requested paths.");
+        self.iter()
+            .map(|value| protoV1::DataEntry {
+                path: "Unknown".to_string(),
+                value: Some(value.clone()).convert_to_v1(),
+                actuator_target: None,
+                metadata: None,
+            })
+            .collect()
+    }
+}
+
+pub trait ConvertToV2<T> {
+    fn convert_to_v2(self) -> T;
+}
+
+impl ConvertToV2<SensorUpdateTypeV2> for protoV1::Datapoint {
+    fn convert_to_v2(self) -> SensorUpdateTypeV2 {
+        match self.value {
+            Some(value) => match value {
+                protoV1::datapoint::Value::String(val) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::String(val)),
+                },
+                protoV1::datapoint::Value::Bool(val) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Bool(val)),
+                },
+                protoV1::datapoint::Value::Int32(val) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Int32(val)),
+                },
+                protoV1::datapoint::Value::Int64(val) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Int64(val)),
+                },
+                protoV1::datapoint::Value::Uint32(val) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Uint32(val)),
+                },
+                protoV1::datapoint::Value::Uint64(val) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Uint64(val)),
+                },
+                protoV1::datapoint::Value::Float(val) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Float(val)),
+                },
+                protoV1::datapoint::Value::Double(val) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Double(val)),
+                },
+                protoV1::datapoint::Value::StringArray(string_array) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::StringArray(
+                        protoV2::StringArray {
+                            values: string_array.values,
+                        },
+                    )),
+                },
+                protoV1::datapoint::Value::BoolArray(bool_array) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::BoolArray(protoV2::BoolArray {
+                        values: bool_array.values,
+                    })),
+                },
+                protoV1::datapoint::Value::Int32Array(int32_array) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Int32Array(
+                        protoV2::Int32Array {
+                            values: int32_array.values,
+                        },
+                    )),
+                },
+                protoV1::datapoint::Value::Int64Array(int64_array) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Int64Array(
+                        protoV2::Int64Array {
+                            values: int64_array.values,
+                        },
+                    )),
+                },
+                protoV1::datapoint::Value::Uint32Array(uint32_array) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Uint32Array(
+                        protoV2::Uint32Array {
+                            values: uint32_array.values,
+                        },
+                    )),
+                },
+                protoV1::datapoint::Value::Uint64Array(uint64_array) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::Uint64Array(
+                        protoV2::Uint64Array {
+                            values: uint64_array.values,
+                        },
+                    )),
+                },
+                protoV1::datapoint::Value::FloatArray(float_array) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::FloatArray(
+                        protoV2::FloatArray {
+                            values: float_array.values,
+                        },
+                    )),
+                },
+                protoV1::datapoint::Value::DoubleArray(double_array) => protoV2::Value {
+                    typed_value: Some(protoV2::value::TypedValue::DoubleArray(
+                        protoV2::DoubleArray {
+                            values: double_array.values,
+                        },
+                    )),
+                },
+            },
+            None => protoV2::Value { typed_value: None },
+        }
+    }
+}
+
+// Since SubscribeTypeV2 is PathsTypeV2 we do not need to have a separate conversion for that one
+impl ConvertToV2<PathsTypeV2> for PathTypeV1 {
+    fn convert_to_v2(self) -> PathsTypeV2 {
+        self
+    }
+}
+
+impl ConvertToV2<MetadataTypeV2> for PathTypeV1 {
+    fn convert_to_v2(self) -> MetadataTypeV2 {
+        // in the future find_common_root() could also provide filters, like everything or something like "branch1.*, branch2.*"
+        (find_common_root(self), "*".to_string())
+    }
+}
+
+impl ConvertToV2<SubscribeResponseTypeV2> for SubscribeResponseTypeV1 {
+    fn convert_to_v2(self) -> SubscribeResponseTypeV2 {
+        unimplemented!("Not possible to convert stream objects!")
+    }
+}
+
+impl ConvertToV2<MultipleUpdateActuationTypeV2> for UpdateActuationTypeV1 {
+    fn convert_to_v2(self) -> MultipleUpdateActuationTypeV2 {
+        let transformed_map: HashMap<String, protoV2::Value> = self
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone().convert_to_v2()))
+            .collect();
+        transformed_map
     }
 }
 

@@ -46,15 +46,15 @@ pub type MetadataResponseTypeV1 = GetResponseTypeV1;
 // Type aliases V2
 pub type SensorUpdateTypeV2 = protoV2::Value;
 pub type UpdateActuationTypeV2 = SensorUpdateTypeV2;
-pub type UpdateActuationsTypeV2 = HashMap<PathTypeV2, UpdateActuationTypeV2>;
+pub type MultipleUpdateActuationTypeV2 = HashMap<PathTypeV2, UpdateActuationTypeV2>;
 pub type PathTypeV2 = String;
 pub type PathsTypeV2 = Vec<PathTypeV2>;
 pub type IdsTypeV2 = Vec<i32>;
 pub type SubscribeTypeV2 = PathsTypeV2;
 pub type SubscribeByIdTypeV2 = IdsTypeV2;
 pub type PublishResponseTypeV2 = ();
-pub type GetResponseTypeV2 = protoV2::Datapoint;
-pub type MultipleGetResponseTypeV2 = Vec<GetResponseTypeV2>;
+pub type GetResponseTypeV2 = Option<protoV2::Datapoint>;
+pub type MultipleGetResponseTypeV2 = Vec<protoV2::Datapoint>;
 pub type SubscribeResponseTypeV2 = tonic::Streaming<protoV2::SubscribeResponse>;
 pub type SubscribeByIdResponseTypeV2 = tonic::Streaming<protoV2::SubscribeByIdResponse>;
 pub type ProvideResponseTypeV2 = ();
@@ -74,4 +74,16 @@ pub struct ServerInfo {
 pub struct OpenProviderStream {
     pub sender: tokio::sync::mpsc::Sender<protoV2::OpenProviderStreamRequest>,
     pub receiver_stream: tonic::Streaming<protoV2::OpenProviderStreamResponse>,
+}
+
+impl OpenProviderStream {
+    pub fn new(
+        sender: tokio::sync::mpsc::Sender<protoV2::OpenProviderStreamRequest>,
+        receiver_stream: tonic::Streaming<protoV2::OpenProviderStreamResponse>,
+    ) -> Self {
+        OpenProviderStream {
+            sender,
+            receiver_stream,
+        }
+    }
 }

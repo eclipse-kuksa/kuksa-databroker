@@ -160,10 +160,12 @@ pub trait ClientTraitV1 {
 pub trait ClientTraitV2 {
     type SensorUpdateType;
     type UpdateActuationType;
-    type UpdateActuationsType;
+    type MultipleUpdateActuationType;
     type PathType;
     type PathsType;
+    type IdsType;
     type SubscribeType;
+    type SubscribeByIdType;
     type PublishResponseType;
     type GetResponseType;
     type MultipleGetResponseType;
@@ -192,11 +194,16 @@ pub trait ClientTraitV2 {
     ) -> Result<Self::GetResponseType, ClientError>;
     async fn get_values(
         &mut self,
-        paths: Self::PathType,
+        paths: Self::PathsType,
     ) -> Result<Self::MultipleGetResponseType, ClientError>;
 
     // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
     // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn open_provider_stream(
+        &mut self,
+        buffer_size: Option<usize>,
+    ) -> Result<Self::OpenProviderStreamResponseType, ClientError>;
+
     async fn provide_actuation(
         &mut self,
         paths: Self::PathType,
@@ -207,21 +214,24 @@ pub trait ClientTraitV2 {
     async fn subscribe(
         &mut self,
         paths: Self::SubscribeType,
+        buffer_size: Option<u32>
     ) -> Result<Self::SubscribeResponseType, ClientError>;
     async fn subscribe_by_id(
         &mut self,
-        paths: Self::PathsType,
+        signal_ids: Self::SubscribeByIdType,
+        buffer_size: Option<u32>
     ) -> Result<Self::SubscribeByIdResponseType, ClientError>;
 
     // from application requesting an actuation (to keep backwards compatibility the naming is different for the corresponding interfaces)
     // if we do not want to put in the effort just give an unimplemented error for the function
     async fn actuate(
         &mut self,
-        datapoints: Self::UpdateActuationType,
+        signal_path: Self::PathType,
+        value: Self::UpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError>;
     async fn batch_actuate(
         &mut self,
-        datapoints: Self::UpdateActuationsType,
+        datapoints: Self::MultipleUpdateActuationType,
     ) -> Result<Self::ActuateResponseType, ClientError>;
 
     // general functions
@@ -229,8 +239,7 @@ pub trait ClientTraitV2 {
         &mut self,
         tuple: Self::MetadataType,
     ) -> Result<Self::MetadataResponseType, ClientError>;
-    async fn open_provider_stream() -> Self::OpenProviderStreamResponseType;
-    async fn get_server_info() -> Self::ServerInfoType;
+    async fn get_server_info(&mut self) -> Result<Self::ServerInfoType, ClientError>;
 }
 
 impl std::error::Error for ClientError {}

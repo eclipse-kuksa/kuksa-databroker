@@ -10,40 +10,24 @@
 *
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
-use databroker_proto::kuksa::val::v2::signal_id::Signal::Path;
-use databroker_proto::kuksa::val::v2::val_client::ValClient;
 use databroker_proto::kuksa::val::v2::{
+    signal_id::Signal::Path,
+    val_client::ValClient,
     ActuateRequest, GetValueRequest, ListMetadataRequest, PublishValueRequest, SubscribeRequest,
-    SubscribeResponse,
+    BatchActuateRequest, GetServerInfoRequest, GetValuesRequest, SignalId, Value, Datapoint,
+    SubscribeByIdRequest, OpenProviderStreamRequest
 };
-use databroker_proto::kuksa::val::v2::{
-    BatchActuateRequest, GetServerInfoRequest, GetValuesRequest, Metadata,
-    OpenProviderStreamResponse, SignalId, Value,
-};
-use databroker_proto::kuksa::val::v2::{Datapoint, OpenProviderStreamRequest};
-use databroker_proto::kuksa::val::v2::{SubscribeByIdRequest, SubscribeByIdResponse};
 use http::Uri;
-pub use kuksa_common::{Client, ClientError, ClientError::Status};
+pub use kuksa_common::{Client, ClientError, ClientTraitV2};
 use prost_types::Timestamp;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::time::SystemTime;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::Streaming;
+use tonic::async_trait;
 
 use kuksa_common::types::{ OpenProviderStream, ServerInfo};
-
-impl OpenProviderStream {
-    fn new(
-        sender: tokio::sync::mpsc::Sender<protoV2::OpenProviderStreamRequest>,
-        receiver_stream: tonic::Streaming<protoV2::OpenProviderStreamResponse>,
-    ) -> Self {
-        OpenProviderStream {
-            sender,
-            receiver_stream,
-        }
-    }
-}
+use kuksa_common::conversion::{ ConvertToV2, ConvertToV1 };
 
 #[derive(Debug)]
 pub struct KuksaClientV2 {
@@ -118,7 +102,7 @@ impl kuksa_common::ClientTraitV1 for KuksaClientV2 {
         datapoints: Self::SensorUpdateType,
     ) -> Result<Self::PublishResponseType, ClientError> {
         for (signal_path, datapoint) in datapoints{
-            self.publish_value(signal_path, datapoint.convert_to_v2()).await;
+            self.publish_value(signal_path, datapoint.convert_to_v2()).await?
         }
         Ok(())
     }
@@ -154,14 +138,14 @@ impl kuksa_common::ClientTraitV1 for KuksaClientV2 {
         &mut self,
         paths: Self::SubscribeType,
     ) -> Result<Self::SubscribeResponseType, ClientError> {
-        Ok(ClientTraitV2::subscribe(self, paths.convert_to_v2()).await.unwrap().convert_to_v1())
+        Ok(ClientTraitV2::subscribe(self, paths.convert_to_v2(), None).await.unwrap().convert_to_v1())
     }
 
     async fn subscribe(
         &mut self,
         paths: Self::SubscribeType,
     ) -> Result<Self::SubscribeResponseType, ClientError> {
-        Ok(ClientTraitV2::subscribe(self, paths.convert_to_v2()).await.unwrap().convert_to_v1())
+        Ok(ClientTraitV2::subscribe(self, paths.convert_to_v2(), None).await.unwrap().convert_to_v1())
     }
 
     async fn set_target_values(
@@ -175,13 +159,15 @@ impl kuksa_common::ClientTraitV1 for KuksaClientV2 {
         &mut self,
         paths: Self::PathType,
     ) -> Result<Self::MetadataResponseType, ClientError> {
-        Ok(list_metadata(self, paths.convert_to_v2()).await.unwrap().convert_to_v1())
+        Ok(self.list_metadata(paths.convert_to_v2()).await.unwrap().convert_to_v1())
     }
 }
 
+#[async_trait]
 impl ClientTraitV2 for KuksaClientV2{
     type SensorUpdateType = kuksa_common::types::SensorUpdateTypeV2;
     type UpdateActuationType = kuksa_common::types::UpdateActuationTypeV2;
+    type MultipleUpdateActuationType = kuksa_common::types::MultipleUpdateActuationTypeV2;
     type PathType = kuksa_common::types::PathTypeV2;
     type PathsType = kuksa_common::types::PathsTypeV2;
     type IdsType = kuksa_common::types::IdsTypeV2;
@@ -191,10 +177,11 @@ impl ClientTraitV2 for KuksaClientV2{
     type GetResponseType = kuksa_common::types::GetResponseTypeV2;
     type MultipleGetResponseType = kuksa_common::types::MultipleGetResponseTypeV2;
     type SubscribeResponseType = kuksa_common::types::SubscribeResponseTypeV2;
+    type SubscribeByIdResponseType = kuksa_common::types::SubscribeByIdResponseTypeV2;
     type ProvideResponseType = kuksa_common::types::ProvideResponseTypeV2;
     type ActuateResponseType = kuksa_common::types::ActuateResponseTypeV2;
     type OpenProviderStreamResponseType = kuksa_common::types::OpenProviderStreamResponseTypeV2;
-    type MetadataType = kuksa::common::MetadataTypeV2;
+    type MetadataType = kuksa_common::types::MetadataTypeV2;
     type MetadataResponseType = kuksa_common::types::MetadataResponseTypeV2;
     type ServerInfoType = kuksa_common::types::ServerInfoTypeV2;
 
@@ -209,7 +196,7 @@ impl ClientTraitV2 for KuksaClientV2{
     ///   INVALID_ARGUMENT if the request is empty or provided path is too long
     ///       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
     ///
-    async fn get_value(&mut self, path: PathType) -> Result<GetResponseType, ClientError> {
+    async fn get_value(&mut self, path: Self::PathType) -> Result<Self::GetResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -226,7 +213,7 @@ impl ClientTraitV2 for KuksaClientV2{
                 let message = response.into_inner();
                 Ok(message.data_point)
             }
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -243,8 +230,8 @@ impl ClientTraitV2 for KuksaClientV2{
     ///
     async fn get_values(
         &mut self,
-        signal_paths: PathsType,
-    ) -> Result<MultipleGetResponseType, ClientError> {
+        signal_paths: Self::PathsType,
+    ) -> Result<Self::MultipleGetResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -253,7 +240,7 @@ impl ClientTraitV2 for KuksaClientV2{
         let signal_ids: Vec<SignalId> = signal_paths
             .iter()
             .map(move |signal_path| SignalId {
-                signal: Some(Path(signal_path)),
+                signal: Some(Path(signal_path.to_string())),
             })
             .collect();
 
@@ -264,7 +251,7 @@ impl ClientTraitV2 for KuksaClientV2{
                 let message = response.into_inner();
                 Ok(message.data_points)
             }
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -284,9 +271,9 @@ impl ClientTraitV2 for KuksaClientV2{
     ///
     async fn publish_value(
         &mut self,
-        signal_path: PathType,
-        value: SensorUpdateType,
-    ) -> Result<PublishResponseType, ClientError> {
+        signal_path: Self::PathType,
+        value: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -311,7 +298,7 @@ impl ClientTraitV2 for KuksaClientV2{
 
         match client.publish_value(publish_value_request).await {
             Ok(_response) => Ok(()),
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -331,7 +318,7 @@ impl ClientTraitV2 for KuksaClientV2{
     ///            e.g. if sending an unsupported enum value
     ///       - if the provided value is out of the min/max range specified
     ///
-    async fn actuate(&mut self, signal_path: PathType, value: UpdateActuationType) -> Result<ActuateResponseType, ClientError> {
+    async fn actuate(&mut self, signal_path: Self::PathType, value: Self::UpdateActuationType) -> Result<Self::ActuateResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -346,7 +333,7 @@ impl ClientTraitV2 for KuksaClientV2{
 
         match client.actuate(actuate_request).await {
             Ok(_response) => Ok(()),
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -370,8 +357,8 @@ impl ClientTraitV2 for KuksaClientV2{
     ///
     async fn batch_actuate(
         &mut self,
-        values: UpdateActuationsType,
-    ) -> Result<ActuateResponseType, ClientError> {
+        values: Self::MultipleUpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -383,7 +370,7 @@ impl ClientTraitV2 for KuksaClientV2{
 
         match client.batch_actuate(batch_actuate_request).await {
             Ok(_response) => Ok(()),
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -407,9 +394,9 @@ impl ClientTraitV2 for KuksaClientV2{
     ///
     async fn subscribe(
         &mut self,
-        signal_paths: SubscribeType,
+        signal_paths: Self::SubscribeType,
         buffer_size: Option<u32>,
-    ) -> Result<SubscribeResponseType, ClientError> {
+    ) -> Result<Self::SubscribeResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -422,7 +409,7 @@ impl ClientTraitV2 for KuksaClientV2{
 
         match client.subscribe(subscribe_request).await {
             Ok(response) => Ok(response.into_inner()),
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -446,9 +433,9 @@ impl ClientTraitV2 for KuksaClientV2{
     ///
     async fn subscribe_by_id(
         &mut self,
-        signal_ids: SubscribeByIdType,
+        signal_ids: Self::SubscribeByIdType,
         buffer_size: Option<u32>,
-    ) -> Result<SubscribeByIdResponseType, ClientError> {
+    ) -> Result<Self::SubscribeByIdResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -461,7 +448,7 @@ impl ClientTraitV2 for KuksaClientV2{
 
         match client.subscribe_by_id(subscribe_by_id_request).await {
             Ok(response) => Ok(response.into_inner()),
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -499,7 +486,7 @@ impl ClientTraitV2 for KuksaClientV2{
     async fn open_provider_stream(
         &mut self,
         buffer_size: Option<usize>,
-    ) -> Result<OpenProviderStreamResponseType, ClientError> {
+    ) -> Result<Self::OpenProviderStreamResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -513,7 +500,7 @@ impl ClientTraitV2 for KuksaClientV2{
                 let message = response.into_inner();
                 Ok(OpenProviderStream::new(sender, message))
             }
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -526,16 +513,16 @@ impl ClientTraitV2 for KuksaClientV2{
     ///
     async fn list_metadata(
         &mut self,
-        tuple: MetadataType
-    ) -> Result<MetadataResponseType, ClientError> {
+        tuple: Self::MetadataType
+    ) -> Result<Self::MetadataResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
         );
 
         let list_metadata_request = ListMetadataRequest {
-            root,
-            filter,
+            root: tuple.0, 
+            filter: tuple.1
         };
 
         match client.list_metadata(list_metadata_request).await {
@@ -543,12 +530,12 @@ impl ClientTraitV2 for KuksaClientV2{
                 let metadata_response = response.into_inner();
                 Ok(metadata_response.metadata)
             }
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
     /// Get server information
-    async fn get_server_info(&mut self) -> Result<ServerInfoType, ClientError> {
+    async fn get_server_info(&mut self) -> Result<Self::ServerInfoType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -566,8 +553,12 @@ impl ClientTraitV2 for KuksaClientV2{
                 };
                 Ok(server_info)
             }
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
+    }
+
+    async fn provide_actuation(&mut self, _path: Self::PathType) -> Result<Self::ProvideResponseType, ClientError> {
+        unimplemented!()
     }
 }
 
@@ -593,7 +584,7 @@ mod tests {
 
             let mut client = Self::new(Uri::from_static(host));
 
-            if (token_type.is_some()) {
+            if token_type.is_some() {
                 let jwt = read_jwt(token_type.unwrap());
                 client
                     .basic_client
