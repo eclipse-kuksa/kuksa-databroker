@@ -1,0 +1,11 @@
+asyncio
+grpcio
+protobuf
+pytest
+pytest-ordering
+pytest-bdd
+allure-pytest-bdd
+requests
+websocket-client
+paho-mqtt
+tinydb
