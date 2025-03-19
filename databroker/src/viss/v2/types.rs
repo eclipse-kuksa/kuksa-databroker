@@ -69,7 +69,7 @@ pub enum GetSuccessResponse {
 #[serde(tag = "action", rename = "get", rename_all = "camelCase")]
 pub struct DataResponse {
     pub request_id: RequestId,
-    pub data: Vec<Data>,
+    pub data: Data,
 }
 
 #[derive(Serialize)]
