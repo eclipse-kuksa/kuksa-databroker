@@ -20,19 +20,19 @@ Feature: VISS v2 Compliance Testing - Multiple Paths
   @ShouldHave
   Scenario: Request for multiple values from a single node
     # This scenario can be expanded based on specific use cases.
-    When I send a read request with path "Vehicle.Cabin.TemperatureSetpoint"
-    Then I should receive multiple values from a single node
+    When I search "Vehicle.Cabin" using a path filter "Door.*.*.IsOpen"
+    Then I should receive multiple data points
 
   # 5.1.2 Read request - Single value request from multiple nodes
   # The VISS server must support reading values from multiple nodes using path filters.
   @MustHave
   Scenario: Request for a single value from multiple nodes
     When I search "Vehicle" using a path filter "*"
-    Then I should receive a single value from multiple nodes
+    Then I should receive multiple data points
 
   # 5.1.2 Read request - Multiple values from multiple nodes
   # The VISS server should support reading multiple values from multiple nodes.
   @ShouldHave
-  Scenario: Request for multiple values from multiple nodes
-    When I send a read request with path "Vehicle.*"
-    Then I should receive multiple values from multiple nodes
+  Scenario: Path request for multiple values must not contain any wildcards
+    When I search "Vehicle.*" using a path filter "*"
+    Then I should receive an error response
