@@ -15,13 +15,13 @@ impl FilterManager {
     ) -> bool {
         self.database
             .entry(signal_id)
-            .or_insert_with(BTreeSet::new)
+            .or_default()
             .insert((sample_interval, uuid_subscription))
     }
 
-    pub fn get_filters_by_signal_id(&self, signal_id: i32) -> Option<&BTreeSet<(u32, Uuid)>> {
-        self.database.get(&signal_id)
-    }
+    // pub fn get_filters_by_signal_id(&self, signal_id: i32) -> Option<&BTreeSet<(u32, Uuid)>> {
+    //     self.database.get(&signal_id)
+    // }
 
     pub fn get_signals_ids_with_lowest_interval(&self) -> HashMap<i32, u32> {
         self.database

@@ -15,18 +15,16 @@ use crate::filter_manager::filter_manager::FilterManager;
 use crate::permissions::{PermissionError, Permissions};
 pub use crate::types;
 
+use crate::query;
 pub use crate::types::{ChangeType, DataType, DataValue, EntryType};
-use crate::{filter_manager, query};
 
-use tokio::sync::{broadcast, mpsc, Mutex, RwLock, RwLockReadGuard};
+use tokio::sync::{broadcast, mpsc, RwLock, RwLockReadGuard};
 use tokio::time::Instant;
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_stream::wrappers::{BroadcastStream, IntervalStream};
+use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tokio_stream::{Stream, StreamExt};
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
-use std::result;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -829,7 +827,7 @@ impl Subscriptions {
             }
         }
 
-        for (_, sub) in &self.change_subscriptions {
+        for sub in self.change_subscriptions.values() {
             match sub.notify(changed, db).await {
                 Ok(_) => {}
                 Err(err) => error = Some(err),
@@ -906,7 +904,7 @@ impl Subscriptions {
                 true
             }
         });
-        return closed_subscriptions_uuids;
+        closed_subscriptions_uuids
     }
 }
 
@@ -1813,8 +1811,6 @@ impl AuthorizedAccess<'_, '_> {
         signal_ids: Vec<i32>,
         uuid_subscription: Uuid,
     ) {
-        let mut disjoint_map = HashMap::<i32, u32>::new();
-
         let current_filter_map = self
             .broker
             .filter_manager
@@ -1839,7 +1835,8 @@ impl AuthorizedAccess<'_, '_> {
 
         //assert_eq!(current_filter_map.len(), target_filter_map.len());
 
-        if current_filter_map.len() > 0 {
+        let mut disjoint_map = HashMap::<i32, u32>::new();
+        if !current_filter_map.is_empty() {
             disjoint_map = target_filter_map
                 .into_iter()
                 .filter_map(|(k, v1)| {
@@ -1847,12 +1844,12 @@ impl AuthorizedAccess<'_, '_> {
                     match value {
                         Some(sample_interval) => {
                             if *sample_interval != v1 {
-                                return Some((k, v1));
+                                Some((k, v1))
                             } else {
-                                return None;
+                                None
                             }
                         }
-                        None => return Some((k, v1)),
+                        None => Some((k, v1)),
                     }
                 })
                 .collect();
@@ -2234,7 +2231,7 @@ impl AuthorizedAccess<'_, '_> {
             .await
             .add_signal_provider_subscription(signal_subscription);
 
-        Ok((provider_id))
+        Ok(provider_id)
     }
 
     pub async fn publish_provider_error(&self, provider_id: i32) {
@@ -2261,7 +2258,7 @@ impl AuthorizedAccess<'_, '_> {
                 max: None,
                 unit: None,
             };
-            db_write.update(*signal_id, entry_update);
+            let _ = db_write.update(*signal_id, entry_update);
         });
     }
 
@@ -2335,8 +2332,6 @@ impl DataBroker {
                     let change_subscription_closed = closed_change_subscriptions.is_empty();
                     num_providers += 1;
 
-                    let mut disjoint_map = HashMap::<i32, u32>::new();
-
                     let current_filter_map = filter_manager
                         .read()
                         .await
@@ -2354,6 +2349,7 @@ impl DataBroker {
                         .await
                         .get_signals_ids_with_lowest_interval();
 
+                    let mut disjoint_map = HashMap::<i32, u32>::new();
                     if !change_subscription_closed {
                         disjoint_map = current_filter_map
                             .into_iter()
@@ -2362,12 +2358,12 @@ impl DataBroker {
                                 match value {
                                     Some(sample_interval) => {
                                         if *sample_interval != v1 {
-                                            return Some((k, *sample_interval));
+                                            Some((k, *sample_interval))
                                         } else {
-                                            return None;
+                                            None
                                         }
                                     }
-                                    None => return Some((k, 0)),
+                                    None => Some((k, 0)),
                                 }
                             })
                             .collect();
@@ -2392,14 +2388,14 @@ impl DataBroker {
     ) {
         let providers = &(subscriptions.signal_provider_subscriptions);
 
-        for (_, provider) in providers {
+        for provider in providers.values() {
             let update_signal_map: HashMap<i32, u32> = provider
                 .vss_ids
                 .iter()
                 .filter_map(|&signal_id| update_signal_intervals.get_key_value(&signal_id))
                 .map(|(&k, v)| {
                     let signal_id = k;
-                    let interval_ms = v.clone();
+                    let interval_ms = *v;
                     (signal_id, interval_ms)
                 })
                 .collect();

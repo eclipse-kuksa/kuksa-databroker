@@ -11,10 +11,7 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use std::{
-    collections::{BTreeSet, HashMap},
-    pin::Pin,
-};
+use std::{collections::HashMap, pin::Pin};
 
 use crate::{
     broker::{
@@ -30,7 +27,7 @@ use databroker_proto::kuksa::val::v2::{
     self as proto,
     open_provider_stream_request::Action::{
         BatchActuateStreamResponse, GetProviderValueResponse, ProvideActuationRequest,
-        ProvideSignalRequest, PublishValuesRequest, UpdateFilterResponse,
+        ProvideSignalRequest, ProviderErrorIndication, PublishValuesRequest, UpdateFilterResponse,
     },
     open_provider_stream_response, OpenProviderStreamResponse, PublishValuesResponse,
 };
@@ -42,7 +39,6 @@ use kuksa::proto::v2::{
 use std::collections::HashSet;
 use tokio::{select, sync::mpsc};
 use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
-use tonic::Request;
 use tracing::debug;
 
 const MAX_REQUEST_PATH_LENGTH: usize = 1000;
@@ -103,15 +99,13 @@ impl SignalProvider for Provider {
         let mut filters_update: HashMap<i32, proto::Filter> = HashMap::new();
         for (signal_id, interval_ms) in update_filter {
             let min_sample_interval = if interval_ms != 0 {
-                Some(proto::SampleInterval {
-                    interval_ms: interval_ms,
-                })
+                Some(proto::SampleInterval { interval_ms })
             } else {
                 None
             };
             let filter = proto::Filter {
                 duration_ms: 0,
-                min_sample_interval: min_sample_interval,
+                min_sample_interval,
             };
             filters_update.insert(signal_id, filter);
         }
@@ -129,12 +123,12 @@ impl SignalProvider for Provider {
         };
 
         let result = self.sender.send(Ok(response)).await;
-        // if result.is_err() {
-        //     return Err((
-        //         broker::SignalProvider::TransmissionFailure,
-        //         "An error occured while sending the data".to_string(),
-        //     ));
-        // }
+        if result.is_err() {
+            return Err((
+                SignalClaimError::TransmissionFailure,
+                "An error occured while sending the data".to_string(),
+            ));
+        }
         return Ok(());
     }
 
@@ -303,11 +297,9 @@ impl proto::val_server::Val for broker::DataBroker {
         }
 
         let interval_ms = if let Some(filter) = request.filter {
-            if let Some(min_sample_interval) = filter.min_sample_interval {
-                Some(min_sample_interval.interval_ms)
-            } else {
-                None
-            }
+            filter
+                .min_sample_interval
+                .map(|min_sample_interval| min_sample_interval.interval_ms)
         } else {
             None
         };
@@ -390,11 +382,9 @@ impl proto::val_server::Val for broker::DataBroker {
         }
 
         let interval_ms = if let Some(filter) = request.filter {
-            if let Some(min_sample_interval) = filter.min_sample_interval {
-                Some(min_sample_interval.interval_ms)
-            } else {
-                None
-            }
+            filter
+                .min_sample_interval
+                .map(|min_sample_interval| min_sample_interval.interval_ms)
         } else {
             None
         };
@@ -1038,7 +1028,7 @@ async fn register_provided_signals(
 }
 
 async fn publish_provider_error(broker: &AuthorizedAccess<'_, '_>, provide_id: i32) {
-    let provider_list = broker.publish_provider_error(provide_id);
+    let _provider_list = broker.publish_provider_error(provide_id);
 }
 
 async fn publish_values(
@@ -1091,9 +1081,9 @@ async fn publish_values(
             })),
         }
     } else {
-        return Some(Err(tonic::Status::already_exists(
+        Some(Err(tonic::Status::already_exists(
             "Signals already registered by another provider",
-        )));
+        )))
     }
 }
 
