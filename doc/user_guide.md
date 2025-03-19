@@ -72,7 +72,6 @@ docker run --rm -it -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databroker:main -
 > docker run --rm -it -p 55556:55555 ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure
 > ```
 >
-> Please refer to [this support forum post](https://developer.apple.com/forums/thread/671197) for additional information.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
