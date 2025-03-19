@@ -183,6 +183,13 @@ service VAL {
   //        It is up to the provider to decide if the stream shall be closed,
   //        as of today Databroker will not react on the received error message.
   //
+  //    - Provider sends ProvideSignalRequest -> Databroker returns ProvideSignalResponse
+  //        Returns (GRPC error code) and closes the stream call (strict case).
+  //          NOT_FOUND if any of the signals are non-existant.
+  //          PERMISSION_DENIED if access is denied for any of the signals.
+  //          UNAUTHENTICATED if no credentials provided or credentials has expired
+  //          ALREADY_EXISTS if a provider already claimed the ownership of any signal.
+  //
   rpc OpenProviderStream(stream OpenProviderStreamRequest) returns (stream OpenProviderStreamResponse);
 
   // Get server information
@@ -213,6 +220,7 @@ message SubscribeRequest {
   // Default (0) results in that only latest message is kept.
   // Maximum value supported is implementation dependent.
   uint32 buffer_size           = 2;
+  Filter filter                = 3;
 }
 
 message SubscribeResponse {
@@ -227,6 +235,7 @@ message SubscribeByIdRequest {
   // Default (0) results in that only latest message is kept.
   // Maximum value supported is implementation dependent.
   uint32 buffer_size        = 2;
+  Filter filter             = 3;
 }
 
 message SubscribeByIdResponse {
@@ -272,12 +281,12 @@ message PublishValueResponse {
 }
 
 message PublishValuesRequest {
-  int32 request_id                 = 1; /// Unique request id for the stream that can be used to identify the response.
+  uint32 request_id                 = 1; /// Unique request id for the stream that can be used to match the corresponding response.
   map<int32, Datapoint> data_points = 2;
 }
 
 message PublishValuesResponse {
-  int32 request_id         = 1;
+  uint32 request_id        = 1; /// Unique request id for the stream that can be used to match the corresponding request.
   map<int32, Error> status = 2;
 }
 
@@ -286,6 +295,13 @@ message ProvideActuationRequest {
 }
 
 message ProvideActuationResponse {
+}
+
+message ProvideSignalRequest {
+  map<int32, SampleInterval> signals_sample_intervals = 1;
+}
+
+message ProvideSignalResponse {
 }
 
 message BatchActuateStreamRequest {
@@ -298,6 +314,35 @@ message BatchActuateStreamResponse {
   Error error = 2;
 }
 
+message UpdateFilterRequest {
+  uint32 request_id                 = 1; /// Unique request id for the stream that can be used to match the corresponding response.
+  // Databroker sends filters to provider.
+  // In case provider restarts, databroker will send local filters stored
+  // to continue the provider sending same signals with same filter.
+  map<int32, Filter> filters_update = 2;
+}
+
+// Only returned if there is a filter error on provider side
+message UpdateFilterResponse {
+  uint32 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding request.
+  FilterError filter_error  = 2;
+}
+
+// Send to indicate an error on provider side
+message ProviderErrorIndication {
+  ProviderError provider_error = 1;
+}
+
+message GetProviderValueRequest {
+  uint32 request_id       = 1; /// Unique request id for the stream that can be used to match the corresponding response.
+  GetValueRequest request = 2;
+}
+
+message GetProviderValueResponse {
+  uint32 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding request.
+  GetValueResponse response = 2;
+}
+
 message OpenProviderStreamRequest {
   oneof action {
     // Inform server of an actuator this provider provides.
@@ -307,6 +352,14 @@ message OpenProviderStreamRequest {
     // Sent to acknowledge the acceptance of a batch actuate
     // request.
     BatchActuateStreamResponse batch_actuate_stream_response = 3;
+    // Inform server of a signal this provider provides.
+    ProvideSignalRequest provide_signal_request              = 4;
+    // Update filter response
+    UpdateFilterResponse update_filter_response              = 5;
+    // GetValue response
+    GetProviderValueResponse get_provider_value_response     = 6;
+    // Indication of error on provider side
+    ProviderErrorIndication provider_error_indication      = 7;
   }
 }
 
@@ -318,6 +371,12 @@ message OpenProviderStreamResponse {
     PublishValuesResponse publish_values_response          = 2;
     // Send a batch actuate request to a provider.
     BatchActuateStreamRequest batch_actuate_stream_request = 3;
+    // Response to a provide sensor request.
+    ProvideSignalResponse provide_signal_response          = 4;
+    // Filter request
+    UpdateFilterRequest update_filter_request              = 5;
+    // GetValue request from client forwarded to provider
+    GetProviderValueRequest get_provider_value_request     = 6;
   }
 }
 
