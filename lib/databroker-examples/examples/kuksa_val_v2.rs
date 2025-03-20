@@ -20,8 +20,8 @@ use databroker_proto::kuksa::val::v2::{
     open_provider_stream_response, OpenProviderStreamRequest, ProvideActuationRequest, SignalId,
     Value,
 };
-use kuksa_val_v2::KuksaClientV2;
 use kuksa_common::ClientTraitV2;
+use kuksa_val_v2::KuksaClientV2;
 use open_provider_stream_response::Action::BatchActuateStreamRequest;
 
 #[tokio::main]

@@ -15,10 +15,10 @@ use crate::types::MetadataTypeV2;
 use crate::types::{
     ActuateResponseSDVTypeV1, ActuateResponseTypeV1, ActuateResponseTypeV2, GetResponseSDVTypeV1,
     GetResponseTypeV1, MetadataResponseSDVTypeV1, MetadataResponseTypeV1, MetadataResponseTypeV2,
-    MultipleGetResponseTypeV2, PathSDVTypeV1, PathTypeV1, PathsTypeV2, PublishResponseSDVTypeV1,
-    PublishResponseTypeV1, SensorUpdateSDVTypeV1, SensorUpdateTypeV1, SensorUpdateTypeV2,
-    SubscribeResponseSDVTypeV1, SubscribeResponseTypeV1, SubscribeResponseTypeV2,
-    SubscribeSDVTypeV1, SubscribeTypeV1, UpdateActuationTypeV1, MultipleUpdateActuationTypeV2,
+    MultipleGetResponseTypeV2, MultipleUpdateActuationTypeV2, PathSDVTypeV1, PathTypeV1,
+    PathsTypeV2, PublishResponseSDVTypeV1, PublishResponseTypeV1, SensorUpdateSDVTypeV1,
+    SensorUpdateTypeV1, SensorUpdateTypeV2, SubscribeResponseSDVTypeV1, SubscribeResponseTypeV1,
+    SubscribeResponseTypeV2, SubscribeSDVTypeV1, SubscribeTypeV1, UpdateActuationTypeV1,
 };
 use databroker_proto::kuksa::val::v1 as protoV1;
 use databroker_proto::kuksa::val::v2 as protoV2;
@@ -33,7 +33,7 @@ fn find_common_root(paths: Vec<String>) -> String {
     }
 
     let split_paths: Vec<Vec<&str>> = paths.iter().map(|s| s.split('.').collect()).collect();
-    
+
     // Take the first path as a reference
     let first_path = &split_paths[0];
 
@@ -797,12 +797,10 @@ impl ConvertToV1<Option<protoV1::datapoint::Value>> for Option<protoV2::Value> {
 impl ConvertToV1<Option<protoV1::Datapoint>> for Option<protoV2::Datapoint> {
     fn convert_to_v1(self) -> Option<protoV1::Datapoint> {
         match self {
-            Some(datapoint) => {
-                Some(protoV1::Datapoint {
-                    timestamp: datapoint.timestamp,
-                    value: datapoint.value.convert_to_v1(),
-                })
-            },
+            Some(datapoint) => Some(protoV1::Datapoint {
+                timestamp: datapoint.timestamp,
+                value: datapoint.value.convert_to_v1(),
+            }),
             None => None,
         }
     }

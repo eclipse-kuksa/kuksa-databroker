@@ -214,12 +214,12 @@ pub trait ClientTraitV2 {
     async fn subscribe(
         &mut self,
         paths: Self::SubscribeType,
-        buffer_size: Option<u32>
+        buffer_size: Option<u32>,
     ) -> Result<Self::SubscribeResponseType, ClientError>;
     async fn subscribe_by_id(
         &mut self,
         signal_ids: Self::SubscribeByIdType,
-        buffer_size: Option<u32>
+        buffer_size: Option<u32>,
     ) -> Result<Self::SubscribeByIdResponseType, ClientError>;
 
     // from application requesting an actuation (to keep backwards compatibility the naming is different for the corresponding interfaces)
