@@ -92,7 +92,7 @@ async fn run_streaming_set_test(iterations: i32, n_th_message: i32) {
                                         println!(
                                             "Error setting datapoint {}: {:?}",
                                             error.0,
-                                            proto::v1::DatapointError::from_i32(error.1)
+                                            proto::v1::DatapointError::try_from(error.1)
                                         )
                                     }
                                 }

@@ -20,6 +20,7 @@ use databroker_proto::kuksa::val::v2::{
     open_provider_stream_response, OpenProviderStreamRequest, ProvideActuationRequest, SignalId,
     Value,
 };
+use kuksa_common::ClientTraitV2;
 use kuksa_val_v2::KuksaClientV2;
 use open_provider_stream_response::Action::BatchActuateStreamRequest;
 
@@ -43,8 +44,8 @@ async fn main() {
 }
 
 async fn sample_get_signal(client: &mut KuksaClientV2) {
-    let signal = "Vehicle.Speed";
-    let result = client.get_value(signal).await;
+    let signal = "Vehicle.Speed".to_string();
+    let result = client.get_value(signal.clone()).await;
     match result {
         Ok(option) => match option {
             Some(datapoint) => {
@@ -61,9 +62,9 @@ async fn sample_get_signal(client: &mut KuksaClientV2) {
 }
 
 async fn sample_get_signals(client: &mut KuksaClientV2) {
-    let path_speed = "Vehicle.Speed";
-    let path_average_speed = "Vehicle.AverageSpeed";
-    let signals = vec![path_speed, path_average_speed];
+    let path_speed = "Vehicle.Speed".to_string();
+    let path_average_speed = "Vehicle.AverageSpeed".to_string();
+    let signals = vec![path_speed.clone(), path_average_speed.clone()];
     let result = client.get_values(signals).await;
 
     match result {
@@ -97,8 +98,8 @@ async fn sample_publish_value(client: &mut KuksaClientV2) {
     let value = Value {
         typed_value: Some(TypedValue::Float(120.0)),
     };
-    let signal = "Vehicle.Speed";
-    let result = client.publish_value(signal, value).await;
+    let signal = "Vehicle.Speed".to_string();
+    let result = client.publish_value(signal.clone(), value).await;
     match result {
         Ok(_) => {
             println!("{} published successfully", signal);
@@ -157,9 +158,9 @@ async fn sample_provide_actuation(client: &mut KuksaClientV2) {
 }
 
 async fn sample_subscribe(client: &mut KuksaClientV2) {
-    let path_speed = "Vehicle.Speed";
-    let path_avg_speed = "Vehicle.AverageSpeed";
-    let signals = vec![path_speed, path_avg_speed];
+    let path_speed = "Vehicle.Speed".to_string();
+    let path_avg_speed = "Vehicle.AverageSpeed".to_string();
+    let signals = vec![path_speed.clone(), path_avg_speed.clone()];
 
     let result = client.subscribe(signals, None).await;
     match result {
@@ -169,11 +170,11 @@ async fn sample_subscribe(client: &mut KuksaClientV2) {
                 match result {
                     Ok(option) => {
                         let response = option.unwrap();
-                        if let Some(speed) = response.entries.get(path_speed) {
+                        if let Some(speed) = response.entries.get(&path_speed) {
                             // do something with speed
                             println!("{}: {:?}", path_speed, speed);
                         };
-                        if let Some(average_speed) = response.entries.get(path_avg_speed) {
+                        if let Some(average_speed) = response.entries.get(&path_avg_speed) {
                             // do something with average_speed
                             println!("{}: {:?}", path_avg_speed, average_speed);
                         };
@@ -191,9 +192,9 @@ async fn sample_subscribe(client: &mut KuksaClientV2) {
 }
 
 async fn sample_subscribe_by_id(client: &mut KuksaClientV2) {
-    let path_speed = "Vehicle.Speed";
-    let path_avg_speed = "Vehicle.AverageSpeed";
-    let signals = vec![path_speed, path_avg_speed];
+    let path_speed = "Vehicle.Speed".to_string();
+    let path_avg_speed = "Vehicle.AverageSpeed".to_string();
+    let signals = vec![path_speed.clone(), path_avg_speed.clone()];
 
     let signal_ids_result = client.resolve_ids_for_paths(signals).await;
     match signal_ids_result {
@@ -208,14 +209,14 @@ async fn sample_subscribe_by_id(client: &mut KuksaClientV2) {
                             Ok(option) => {
                                 let response = option.unwrap();
                                 if let Some(speed) =
-                                    response.entries.get(path_ids_map.get(path_speed).unwrap())
+                                    response.entries.get(path_ids_map.get(&path_speed).unwrap())
                                 {
                                     // do something with speed
                                     println!("{}: {:?}", path_speed, speed);
                                 };
                                 if let Some(average_speed) = response
                                     .entries
-                                    .get(path_ids_map.get(path_avg_speed).unwrap())
+                                    .get(path_ids_map.get(&path_avg_speed).unwrap())
                                 {
                                     // do something with average_speed
                                     println!("{}: {:?}", path_avg_speed, average_speed);
@@ -239,10 +240,10 @@ async fn sample_subscribe_by_id(client: &mut KuksaClientV2) {
 }
 
 async fn sample_list_metadata(client: &mut KuksaClientV2) {
-    let signal_path = "Vehicle.ADAS";
-    let filter = "*";
+    let signal_path = "Vehicle.ADAS".to_string();
+    let filter = "*".to_string();
 
-    let result = client.list_metadata(signal_path, filter).await;
+    let result = client.list_metadata((signal_path, filter)).await;
     match result {
         Ok(metadatas) => {
             for metadata in metadatas {
