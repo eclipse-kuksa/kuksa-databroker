@@ -33,7 +33,7 @@ Feature: VISS v2 Compliance Testing - Filter
   # The VISS server must support searching for multiple signals using a path filter (e.g., "*.IsOpen").
   @MustHave
   Scenario: Search for multiple signals using path filter
-    When I search "Vehicle" using a path filter "*.IsOpen"
+    When I search "Vehicle" using a path filter "*.*.*.IsOpen"
     Then I should receive multiple data points
 
   # 5.5.1 Subscribe with change filter
