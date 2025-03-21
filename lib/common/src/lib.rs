@@ -131,7 +131,7 @@ pub trait ClientTraitV1 {
         paths: Self::PathType,
     ) -> Result<Self::GetResponseType, ClientError>;
 
-    // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // from provider side: pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
     // if we do not want to put in the effort just give an unimplemented error for the function
     async fn subscribe_current_values(
         &mut self,
@@ -313,6 +313,7 @@ pub fn to_uri(uri: impl AsRef<str>) -> Result<Uri, String> {
 
 impl Client {
     pub fn new(uri: Uri) -> Self {
+        env_logger::init();
         Client {
             uri,
             token: None,

@@ -21,9 +21,10 @@ use crate::types::{
     SubscribeResponseTypeV2, SubscribeSDVTypeV1, SubscribeTypeV1, UpdateActuationTypeV1,
 };
 use databroker_proto::kuksa::val::v1 as protoV1;
-use databroker_proto::kuksa::val::v2 as protoV2;
+use databroker_proto::kuksa::val::v2::{self as protoV2};
 use databroker_proto::sdv::databroker::v1 as SDVprotoV1;
 use std::collections::HashMap;
+use log::warn;
 
 // Idea: in the future we could use databroker internal datapoint structure and define it here then the conversion from databroker can be reused
 
@@ -524,11 +525,10 @@ impl ConvertToV1<SubscribeResponseTypeV1> for SubscribeResponseTypeV2 {
 
 impl ConvertToV1<MetadataResponseTypeV1> for MetadataResponseTypeV2 {
     fn convert_to_v1(self) -> MetadataResponseTypeV1 {
-        //log::warn("This method is deprecated and conversion can not figure out which path the datapoint maps to. Dev must do this in his own code. E.g. by going through the requested paths.");
         let transformed_vec = self
             .iter()
             .map(|metadata| protoV1::DataEntry {
-                path: "Unknwon".to_string(),
+                path: metadata.path.clone(),
                 value: None,
                 actuator_target: None,
                 metadata: Some(metadata.clone().convert_to_v1()),
@@ -538,168 +538,164 @@ impl ConvertToV1<MetadataResponseTypeV1> for MetadataResponseTypeV2 {
     }
 }
 
-impl ConvertToV1<protoV1::ValueRestriction> for protoV2::Value {
-    fn convert_to_v1(self) -> protoV1::ValueRestriction {
-        match self.typed_value {
+impl ConvertToV1<Option<protoV1::ValueRestriction>> for Option<protoV2::Value> {
+    fn convert_to_v1(self) -> Option<protoV1::ValueRestriction> {
+        match self{
             Some(value) => {
-                match value {
-                    protoV2::value::TypedValue::String(val) => protoV1::ValueRestriction {
-                        r#type: Some(protoV1::value_restriction::Type::String(
-                            protoV1::ValueRestrictionString {
-                                allowed_values: vec![val], // Wrap single value in Vec
-                            },
-                        )),
-                    },
-                    protoV2::value::TypedValue::Bool(_) => {
-                        panic!("Boolean values are not supported in ValueRestriction")
-                    }
-                    protoV2::value::TypedValue::Int32(val) => protoV1::ValueRestriction {
-                        r#type: Some(protoV1::value_restriction::Type::Signed(
-                            protoV1::ValueRestrictionInt {
-                                allowed_values: vec![val as i64], // Convert to i64
-                                min: None,
-                                max: None,
-                            },
-                        )),
-                    },
-                    protoV2::value::TypedValue::Int64(val) => protoV1::ValueRestriction {
-                        r#type: Some(protoV1::value_restriction::Type::Signed(
-                            protoV1::ValueRestrictionInt {
-                                allowed_values: vec![val],
-                                min: None,
-                                max: None,
-                            },
-                        )),
-                    },
-                    protoV2::value::TypedValue::Uint32(val) => protoV1::ValueRestriction {
-                        r#type: Some(protoV1::value_restriction::Type::Unsigned(
-                            protoV1::ValueRestrictionUint {
-                                allowed_values: vec![val as u64], // Convert to u64
-                                min: None,
-                                max: None,
-                            },
-                        )),
-                    },
-                    protoV2::value::TypedValue::Uint64(val) => protoV1::ValueRestriction {
-                        r#type: Some(protoV1::value_restriction::Type::Unsigned(
-                            protoV1::ValueRestrictionUint {
-                                allowed_values: vec![val],
-                                min: None,
-                                max: None,
-                            },
-                        )),
-                    },
-                    protoV2::value::TypedValue::Float(val) => protoV1::ValueRestriction {
-                        r#type: Some(protoV1::value_restriction::Type::FloatingPoint(
-                            protoV1::ValueRestrictionFloat {
-                                allowed_values: vec![val as f64], // Convert to f64
-                                min: None,
-                                max: None,
-                            },
-                        )),
-                    },
-                    protoV2::value::TypedValue::Double(val) => protoV1::ValueRestriction {
-                        r#type: Some(protoV1::value_restriction::Type::FloatingPoint(
-                            protoV1::ValueRestrictionFloat {
-                                allowed_values: vec![val],
-                                min: None,
-                                max: None,
-                            },
-                        )),
-                    },
-                    protoV2::value::TypedValue::StringArray(string_array) => {
-                        protoV1::ValueRestriction {
-                            r#type: Some(protoV1::value_restriction::Type::String(
-                                protoV1::ValueRestrictionString {
-                                    allowed_values: string_array.values, // Use existing Vec<String>
-                                },
-                            )),
+                match value.typed_value {
+                    Some(typed_value) => {
+                        match typed_value {
+                            protoV2::value::TypedValue::String(val) => Some(protoV1::ValueRestriction {
+                                r#type: Some(protoV1::value_restriction::Type::String(
+                                    protoV1::ValueRestrictionString {
+                                        allowed_values: vec![val], // Wrap single value in Vec
+                                    },
+                                )),
+                            }),
+                            protoV2::value::TypedValue::Bool(_) => 
+                                panic!("Boolean values are not supported in ValueRestriction"),
+                            protoV2::value::TypedValue::Int32(val) => Some(protoV1::ValueRestriction {
+                                r#type: Some(protoV1::value_restriction::Type::Signed(
+                                    protoV1::ValueRestrictionInt {
+                                        allowed_values: vec![val as i64], // Convert to i64
+                                        min: None,
+                                        max: None,
+                                    },
+                                )),
+                            }),
+                            protoV2::value::TypedValue::Int64(val) => Some(protoV1::ValueRestriction {
+                                r#type: Some(protoV1::value_restriction::Type::Signed(
+                                    protoV1::ValueRestrictionInt {
+                                        allowed_values: vec![val],
+                                        min: None,
+                                        max: None,
+                                    },
+                                )),
+                            }),
+                            protoV2::value::TypedValue::Uint32(val) => Some(protoV1::ValueRestriction {
+                                r#type: Some(protoV1::value_restriction::Type::Unsigned(
+                                    protoV1::ValueRestrictionUint {
+                                        allowed_values: vec![val as u64], // Convert to u64
+                                        min: None,
+                                        max: None,
+                                    },
+                                )),
+                            }),
+                            protoV2::value::TypedValue::Uint64(val) => Some(protoV1::ValueRestriction {
+                                r#type: Some(protoV1::value_restriction::Type::Unsigned(
+                                    protoV1::ValueRestrictionUint {
+                                        allowed_values: vec![val],
+                                        min: None,
+                                        max: None,
+                                    },
+                                )),
+                            }),
+                            protoV2::value::TypedValue::Float(val) => Some(protoV1::ValueRestriction {
+                                r#type: Some(protoV1::value_restriction::Type::FloatingPoint(
+                                    protoV1::ValueRestrictionFloat {
+                                        allowed_values: vec![val as f64], // Convert to f64
+                                        min: None,
+                                        max: None,
+                                    },
+                                )),
+                            }),
+                            protoV2::value::TypedValue::Double(val) => Some(protoV1::ValueRestriction {
+                                r#type: Some(protoV1::value_restriction::Type::FloatingPoint(
+                                    protoV1::ValueRestrictionFloat {
+                                        allowed_values: vec![val],
+                                        min: None,
+                                        max: None,
+                                    },
+                                )),
+                            }),
+                            protoV2::value::TypedValue::StringArray(string_array) => 
+                                Some(protoV1::ValueRestriction {
+                                    r#type: Some(protoV1::value_restriction::Type::String(
+                                        protoV1::ValueRestrictionString {
+                                            allowed_values: string_array.values, // Use existing Vec<String>
+                                        },
+                                    )),
+                                }),
+                            protoV2::value::TypedValue::BoolArray(_) => 
+                                panic!("Boolean arrays are not supported in ValueRestriction"),
+                            protoV2::value::TypedValue::Int32Array(int32_array) => 
+                                Some(protoV1::ValueRestriction {
+                                    r#type: Some(protoV1::value_restriction::Type::Signed(
+                                        protoV1::ValueRestrictionInt {
+                                            allowed_values: int32_array
+                                                .values
+                                                .iter()
+                                                .map(|&x| x as i64)
+                                                .collect(),
+                                            min: None,
+                                            max: None,
+                                        },
+                                    )),
+                                }),
+                            protoV2::value::TypedValue::Int64Array(int64_array) => 
+                                Some(protoV1::ValueRestriction {
+                                    r#type: Some(protoV1::value_restriction::Type::Signed(
+                                        protoV1::ValueRestrictionInt {
+                                            allowed_values: int64_array.values,
+                                            min: None,
+                                            max: None,
+                                        },
+                                    )),
+                                }),
+                            protoV2::value::TypedValue::Uint32Array(uint32_array) => 
+                                Some(protoV1::ValueRestriction {
+                                    r#type: Some(protoV1::value_restriction::Type::Unsigned(
+                                        protoV1::ValueRestrictionUint {
+                                            allowed_values: uint32_array
+                                                .values
+                                                .iter()
+                                                .map(|&x| x as u64)
+                                                .collect(),
+                                            min: None,
+                                            max: None,
+                                        },
+                                    )),
+                                }),
+                            protoV2::value::TypedValue::Uint64Array(uint64_array) => 
+                                Some(protoV1::ValueRestriction {
+                                    r#type: Some(protoV1::value_restriction::Type::Unsigned(
+                                        protoV1::ValueRestrictionUint {
+                                            allowed_values: uint64_array.values,
+                                            min: None,
+                                            max: None,
+                                        },
+                                    )),
+                                }),
+                            protoV2::value::TypedValue::FloatArray(float_array) => 
+                                Some(protoV1::ValueRestriction {
+                                    r#type: Some(protoV1::value_restriction::Type::FloatingPoint(
+                                        protoV1::ValueRestrictionFloat {
+                                            allowed_values: float_array
+                                                .values
+                                                .iter()
+                                                .map(|&x| x as f64)
+                                                .collect(),
+                                            min: None,
+                                            max: None,
+                                        },
+                                    )),
+                                }),
+                            protoV2::value::TypedValue::DoubleArray(double_array) => 
+                                Some(protoV1::ValueRestriction {
+                                    r#type: Some(protoV1::value_restriction::Type::FloatingPoint(
+                                        protoV1::ValueRestrictionFloat {
+                                            allowed_values: double_array.values,
+                                            min: None,
+                                            max: None,
+                                        },
+                                    )),
+                                })
                         }
                     }
-                    protoV2::value::TypedValue::BoolArray(_) => {
-                        panic!("Boolean arrays are not supported in ValueRestriction")
-                    }
-                    protoV2::value::TypedValue::Int32Array(int32_array) => {
-                        protoV1::ValueRestriction {
-                            r#type: Some(protoV1::value_restriction::Type::Signed(
-                                protoV1::ValueRestrictionInt {
-                                    allowed_values: int32_array
-                                        .values
-                                        .iter()
-                                        .map(|&x| x as i64)
-                                        .collect(),
-                                    min: None,
-                                    max: None,
-                                },
-                            )),
-                        }
-                    }
-                    protoV2::value::TypedValue::Int64Array(int64_array) => {
-                        protoV1::ValueRestriction {
-                            r#type: Some(protoV1::value_restriction::Type::Signed(
-                                protoV1::ValueRestrictionInt {
-                                    allowed_values: int64_array.values,
-                                    min: None,
-                                    max: None,
-                                },
-                            )),
-                        }
-                    }
-                    protoV2::value::TypedValue::Uint32Array(uint32_array) => {
-                        protoV1::ValueRestriction {
-                            r#type: Some(protoV1::value_restriction::Type::Unsigned(
-                                protoV1::ValueRestrictionUint {
-                                    allowed_values: uint32_array
-                                        .values
-                                        .iter()
-                                        .map(|&x| x as u64)
-                                        .collect(),
-                                    min: None,
-                                    max: None,
-                                },
-                            )),
-                        }
-                    }
-                    protoV2::value::TypedValue::Uint64Array(uint64_array) => {
-                        protoV1::ValueRestriction {
-                            r#type: Some(protoV1::value_restriction::Type::Unsigned(
-                                protoV1::ValueRestrictionUint {
-                                    allowed_values: uint64_array.values,
-                                    min: None,
-                                    max: None,
-                                },
-                            )),
-                        }
-                    }
-                    protoV2::value::TypedValue::FloatArray(float_array) => {
-                        protoV1::ValueRestriction {
-                            r#type: Some(protoV1::value_restriction::Type::FloatingPoint(
-                                protoV1::ValueRestrictionFloat {
-                                    allowed_values: float_array
-                                        .values
-                                        .iter()
-                                        .map(|&x| x as f64)
-                                        .collect(),
-                                    min: None,
-                                    max: None,
-                                },
-                            )),
-                        }
-                    }
-                    protoV2::value::TypedValue::DoubleArray(double_array) => {
-                        protoV1::ValueRestriction {
-                            r#type: Some(protoV1::value_restriction::Type::FloatingPoint(
-                                protoV1::ValueRestrictionFloat {
-                                    allowed_values: double_array.values,
-                                    min: None,
-                                    max: None,
-                                },
-                            )),
-                        }
-                    }
-                }
-            }
-            None => todo!(),
+                    None => None,
+                }        
+            },
+            None => None,
         }
     }
 }
@@ -713,7 +709,7 @@ impl ConvertToV1<protoV1::Metadata> for protoV2::Metadata {
             comment: Some(self.comment),
             deprecation: Some(self.deprecation),
             unit: Some(self.unit),
-            value_restriction: self.allowed_values.map(|allowed| allowed.convert_to_v1()),
+            value_restriction: self.allowed_values.convert_to_v1(),
             entry_specific: None,
         }
     }
@@ -808,7 +804,7 @@ impl ConvertToV1<Option<protoV1::Datapoint>> for Option<protoV2::Datapoint> {
 
 impl ConvertToV1<GetResponseTypeV1> for MultipleGetResponseTypeV2 {
     fn convert_to_v1(self) -> GetResponseTypeV1 {
-        //log::warn("This method is deprecated and conversion can not figure out which path the datapoint maps to. Dev must do this in his own code. E.g. by going through the requested paths.");
+        warn!("This method is deprecated and conversion can not figure out which path the datapoint maps to. Dev must do this in his own code. E.g. by going through the requested paths.");
         self.iter()
             .map(|value| protoV1::DataEntry {
                 path: "Unknown".to_string(),

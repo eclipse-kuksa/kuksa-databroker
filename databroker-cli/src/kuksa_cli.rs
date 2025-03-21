@@ -714,7 +714,7 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                             );
                                         } else {
                                             let name = entry.path.clone();
-                                            println!("No entry metadata for {name}");
+                                            println!("No metadata entry for {name}");
                                         }
                                     }
                                 }

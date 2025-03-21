@@ -587,7 +587,7 @@ impl ClientTraitV2 for KuksaClientV2 {
         &mut self,
         _path: Self::PathType,
     ) -> Result<Self::ProvideResponseType, ClientError> {
-        unimplemented!()
+        todo!()
     }
 }
 
