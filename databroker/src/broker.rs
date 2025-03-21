@@ -11,7 +11,7 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use crate::filter_manager::filter_manager::FilterManager;
+use crate::filter::filter_manager::FilterManager;
 use crate::permissions::{PermissionError, Permissions};
 pub use crate::types;
 
@@ -230,9 +230,9 @@ pub struct QuerySubscription {
 
 pub struct ChangeSubscription {
     entries: HashMap<i32, HashSet<Field>>,
-    sender: broadcast::Sender<EntryUpdates>,
+    sender: broadcast::Sender<Option<EntryUpdates>>,
     permissions: Permissions,
-    interval_ms: Duration,
+    interval_ms: Option<Duration>,
     last_emitted: Arc<RwLock<Instant>>,
 }
 
@@ -874,19 +874,26 @@ impl Subscriptions {
                 true
             }
         });
+    }
 
+    #[cfg_attr(feature="otel", tracing::instrument(name="signal_provider_subscriptions_cleanup", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
+    pub fn cleanup_signal_providers(&mut self) -> HashMap<u32, HashSet<i32>> {
+        let mut closed_signal_providers: HashMap<u32, HashSet<i32>> = HashMap::new();
         self.signal_provider_subscriptions
-            .retain(|_, signal_provider| {
+            .retain(|provider_id, signal_provider| {
                 if !signal_provider.signal_provider.is_available() {
-                    info!("Singal Provider gone: removing provided actuation");
+                    closed_signal_providers.insert(*provider_id, signal_provider.vss_ids.clone());
+                    info!("Singal Provider gone: removing provided");
                     false
                 } else if signal_provider.permissions.is_expired() {
-                    info!("Permissions of Provider expired: removing provided actuation");
+                    closed_signal_providers.insert(*provider_id, signal_provider.vss_ids.clone());
+                    info!("Permissions of Provider expired: removing provided");
                     false
                 } else {
                     true
                 }
             });
+        closed_signal_providers
     }
 
     #[cfg_attr(feature="otel", tracing::instrument(name="change_subscriptions_cleanup", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
@@ -898,6 +905,7 @@ impl Subscriptions {
                 info!("Subscriber gone: removing subscription");
                 false
             } else if sub.permissions.is_expired() {
+                closed_subscriptions_uuids.push(*uuid);
                 info!("Permissions of Subscriber expired: removing subscription");
                 false
             } else {
@@ -918,7 +926,10 @@ impl ChangeSubscription {
         changed: Option<&HashMap<i32, HashSet<Field>>>,
         db: &Database,
     ) -> Result<(), NotificationError> {
-        if self.last_emitted.read().await.elapsed().as_millis() < self.interval_ms.as_millis() {
+        if self.interval_ms.is_some()
+            && self.last_emitted.read().await.elapsed().as_millis()
+                < self.interval_ms.unwrap().as_millis()
+        {
             return Ok(());
         }
 
@@ -984,7 +995,7 @@ impl ChangeSubscription {
                     if notifications.updates.is_empty() {
                         Ok(())
                     } else {
-                        match self.sender.send(notifications) {
+                        match self.sender.send(Some(notifications)) {
                             Ok(_number_of_receivers) => {
                                 let mut last_emitted = self.last_emitted.write().await;
                                 *last_emitted = Instant::now();
@@ -1032,7 +1043,7 @@ impl ChangeSubscription {
                     }
                     notifications
                 };
-                match self.sender.send(notifications) {
+                match self.sender.send(Some(notifications)) {
                     Ok(_number_of_receivers) => {
                         let mut last_emitted = self.last_emitted.write().await;
                         *last_emitted = Instant::now();
@@ -1045,6 +1056,9 @@ impl ChangeSubscription {
                 }
             }
         }
+    }
+    async fn send_none_to_receiver(&self) {
+        let _ = self.sender.send(None);
     }
 }
 
@@ -1744,7 +1758,7 @@ impl AuthorizedAccess<'_, '_> {
         valid_entries: HashMap<i32, HashSet<Field>>,
         buffer_size: Option<usize>,
         interval_ms: Option<u32>,
-    ) -> Result<impl Stream<Item = EntryUpdates>, SubscriptionError> {
+    ) -> Result<impl Stream<Item = Option<EntryUpdates>>, SubscriptionError> {
         if valid_entries.is_empty() {
             return Err(SubscriptionError::InvalidInput);
         }
@@ -1760,12 +1774,21 @@ impl AuthorizedAccess<'_, '_> {
             1
         };
 
+        let mut filter_ms = 0;
+        let interval_ms = match interval_ms {
+            Some(period) => {
+                filter_ms = period;
+                Some(Duration::from_millis(period as u64))
+            }
+            None => None,
+        };
+
         let (sender, receiver) = broadcast::channel(channel_capacity);
         let subscription = ChangeSubscription {
             entries: valid_entries.clone(),
             sender,
             permissions: self.permissions.clone(),
-            interval_ms: Duration::from_millis(interval_ms.unwrap() as u64),
+            interval_ms,
             last_emitted: Arc::new(RwLock::new(Instant::now())),
         };
 
@@ -1786,14 +1809,14 @@ impl AuthorizedAccess<'_, '_> {
 
         let _ = self
             .handle_subscribe_filter(
-                interval_ms.unwrap(),
+                filter_ms,
                 valid_entries.keys().cloned().collect(),
                 uuid_subscription,
             )
             .await;
 
-        let stream = BroadcastStream::new(receiver).filter_map(move |result| match result {
-            Ok(message) => Some(message),
+        let stream = BroadcastStream::new(receiver).map(move |result| match result {
+            Ok(message) => message,
             Err(err) => {
                 warn!(
                     "Slow subscriber with capacity {} lagged and missed signal updates: {}",
@@ -1835,9 +1858,8 @@ impl AuthorizedAccess<'_, '_> {
 
         //assert_eq!(current_filter_map.len(), target_filter_map.len());
 
-        let mut disjoint_map = HashMap::<i32, u32>::new();
-        if !current_filter_map.is_empty() {
-            disjoint_map = target_filter_map
+        let disjoint_map = if !current_filter_map.is_empty() {
+            target_filter_map
                 .into_iter()
                 .filter_map(|(k, v1)| {
                     let value = current_filter_map.get(&k);
@@ -1852,10 +1874,10 @@ impl AuthorizedAccess<'_, '_> {
                         None => Some((k, v1)),
                     }
                 })
-                .collect();
+                .collect()
         } else {
-            disjoint_map = target_filter_map;
-        }
+            target_filter_map
+        };
 
         DataBroker::update_filters_to_providers(
             disjoint_map,
@@ -2318,65 +2340,93 @@ impl DataBroker {
 
                 subscriptions.write().await.cleanup(); // Cleanup dropped subscriptions
 
-                // Cleanup change subscriptions and update filters
+                // Step 1
+                // clean up subscriptions
                 let closed_change_subscriptions =
                     subscriptions.write().await.cleanup_change_subscriptions();
-                let num_providers_connected = subscriptions
-                    .read()
-                    .await
-                    .signal_provider_subscriptions
-                    .len();
-                if !closed_change_subscriptions.is_empty()
-                    || num_providers_connected > num_providers
+
+                // let providers_before_cleaning =
+                //     &subscriptions.read().await.signal_provider_subscriptions;
+
+                let cleanedup_signal_providers =
+                    subscriptions.write().await.cleanup_signal_providers();
+
+                if !closed_change_subscriptions.is_empty() || !cleanedup_signal_providers.is_empty()
                 {
-                    let change_subscription_closed = closed_change_subscriptions.is_empty();
-                    num_providers += 1;
+                    // Step 2
+                    // Inform remaining subscriptions about not available providers
+                    {
+                        let remaining_subscriptions =
+                            &mut subscriptions.write().await.change_subscriptions;
 
-                    let current_filter_map = filter_manager
-                        .read()
-                        .await
-                        .get_signals_ids_with_lowest_interval();
-
-                    if !change_subscription_closed {
-                        filter_manager
-                            .write()
-                            .await
-                            .remove_interval_by_uuid(closed_change_subscriptions);
-                    }
-
-                    let target_filter_map = filter_manager
-                        .read()
-                        .await
-                        .get_signals_ids_with_lowest_interval();
-
-                    let mut disjoint_map = HashMap::<i32, u32>::new();
-                    if !change_subscription_closed {
-                        disjoint_map = current_filter_map
-                            .into_iter()
-                            .filter_map(|(k, v1)| {
-                                let value = target_filter_map.get(&k);
-                                match value {
-                                    Some(sample_interval) => {
-                                        if *sample_interval != v1 {
-                                            Some((k, *sample_interval))
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                    None => Some((k, 0)),
+                        // check which subscription contains a signal of the not available providers:
+                        for (_, provider_signals_set) in cleanedup_signal_providers {
+                            for (_, subscription) in remaining_subscriptions.iter_mut() {
+                                let key_set: HashSet<_> =
+                                    subscription.entries.keys().cloned().collect();
+                                if key_set.is_subset(&provider_signals_set) {
+                                    subscription.send_none_to_receiver().await;
                                 }
-                            })
-                            .collect();
-                    } else {
-                        disjoint_map = current_filter_map;
+                            }
+                        }
                     }
 
-                    Self::update_filters_to_providers(disjoint_map, subscriptions.read().await)
-                        .await;
-                }
+                    let read_subscriptions = subscriptions.read().await;
 
-                if num_providers_connected < num_providers {
-                    num_providers -= 1;
+                    let num_providers_connected =
+                        read_subscriptions.signal_provider_subscriptions.len();
+
+                    if !closed_change_subscriptions.is_empty()
+                        || num_providers_connected > num_providers
+                    {
+                        let change_subscription_closed = closed_change_subscriptions.is_empty();
+                        num_providers += 1;
+
+                        let current_filter_map = filter_manager
+                            .read()
+                            .await
+                            .get_signals_ids_with_lowest_interval();
+
+                        if !change_subscription_closed {
+                            filter_manager
+                                .write()
+                                .await
+                                .remove_interval_by_uuid(closed_change_subscriptions);
+                        }
+
+                        let target_filter_map = filter_manager
+                            .read()
+                            .await
+                            .get_signals_ids_with_lowest_interval();
+
+                        let disjoint_map = if !change_subscription_closed {
+                            current_filter_map
+                                .into_iter()
+                                .filter_map(|(k, v1)| {
+                                    let value = target_filter_map.get(&k);
+                                    match value {
+                                        Some(sample_interval) => {
+                                            if *sample_interval != v1 {
+                                                Some((k, *sample_interval))
+                                            } else {
+                                                None
+                                            }
+                                        }
+                                        None => Some((k, 0)),
+                                    }
+                                })
+                                .collect()
+                        } else {
+                            current_filter_map
+                        };
+
+                        Self::update_filters_to_providers(disjoint_map, subscriptions.read().await)
+                            .await;
+                    }
+
+                    if num_providers_connected < num_providers {
+                        num_providers -= 1;
+                    }
                 }
             }
         });
@@ -4626,6 +4676,7 @@ pub mod tests {
             .subscribe(
                 HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
                 buffer_size,
+                None,
             )
             .await
             .expect("subscription should succeed");
@@ -4633,15 +4684,17 @@ pub mod tests {
         // Stream should yield initial notification with current values i.e. NotAvailable
         match stream.next().await {
             Some(entry) => {
-                assert_eq!(entry.updates.len(), 1);
-                assert_eq!(
-                    entry.updates[0].update.path,
-                    Some("test.datapoint1".to_string())
-                );
-                assert_eq!(
-                    entry.updates[0].update.datapoint.as_ref().unwrap().value,
-                    DataValue::NotAvailable
-                );
+                if let Some(value) = entry {
+                    assert_eq!(value.updates.len(), 1);
+                    assert_eq!(
+                        value.updates[0].update.path,
+                        Some("test.datapoint1".to_string())
+                    );
+                    assert_eq!(
+                        value.updates[0].update.datapoint.as_ref().unwrap().value,
+                        DataValue::NotAvailable
+                    );
+                }
             }
             None => {
                 panic!("did not expect stream end")
@@ -4674,15 +4727,17 @@ pub mod tests {
         // Value has been set, expect the next item in stream to match.
         match stream.next().await {
             Some(entry) => {
-                assert_eq!(entry.updates.len(), 1);
-                assert_eq!(
-                    entry.updates[0].update.path,
-                    Some("test.datapoint1".to_string())
-                );
-                assert_eq!(
-                    entry.updates[0].update.datapoint.as_ref().unwrap().value,
-                    DataValue::Int32(101)
-                );
+                if let Some(value) = entry {
+                    assert_eq!(value.updates.len(), 1);
+                    assert_eq!(
+                        value.updates[0].update.path,
+                        Some("test.datapoint1".to_string())
+                    );
+                    assert_eq!(
+                        value.updates[0].update.datapoint.as_ref().unwrap().value,
+                        DataValue::Int32(101)
+                    );
+                }
             }
             None => {
                 panic!("did not expect stream end")
@@ -4736,6 +4791,7 @@ pub mod tests {
                 HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
                 // 1001 is just outside valid range 0-1000
                 Some(1001),
+                None,
             )
             .await
         {

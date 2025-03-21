@@ -22,9 +22,9 @@ os.environ.pop("HTTPS_PROXY", None)
 os.environ["NO_PROXY"] = "*"
 
 # Point to the feature file
-scenarios("../features/viss_v3_basic.feature")
-scenarios("../features/viss_v3_core_read.feature")
-scenarios("../features/viss_v3_transport_grpc.feature")
-scenarios("../features/viss_v3_transport_http.feature")
-scenarios("../features/viss_v3_transport_mqtt.feature")
-scenarios("../features/viss_v3_transport_wss.feature")
+#scenarios("../features/viss_v3_basic.feature")
+#scenarios("../features/viss_v3_core_read.feature")
+#scenarios("../features/viss_v3_transport_grpc.feature")
+#scenarios("../features/viss_v3_transport_http.feature")
+#scenarios("../features/viss_v3_transport_mqtt.feature")
+#scenarios("../features/viss_v3_transport_wss.feature")

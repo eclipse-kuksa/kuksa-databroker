@@ -1119,48 +1119,54 @@ async fn get_signal(
 }
 
 fn convert_to_proto_stream(
-    input: impl Stream<Item = broker::EntryUpdates>,
+    input: impl Stream<Item = Option<broker::EntryUpdates>>,
     size: usize,
 ) -> impl Stream<Item = Result<proto::SubscribeResponse, tonic::Status>> {
-    input.map(move |item| {
-        let mut entries: HashMap<String, proto::Datapoint> = HashMap::with_capacity(size);
-        for update in item.updates {
-            let update_datapoint: Option<proto::Datapoint> = match update.update.datapoint {
-                Some(datapoint) => datapoint.into(),
-                None => None,
-            };
-            if let Some(dp) = update_datapoint {
-                entries.insert(
-                    update
-                        .update
-                        .path
-                        .expect("Something wrong with update path of subscriptions!"),
-                    dp,
-                );
+    input.filter_map(move |item| match item {
+        Some(entry) => {
+            let mut entries: HashMap<String, proto::Datapoint> = HashMap::with_capacity(size);
+            for update in entry.updates {
+                let update_datapoint: Option<proto::Datapoint> = match update.update.datapoint {
+                    Some(datapoint) => datapoint.into(),
+                    None => None,
+                };
+                if let Some(dp) = update_datapoint {
+                    entries.insert(
+                        update
+                            .update
+                            .path
+                            .expect("Something wrong with update path of subscriptions!"),
+                        dp,
+                    );
+                }
             }
+            let response = proto::SubscribeResponse { entries };
+            Some(Ok(response))
         }
-        let response = proto::SubscribeResponse { entries };
-        Ok(response)
+        None => None,
     })
 }
 
 fn convert_to_proto_stream_id(
-    input: impl Stream<Item = broker::EntryUpdates>,
+    input: impl Stream<Item = Option<broker::EntryUpdates>>,
     size: usize,
 ) -> impl Stream<Item = Result<proto::SubscribeByIdResponse, tonic::Status>> {
-    input.map(move |item| {
-        let mut entries: HashMap<i32, proto::Datapoint> = HashMap::with_capacity(size);
-        for update in item.updates {
-            let update_datapoint: Option<proto::Datapoint> = match update.update.datapoint {
-                Some(datapoint) => datapoint.into(),
-                None => None,
-            };
-            if let Some(dp) = update_datapoint {
-                entries.insert(update.id, dp);
+    input.filter_map(move |item| match item {
+        Some(entry) => {
+            let mut entries: HashMap<i32, proto::Datapoint> = HashMap::with_capacity(size);
+            for update in entry.updates {
+                let update_datapoint: Option<proto::Datapoint> = match update.update.datapoint {
+                    Some(datapoint) => datapoint.into(),
+                    None => None,
+                };
+                if let Some(dp) = update_datapoint {
+                    entries.insert(update.id, dp);
+                }
             }
+            let response = proto::SubscribeByIdResponse { entries };
+            Some(Ok(response))
         }
-        let response = proto::SubscribeByIdResponse { entries };
-        Ok(response)
+        None => None,
     })
 }
 

@@ -56,12 +56,12 @@ class WebSocketsVISSClient:
         }
         logger.debug(f"Storing sent envelope: {envelope}")
         self.sent_messages.insert(envelope)
-        self._read_all_websocket_messages()
+        self.read_all_websocket_messages()
 
     # TODO: message should be "consumed" by the test, e.g. only checked once and then removed from the list of
     # received messages.
 
-    def _read_all_websocket_messages(self):
+    def read_all_websocket_messages(self):
         self._ws.settimeout(float(self.pytestconfig.getini('viss_message_timeout')))
         while True:
             try:
@@ -77,6 +77,7 @@ class WebSocketsVISSClient:
                     envelope['subscriptionId'] = message['subscriptionId']
                 if "action" in message:
                     envelope['action'] = message['action']
+                #print("RECEIVED ENVELOPE: ", envelope)
                 self.received_messages.insert(envelope)
                 logger.debug(f"Storing received envelope: {envelope}")
             except websocket.WebSocketTimeoutException:
@@ -127,8 +128,11 @@ class WebSocketsVISSClient:
                 search_template &= condition  # Combine with AND
 
         logger.debug(f"Query template: {search_template}")
+
+        #print("QUERY: ", search_template)
         results = self.received_messages.search(search_template)
         logger.debug(f"Found messages: {results}")
+        #print("QUERY RESULT: ", search_template)
         return results
 
     def find_message(self, *,
@@ -142,4 +146,5 @@ class WebSocketsVISSClient:
                                      authorization=authorization)
         result = max(results,key=lambda x: x["timestamp"], default=None)
         logger.debug(f"Found latest message: {result}")
+        #print("FINAL RESULT: ", result)
         return result

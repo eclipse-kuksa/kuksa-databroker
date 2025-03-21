@@ -748,22 +748,27 @@ fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> Da
 
 #[cfg_attr(feature="otel", tracing::instrument(name="kuksa_val_v1_convert_to_proto_stream", skip(input), fields(timestamp=chrono::Utc::now().to_string())))]
 fn convert_to_proto_stream(
-    input: impl Stream<Item = broker::EntryUpdates>,
+    input: impl Stream<Item = Option<broker::EntryUpdates>>,
 ) -> impl Stream<Item = Result<proto::SubscribeResponse, tonic::Status>> {
-    input.map(move |item| {
-        let mut updates = Vec::new();
-        for update in item.updates {
-            updates.push(proto::EntryUpdate {
-                entry: Some(proto::DataEntry::from(update.update)),
-                fields: update
-                    .fields
-                    .iter()
-                    .map(|field| proto::Field::from(field) as i32)
-                    .collect(),
-            });
+    input.map(move |item| match item {
+        Some(entry) => {
+            let mut updates = Vec::new();
+            for update in entry.updates {
+                updates.push(proto::EntryUpdate {
+                    entry: Some(proto::DataEntry::from(update.update)),
+                    fields: update
+                        .fields
+                        .iter()
+                        .map(|field| proto::Field::from(field) as i32)
+                        .collect(),
+                });
+            }
+            let response = proto::SubscribeResponse { updates };
+            Ok(response)
         }
-        let response = proto::SubscribeResponse { updates };
-        Ok(response)
+        None => {
+            todo!()
+        }
     })
 }
 

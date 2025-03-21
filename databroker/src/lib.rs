@@ -13,7 +13,7 @@
 
 pub mod authorization;
 pub mod broker;
-pub mod filter_manager;
+pub mod filter;
 pub mod glob;
 pub mod grpc;
 pub mod open_telemetry;
