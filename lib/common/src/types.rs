@@ -60,7 +60,7 @@ pub type SubscribeByIdResponseTypeV2 = tonic::Streaming<protoV2::SubscribeByIdRe
 pub type ProvideResponseTypeV2 = ();
 pub type ActuateResponseTypeV2 = ();
 pub type OpenProviderStreamResponseTypeV2 = OpenProviderStream;
-pub type MetadataTypeV2 = (PathTypeV2, PathTypeV2);
+pub type MetadataTypeV2 = (PathTypeV2, String);
 pub type MetadataResponseTypeV2 = Vec<protoV2::Metadata>;
 pub type ServerInfoTypeV2 = ServerInfo;
 

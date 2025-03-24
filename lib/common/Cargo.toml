@@ -29,6 +29,10 @@ http = "0.2.8"
 log = "0.4"
 env_logger = "0.11"
 
+[dev-dependencies]
+prost = "0.12"
+prost-types = "0.12"
+
 [lib]
 name = "kuksa_common"
 crate-type = ["lib"]
