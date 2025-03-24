@@ -1324,12 +1324,12 @@ mod tests {
                 SDVprotoV1::datapoint::Value::Uint64Value(1000),
             ),
             (
-                protoV1::datapoint::Value::Float(3.14),
-                SDVprotoV1::datapoint::Value::FloatValue(3.14),
+                protoV1::datapoint::Value::Float(3.2),
+                SDVprotoV1::datapoint::Value::FloatValue(3.2),
             ),
             (
-                protoV1::datapoint::Value::Double(6.28),
-                SDVprotoV1::datapoint::Value::DoubleValue(6.28),
+                protoV1::datapoint::Value::Double(6.2),
+                SDVprotoV1::datapoint::Value::DoubleValue(6.2),
             ),
             (
                 protoV1::datapoint::Value::StringArray(protoV1::StringArray {
@@ -1459,22 +1459,6 @@ mod tests {
         let input: PathSDVTypeV1 = vec!["path1".to_string(), "path2".to_string()];
         let output: PathTypeV1 = input.convert_to_v1();
         assert_eq!(output, vec!["path1", "path2"]);
-    }
-
-    // impl ConvertToV1<PublishResponseTypeV1> for PublishResponseSDVTypeV1 {}
-    #[test]
-    fn test_convert_to_v1_publish_sdv() {
-        // Angenommen, PublishResponseSDVTypeV1 hat einige Felder
-        let sdv_response = PublishResponseSDVTypeV1 {
-            errors: HashMap::new(),
-        };
-
-        let v1_response: PublishResponseTypeV1 = sdv_response.convert_to_v1();
-
-        // Überprüfe die Konvertierung anhand von erwarteten Werten
-        let expected = ();
-
-        assert_eq!(v1_response, expected);
     }
 
     // impl ConvertToV1<GetResponseTypeV1> for GetResponseSDVTypeV1 {}
@@ -1900,8 +1884,8 @@ mod tests {
                 SDVValue::Uint64Value(18446744073709551615),
                 V1Value::Uint64(18446744073709551615),
             ),
-            (SDVValue::FloatValue(3.14), V1Value::Float(3.14)),
-            (SDVValue::DoubleValue(2.718), V1Value::Double(2.718)),
+            (SDVValue::FloatValue(3.2), V1Value::Float(3.2)),
+            (SDVValue::DoubleValue(2.8), V1Value::Double(2.8)),
             (
                 SDVValue::StringArray(SDVprotoV1::StringArray {
                     values: vec!["a".to_string(), "b".to_string()],
@@ -1992,14 +1976,6 @@ mod tests {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// ConvertToV1 Tests (V2 to V1)
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // impl ConvertToV1<ActuateResponseTypeV1> for ActuateResponseTypeV2 {}
-    #[test]
-    fn test_convert_to_v1_actuate_response_v2() {
-        let response: ActuateResponseTypeV2 = ();
-        let converted: ActuateResponseTypeV1 = response.convert_to_v1();
-        assert_eq!(converted, ());
-    }
 
     // impl ConvertToV1<MetadataResponseTypeV1> for MetadataResponseTypeV2 {}
     #[test]
@@ -2332,15 +2308,15 @@ mod tests {
             ),
             (
                 Some(protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Float(3.14)),
+                    typed_value: Some(protoV2::value::TypedValue::Float(3.2)),
                 }),
-                Some(protoV1::datapoint::Value::Float(3.14)),
+                Some(protoV1::datapoint::Value::Float(3.2)),
             ),
             (
                 Some(protoV2::Value {
-                    typed_value: Some(protoV2::value::TypedValue::Double(2.71)),
+                    typed_value: Some(protoV2::value::TypedValue::Double(2.7)),
                 }),
-                Some(protoV1::datapoint::Value::Double(2.71)),
+                Some(protoV1::datapoint::Value::Double(2.7)),
             ),
             (
                 Some(protoV2::Value {
@@ -2569,17 +2545,17 @@ mod tests {
             ),
             (
                 protoV1::Datapoint {
-                    value: Some(protoV1::datapoint::Value::Float(3.14)),
+                    value: Some(protoV1::datapoint::Value::Float(3.2)),
                     timestamp: None,
                 },
-                Some(protoV2::value::TypedValue::Float(3.14)),
+                Some(protoV2::value::TypedValue::Float(3.2)),
             ),
             (
                 protoV1::Datapoint {
-                    value: Some(protoV1::datapoint::Value::Double(3.14)),
+                    value: Some(protoV1::datapoint::Value::Double(3.2)),
                     timestamp: None,
                 },
-                Some(protoV2::value::TypedValue::Double(3.14)),
+                Some(protoV2::value::TypedValue::Double(3.2)),
             ),
             (
                 protoV1::Datapoint {
