@@ -10,50 +10,22 @@
 *
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
-use databroker_proto::kuksa::val::v2::signal_id::Signal::Path;
-use databroker_proto::kuksa::val::v2::val_client::ValClient;
 use databroker_proto::kuksa::val::v2::{
-    ActuateRequest, GetValueRequest, ListMetadataRequest, PublishValueRequest, SubscribeRequest,
-    SubscribeResponse,
+    signal_id::Signal::Path, val_client::ValClient, ActuateRequest, BatchActuateRequest, Datapoint,
+    GetServerInfoRequest, GetValueRequest, GetValuesRequest, ListMetadataRequest,
+    PublishValueRequest, SignalId, SubscribeByIdRequest, SubscribeRequest, Value,
 };
-use databroker_proto::kuksa::val::v2::{
-    BatchActuateRequest, GetServerInfoRequest, GetValuesRequest, Metadata,
-    OpenProviderStreamResponse, SignalId, Value,
-};
-use databroker_proto::kuksa::val::v2::{Datapoint, OpenProviderStreamRequest};
-use databroker_proto::kuksa::val::v2::{SubscribeByIdRequest, SubscribeByIdResponse};
 use http::Uri;
-pub use kuksa_common::{Client, ClientError, ClientError::Status};
+pub use kuksa_common::{Client, ClientError, ClientTraitV2};
 use prost_types::Timestamp;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::time::SystemTime;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::Streaming;
+use tonic::async_trait;
 
-#[derive(Debug)]
-pub struct ServerInfo {
-    pub name: String,
-    pub commit_hash: String,
-    pub version: String,
-}
-
-pub struct OpenProviderStream {
-    pub sender: tokio::sync::mpsc::Sender<OpenProviderStreamRequest>,
-    pub receiver_stream: Streaming<OpenProviderStreamResponse>,
-}
-
-impl OpenProviderStream {
-    fn new(
-        sender: tokio::sync::mpsc::Sender<OpenProviderStreamRequest>,
-        receiver_stream: Streaming<OpenProviderStreamResponse>,
-    ) -> Self {
-        OpenProviderStream {
-            sender,
-            receiver_stream,
-        }
-    }
-}
+use kuksa_common::conversion::{ConvertToV1, ConvertToV2};
+use kuksa_common::types::{OpenProviderStream, ServerInfo};
 
 #[derive(Debug)]
 pub struct KuksaClientV2 {
@@ -72,6 +44,163 @@ impl KuksaClientV2 {
         Self::new(uri)
     }
 
+    /// Resolves the databroker ids for the specified list of paths and returns them in a HashMap<String, i32>
+    ///
+    /// Returns (GRPC error code):
+    ///   NOT_FOUND if the specified root branch does not exist.
+    ///   UNAUTHENTICATED if no credentials provided or credentials has expired
+    ///
+    pub async fn resolve_ids_for_paths(
+        &mut self,
+        vss_paths: Vec<String>,
+    ) -> Result<HashMap<String, i32>, ClientError> {
+        let mut hash_map = HashMap::new();
+
+        for path in vss_paths {
+            let vec = self.list_metadata((path, "*".to_string())).await?;
+            let metadata = vec.first().unwrap();
+
+            hash_map.insert(metadata.path.clone(), metadata.id);
+        }
+
+        Ok(hash_map)
+    }
+
+    fn convert_to_actuate_requests(values: HashMap<String, Value>) -> Vec<ActuateRequest> {
+        let mut actuate_requests = Vec::with_capacity(values.len());
+        for (signal_path, value) in values {
+            let actuate_request = ActuateRequest {
+                signal_id: Some(SignalId {
+                    signal: Some(Path(signal_path)),
+                }),
+                value: Some(value),
+            };
+
+            actuate_requests.push(actuate_request)
+        }
+        actuate_requests
+    }
+}
+
+#[async_trait]
+impl kuksa_common::ClientTraitV1 for KuksaClientV2 {
+    type SensorUpdateType = kuksa_common::types::SensorUpdateTypeV1;
+    type UpdateActuationType = kuksa_common::types::UpdateActuationTypeV1;
+    type PathType = kuksa_common::types::PathTypeV1;
+    type SubscribeType = kuksa_common::types::SubscribeTypeV1;
+    type PublishResponseType = kuksa_common::types::PublishResponseTypeV1;
+    type GetResponseType = kuksa_common::types::GetResponseTypeV1;
+    type SubscribeResponseType = kuksa_common::types::SubscribeResponseTypeV1;
+    type ProvideResponseType = kuksa_common::types::ProvideResponseTypeV1;
+    type ActuateResponseType = kuksa_common::types::ActuateResponseTypeV1;
+    type MetadataResponseType = kuksa_common::types::MetadataResponseTypeV1;
+
+    async fn set_current_values(
+        &mut self,
+        datapoints: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError> {
+        for (signal_path, datapoint) in datapoints {
+            self.publish_value(signal_path, datapoint.convert_to_v2())
+                .await?
+        }
+        Ok(())
+    }
+
+    async fn get_current_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError> {
+        Ok(self
+            .get_values(paths.convert_to_v2())
+            .await
+            .unwrap()
+            .convert_to_v1())
+    }
+
+    async fn subscribe_target_values(
+        &mut self,
+        _paths: Self::PathType,
+    ) -> Result<Self::ProvideResponseType, ClientError> {
+        unimplemented!("The concept behind target and current value has changed! Target values will not get stored anymore.")
+        // here we could default to call a kuksa.val.v1 function as well but I would not recommend.
+        // This would suggerate that it still works which it won't
+        // Other option would be to open a provider stream here and return stuff but this would change the return type aka the dev has to adapt anyways.
+    }
+
+    async fn get_target_values(
+        &mut self,
+        _paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError> {
+        unimplemented!("The concept behind target and current value has changed! Target values will not get stored anymore.")
+        // here we could default to call a kuksa.val.v1 function as well but I would not recommend.
+        // This would suggerate that it still works which it won't
+        // Other option would be to open a provider stream here and return stuff but this would change the return type aka the dev has to adapt anyways.
+    }
+
+    async fn subscribe_current_values(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError> {
+        Ok(ClientTraitV2::subscribe(self, paths.convert_to_v2(), None)
+            .await
+            .unwrap()
+            .convert_to_v1())
+    }
+
+    async fn subscribe(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError> {
+        Ok(ClientTraitV2::subscribe(self, paths.convert_to_v2(), None)
+            .await
+            .unwrap()
+            .convert_to_v1())
+    }
+
+    async fn set_target_values(
+        &mut self,
+        datapoints: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError> {
+        let result = self
+            .batch_actuate(datapoints.convert_to_v2())
+            .await
+            .unwrap();
+        let converted_result = result.convert_to_v1();
+        Ok(converted_result)
+    }
+
+    async fn get_metadata(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::MetadataResponseType, ClientError> {
+        let result = self.list_metadata(paths.convert_to_v2()).await.unwrap();
+        let converted_result = result.convert_to_v1();
+        Ok(converted_result)
+    }
+}
+
+#[async_trait]
+impl ClientTraitV2 for KuksaClientV2 {
+    type SensorUpdateType = kuksa_common::types::SensorUpdateTypeV2;
+    type UpdateActuationType = kuksa_common::types::UpdateActuationTypeV2;
+    type MultipleUpdateActuationType = kuksa_common::types::MultipleUpdateActuationTypeV2;
+    type PathType = kuksa_common::types::PathTypeV2;
+    type PathsType = kuksa_common::types::PathsTypeV2;
+    type IdsType = kuksa_common::types::IdsTypeV2;
+    type SubscribeType = kuksa_common::types::SubscribeTypeV2;
+    type SubscribeByIdType = kuksa_common::types::SubscribeByIdTypeV2;
+    type PublishResponseType = kuksa_common::types::PublishResponseTypeV2;
+    type GetResponseType = kuksa_common::types::GetResponseTypeV2;
+    type MultipleGetResponseType = kuksa_common::types::MultipleGetResponseTypeV2;
+    type SubscribeResponseType = kuksa_common::types::SubscribeResponseTypeV2;
+    type SubscribeByIdResponseType = kuksa_common::types::SubscribeByIdResponseTypeV2;
+    type ProvideResponseType = kuksa_common::types::ProvideResponseTypeV2;
+    type ActuateResponseType = kuksa_common::types::ActuateResponseTypeV2;
+    type OpenProviderStreamResponseType = kuksa_common::types::OpenProviderStreamResponseTypeV2;
+    type MetadataType = kuksa_common::types::MetadataTypeV2;
+    type MetadataResponseType = kuksa_common::types::MetadataResponseTypeV2;
+    type ServerInfoType = kuksa_common::types::ServerInfoTypeV2;
+
     /// Get the latest value of a signal
     /// If the signal exist but does not have a valid value
     /// a DataPoint where value is None shall be returned.
@@ -83,7 +212,10 @@ impl KuksaClientV2 {
     ///   INVALID_ARGUMENT if the request is empty or provided path is too long
     ///       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
     ///
-    pub async fn get_value(&mut self, path: &str) -> Result<Option<Datapoint>, ClientError> {
+    async fn get_value(
+        &mut self,
+        path: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -91,7 +223,7 @@ impl KuksaClientV2 {
 
         let get_value_request = GetValueRequest {
             signal_id: Some(SignalId {
-                signal: Some(Path(path.to_string())),
+                signal: Some(Path(path)),
             }),
         };
 
@@ -100,7 +232,7 @@ impl KuksaClientV2 {
                 let message = response.into_inner();
                 Ok(message.data_point)
             }
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -115,10 +247,10 @@ impl KuksaClientV2 {
     ///   INVALID_ARGUMENT if the request is empty or provided path is too long
     ///       - MAX_REQUEST_PATH_LENGTH: usize = 1000;
     ///
-    pub async fn get_values(
+    async fn get_values(
         &mut self,
-        signal_paths: Vec<&str>,
-    ) -> Result<Vec<Datapoint>, ClientError> {
+        signal_paths: Self::PathsType,
+    ) -> Result<Self::MultipleGetResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -138,7 +270,7 @@ impl KuksaClientV2 {
                 let message = response.into_inner();
                 Ok(message.data_points)
             }
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -156,11 +288,11 @@ impl KuksaClientV2 {
     ///            e.g. if sending an unsupported enum value
     ///       - if the published value is out of the min/max range specified
     ///
-    pub async fn publish_value(
+    async fn publish_value(
         &mut self,
-        signal_path: &str,
-        value: Value,
-    ) -> Result<(), ClientError> {
+        signal_path: Self::PathType,
+        value: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -175,7 +307,7 @@ impl KuksaClientV2 {
 
         let publish_value_request = PublishValueRequest {
             signal_id: Some(SignalId {
-                signal: Some(Path(signal_path.to_string())),
+                signal: Some(Path(signal_path)),
             }),
             data_point: Some(Datapoint {
                 timestamp: Some(Timestamp { seconds, nanos }),
@@ -185,7 +317,7 @@ impl KuksaClientV2 {
 
         match client.publish_value(publish_value_request).await {
             Ok(_response) => Ok(()),
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -205,7 +337,11 @@ impl KuksaClientV2 {
     ///            e.g. if sending an unsupported enum value
     ///       - if the provided value is out of the min/max range specified
     ///
-    pub async fn actuate(&mut self, signal_path: &str, value: Value) -> Result<(), ClientError> {
+    async fn actuate(
+        &mut self,
+        signal_path: Self::PathType,
+        value: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -213,14 +349,14 @@ impl KuksaClientV2 {
 
         let actuate_request = ActuateRequest {
             signal_id: Some(SignalId {
-                signal: Some(Path(signal_path.to_string())),
+                signal: Some(Path(signal_path)),
             }),
             value: Some(value),
         };
 
         match client.actuate(actuate_request).await {
             Ok(_response) => Ok(()),
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -242,10 +378,10 @@ impl KuksaClientV2 {
     ///            e.g. if sending an unsupported enum value
     ///       - if any of the provided actuators values are out of the min/max range specified
     ///
-    pub async fn batch_actuate(
+    async fn batch_actuate(
         &mut self,
-        values: HashMap<String, Value>,
-    ) -> Result<(), ClientError> {
+        values: Self::MultipleUpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -257,7 +393,7 @@ impl KuksaClientV2 {
 
         match client.batch_actuate(batch_actuate_request).await {
             Ok(_response) => Ok(()),
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -279,27 +415,25 @@ impl KuksaClientV2 {
     /// If a subscriber is slow to consume signals, messages will be buffered up
     /// to the specified buffer_size before the oldest messages are dropped.
     ///
-    pub async fn subscribe(
+    async fn subscribe(
         &mut self,
-        signal_paths: Vec<&str>,
+        signal_paths: Self::SubscribeType,
         buffer_size: Option<u32>,
-    ) -> Result<Streaming<SubscribeResponse>, ClientError> {
+    ) -> Result<Self::SubscribeResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
         );
 
-        let paths: Vec<String> = signal_paths.iter().map(|&s| s.to_string()).collect();
-
         let subscribe_request = SubscribeRequest {
-            signal_paths: paths,
+            signal_paths,
             buffer_size: buffer_size.unwrap_or(0),
             filter: None,
         };
 
         match client.subscribe(subscribe_request).await {
             Ok(response) => Ok(response.into_inner()),
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -321,11 +455,11 @@ impl KuksaClientV2 {
     /// If a subscriber is slow to consume signals, messages will be buffered up
     /// to the specified buffer_size before the oldest messages are dropped.
     ///
-    pub async fn subscribe_by_id(
+    async fn subscribe_by_id(
         &mut self,
-        signal_ids: Vec<i32>,
+        signal_ids: Self::SubscribeByIdType,
         buffer_size: Option<u32>,
-    ) -> Result<Streaming<SubscribeByIdResponse>, ClientError> {
+    ) -> Result<Self::SubscribeByIdResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -339,7 +473,7 @@ impl KuksaClientV2 {
 
         match client.subscribe_by_id(subscribe_by_id_request).await {
             Ok(response) => Ok(response.into_inner()),
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -374,10 +508,10 @@ impl KuksaClientV2 {
     ///    - Provider returns BatchActuateStreamResponse <- Databroker sends BatchActuateStreamRequest
     ///        No error definition, a BatchActuateStreamResponse is expected from provider.
     ///
-    pub async fn open_provider_stream(
+    async fn open_provider_stream(
         &mut self,
         buffer_size: Option<usize>,
-    ) -> Result<OpenProviderStream, ClientError> {
+    ) -> Result<Self::OpenProviderStreamResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -391,7 +525,7 @@ impl KuksaClientV2 {
                 let message = response.into_inner();
                 Ok(OpenProviderStream::new(sender, message))
             }
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
@@ -402,19 +536,18 @@ impl KuksaClientV2 {
     ///   UNAUTHENTICATED if no credentials provided or credentials has expired
     ///   INVALID_ARGUMENT if the provided path or wildcard is wrong.
     ///
-    pub async fn list_metadata(
+    async fn list_metadata(
         &mut self,
-        root: &str,
-        filter: &str,
-    ) -> Result<Vec<Metadata>, ClientError> {
+        tuple: Self::MetadataType,
+    ) -> Result<Self::MetadataResponseType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
         );
 
         let list_metadata_request = ListMetadataRequest {
-            root: root.to_string(),
-            filter: filter.to_string(),
+            root: tuple.0,
+            filter: tuple.1,
         };
 
         match client.list_metadata(list_metadata_request).await {
@@ -422,12 +555,12 @@ impl KuksaClientV2 {
                 let metadata_response = response.into_inner();
                 Ok(metadata_response.metadata)
             }
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
     /// Get server information
-    pub async fn get_server_info(&mut self) -> Result<ServerInfo, ClientError> {
+    async fn get_server_info(&mut self) -> Result<Self::ServerInfoType, ClientError> {
         let mut client = ValClient::with_interceptor(
             self.basic_client.get_channel().await?.clone(),
             self.basic_client.get_auth_interceptor(),
@@ -445,45 +578,15 @@ impl KuksaClientV2 {
                 };
                 Ok(server_info)
             }
-            Err(err) => Err(Status(err)),
+            Err(err) => Err(ClientError::Status(err)),
         }
     }
 
-    /// Resolves the databroker ids for the specified list of paths and returns them in a HashMap<String, i32>
-    ///
-    /// Returns (GRPC error code):
-    ///   NOT_FOUND if the specified root branch does not exist.
-    ///   UNAUTHENTICATED if no credentials provided or credentials has expired
-    ///
-    pub async fn resolve_ids_for_paths(
+    async fn provide_actuation(
         &mut self,
-        vss_paths: Vec<&str>,
-    ) -> Result<HashMap<String, i32>, ClientError> {
-        let mut hash_map = HashMap::new();
-
-        for path in vss_paths {
-            let vec = self.list_metadata(path, "*").await?;
-            let metadata = vec.first().unwrap();
-
-            hash_map.insert(metadata.path.clone(), metadata.id);
-        }
-
-        Ok(hash_map)
-    }
-
-    fn convert_to_actuate_requests(values: HashMap<String, Value>) -> Vec<ActuateRequest> {
-        let mut actuate_requests = Vec::with_capacity(values.len());
-        for (signal_path, value) in values {
-            let actuate_request = ActuateRequest {
-                signal_id: Some(SignalId {
-                    signal: Some(Path(signal_path)),
-                }),
-                value: Some(value),
-            };
-
-            actuate_requests.push(actuate_request)
-        }
-        actuate_requests
+        _path: Self::PathType,
+    ) -> Result<Self::ProvideResponseType, ClientError> {
+        todo!()
     }
 }
 
@@ -526,7 +629,7 @@ mod tests {
     async fn test_get_value() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.get_value("Vehicle.Speed").await;
+        let response = client.get_value("Vehicle.Speed".to_string()).await;
         assert!(response.is_ok());
     }
 
@@ -535,7 +638,7 @@ mod tests {
     async fn test_get_value_with_empty_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.get_value("").await;
+        let response = client.get_value("".to_string()).await;
 
         let err = response.unwrap_err();
         expect_status_code(err, NotFound);
@@ -546,7 +649,9 @@ mod tests {
     async fn test_get_value_with_invalid_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.get_value("Vehicle.Some.Invalid.Path").await;
+        let response = client
+            .get_value("Vehicle.Some.Invalid.Path".to_string())
+            .await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -559,7 +664,7 @@ mod tests {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let long_path = "Vehicle.".repeat(200) + "Speed";
-        let response = client.get_value(&long_path).await;
+        let response = client.get_value(long_path).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -571,7 +676,7 @@ mod tests {
     async fn test_get_value_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let response = client.get_value("Vehicle.Speed").await;
+        let response = client.get_value("Vehicle.Speed".to_string()).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -583,7 +688,10 @@ mod tests {
     async fn test_get_values_will_return_ok() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
+        let signal_paths = vec![
+            "Vehicle.Speed".to_string(),
+            "Vehicle.AverageSpeed".to_string(),
+        ];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_ok());
     }
@@ -593,7 +701,7 @@ mod tests {
     async fn test_get_values_with_empty_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_paths = vec!["Vehicle.Speed", ""];
+        let signal_paths = vec!["Vehicle.Speed".to_string(), "".to_string()];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_err());
 
@@ -606,7 +714,10 @@ mod tests {
     async fn test_get_values_with_invalid_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_paths = vec!["Vehicle.Speed", "Vehicle.Some.Invalid.Path"];
+        let signal_paths = vec![
+            "Vehicle.Speed".to_string(),
+            "Vehicle.Some.Invalid.Path".to_string(),
+        ];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_err());
 
@@ -619,7 +730,10 @@ mod tests {
     async fn test_get_values_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let signal_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
+        let signal_paths = vec![
+            "Vehicle.Speed".to_string(),
+            "Vehicle.AverageSpeed".to_string(),
+        ];
         let response = client.get_values(signal_paths).await;
         assert!(response.is_err());
 
@@ -632,12 +746,14 @@ mod tests {
     async fn test_publish_value_will_return_ok() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.Speed";
+        let signal_path = "Vehicle.Speed".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Float(120.0)),
         };
 
-        let response = client.publish_value(signal_path, value.clone()).await;
+        let response = client
+            .publish_value(signal_path.clone(), value.clone())
+            .await;
         assert!(response.is_ok());
 
         let datapoint_option = client.get_value(signal_path).await.unwrap();
@@ -651,7 +767,7 @@ mod tests {
     async fn test_publish_value_with_invalid_data_type_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.Speed";
+        let signal_path = "Vehicle.Speed".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Int32(100)),
         };
@@ -668,7 +784,7 @@ mod tests {
     async fn test_publish_value_with_invalid_value_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.Powertrain.Type";
+        let signal_path = "Vehicle.Powertrain.Type".to_string();
         let value = Value {
             typed_value: Some(TypedValue::String("Unknown".to_string())),
         };
@@ -685,7 +801,7 @@ mod tests {
     async fn test_publish_value_with_invalid_min_max_value_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.ADAS.PowerOptimizeLevel";
+        let signal_path = "Vehicle.ADAS.PowerOptimizeLevel".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Uint32(100)),
         };
@@ -702,7 +818,7 @@ mod tests {
     async fn test_publish_value_with_empty_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_path = "";
+        let signal_path = "".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Float(120.0)),
         };
@@ -719,7 +835,7 @@ mod tests {
     async fn test_publish_value_with_invalid_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_path = "Vehicle.Some.Invalid.Path";
+        let signal_path = "Vehicle.Some.Invalid.Path".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Float(120.0)),
         };
@@ -735,7 +851,7 @@ mod tests {
     async fn test_publish_value_to_an_actuator_will_return_ok() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.ADAS.ABS.IsEnabled"; // is an actuator
+        let signal_path = "Vehicle.ADAS.ABS.IsEnabled".to_string(); // is an actuator
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
         };
@@ -749,7 +865,7 @@ mod tests {
     async fn test_publish_value_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let signal_path = "Vehicle.Driver.HeartRate";
+        let signal_path = "Vehicle.Driver.HeartRate".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Uint32(80)),
         };
@@ -766,7 +882,7 @@ mod tests {
     async fn test_publish_value_with_read_auth_token_will_return_permission_denied() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_path = "Vehicle.Driver.HeartRate";
+        let signal_path = "Vehicle.Driver.HeartRate".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Uint32(80)),
         };
@@ -783,17 +899,18 @@ mod tests {
     async fn test_actuate() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.ADAS.ABS.IsEnabled"; // is an actuator
+        let signal_path = "Vehicle.ADAS.ABS.IsEnabled".to_string(); // is an actuator
 
         let mut stream = client.open_provider_stream(None).await.unwrap();
 
-        let provide_actuation_request = OpenProviderStreamRequest {
-            action: Some(Action::ProvideActuationRequest(ProvideActuationRequest {
-                actuator_identifiers: vec![SignalId {
-                    signal: Some(Path(signal_path.to_string())),
-                }],
-            })),
-        };
+        let provide_actuation_request =
+            databroker_proto::kuksa::val::v2::OpenProviderStreamRequest {
+                action: Some(Action::ProvideActuationRequest(ProvideActuationRequest {
+                    actuator_identifiers: vec![SignalId {
+                        signal: Some(Path(signal_path.to_string())),
+                    }],
+                })),
+            };
 
         stream.sender.send(provide_actuation_request).await.unwrap();
         stream.receiver_stream.message().await.unwrap(); // wait until databroker has processed / answered provide_actuation_request
@@ -811,7 +928,7 @@ mod tests {
     async fn test_actuate_with_no_actuation_provider_will_return_unavailable() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.ADAS.CruiseControl.IsActive"; // is an actuator
+        let signal_path = "Vehicle.ADAS.CruiseControl.IsActive".to_string(); // is an actuator
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
         };
@@ -828,7 +945,7 @@ mod tests {
     async fn test_actuate_a_sensor_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.Speed";
+        let signal_path = "Vehicle.Speed".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Float(100.0)),
         };
@@ -845,7 +962,7 @@ mod tests {
     async fn test_actuate_with_invalid_signal_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let signal_path = "Vehicle.Some.Invalid.Path";
+        let signal_path = "Vehicle.Some.Invalid.Path".to_string();
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
         };
@@ -862,7 +979,7 @@ mod tests {
     async fn test_actuate_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let signal_path = "Vehicle.ADAS.ESC.IsEnabled"; // is an actuator
+        let signal_path = "Vehicle.ADAS.ESC.IsEnabled".to_string(); // is an actuator
 
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
@@ -880,7 +997,7 @@ mod tests {
     async fn test_actuate_with_read_auth_token_will_return_permission_denied() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let signal_path = "Vehicle.ADAS.ESC.IsEnabled"; // is an actuator
+        let signal_path = "Vehicle.ADAS.ESC.IsEnabled".to_string(); // is an actuator
 
         let value = Value {
             typed_value: Some(TypedValue::Bool(true)),
@@ -898,8 +1015,8 @@ mod tests {
     async fn test_batch_actuate() {
         let mut client = KuksaClientV2::new_test_client(Some(ReadWrite));
 
-        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled";
-        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled";
+        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled".to_string();
+        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled".to_string();
 
         let mut values = HashMap::new();
         values.insert(
@@ -917,18 +1034,19 @@ mod tests {
 
         let mut stream = client.open_provider_stream(None).await.unwrap();
 
-        let provide_actuation_request = OpenProviderStreamRequest {
-            action: Some(Action::ProvideActuationRequest(ProvideActuationRequest {
-                actuator_identifiers: vec![
-                    SignalId {
-                        signal: Some(Path(ebd_is_enabled.to_string())),
-                    },
-                    SignalId {
-                        signal: Some(Path(eba_is_enabled.to_string())),
-                    },
-                ],
-            })),
-        };
+        let provide_actuation_request =
+            databroker_proto::kuksa::val::v2::OpenProviderStreamRequest {
+                action: Some(Action::ProvideActuationRequest(ProvideActuationRequest {
+                    actuator_identifiers: vec![
+                        SignalId {
+                            signal: Some(Path(ebd_is_enabled.to_string())),
+                        },
+                        SignalId {
+                            signal: Some(Path(eba_is_enabled.to_string())),
+                        },
+                    ],
+                })),
+            };
 
         stream.sender.send(provide_actuation_request).await.unwrap();
         stream.receiver_stream.message().await.unwrap();
@@ -982,8 +1100,8 @@ mod tests {
     async fn test_batch_actuate_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled";
-        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled";
+        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled".to_string();
+        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled".to_string();
 
         let mut values = HashMap::new();
         values.insert(
@@ -1011,8 +1129,8 @@ mod tests {
     async fn test_batch_actuate_with_read_auth_token_will_return_permission_denied() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled";
-        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled";
+        let eba_is_enabled = "Vehicle.ADAS.EBA.IsEnabled".to_string();
+        let ebd_is_enabled = "Vehicle.ADAS.EBD.IsEnabled".to_string();
 
         let mut values = HashMap::new();
         values.insert(
@@ -1043,8 +1161,8 @@ mod tests {
         let mut stream = client
             .subscribe(
                 vec![
-                    "Vehicle.AverageSpeed",
-                    "Vehicle.Body.Raindetection.Intensity",
+                    "Vehicle.AverageSpeed".to_string(),
+                    "Vehicle.Body.Raindetection.Intensity".to_string(),
                 ],
                 None,
             )
@@ -1067,8 +1185,8 @@ mod tests {
         let mut stream = client
             .subscribe(
                 vec![
-                    "Vehicle.AverageSpeed",
-                    "Vehicle.Body.Raindetection.Intensity",
+                    "Vehicle.AverageSpeed".to_string(),
+                    "Vehicle.Body.Raindetection.Intensity".to_string(),
                 ],
                 None,
             )
@@ -1079,7 +1197,7 @@ mod tests {
             typed_value: Some(TypedValue::Float(100.0)),
         };
         client
-            .publish_value("Vehicle.AverageSpeed", value)
+            .publish_value("Vehicle.AverageSpeed".to_string(), value)
             .await
             .expect("Could not publish Vehicle.AverageSpeed");
 
@@ -1109,7 +1227,7 @@ mod tests {
     async fn test_subscribe_to_empty_path_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.subscribe(vec![""], None).await;
+        let response = client.subscribe(vec!["".to_string()], None).await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -1122,7 +1240,7 @@ mod tests {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client
-            .subscribe(vec!["Vehicle.Some.Invalid.Path"], None)
+            .subscribe(vec!["Vehicle.Some.Invalid.Path".to_string()], None)
             .await;
         assert!(response.is_err());
 
@@ -1136,7 +1254,7 @@ mod tests {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
         let response = client
-            .subscribe(vec!["Vehicle.AverageSpeed"], Some(2048))
+            .subscribe(vec!["Vehicle.AverageSpeed".to_string()], Some(2048))
             .await;
         assert!(response.is_err());
 
@@ -1152,8 +1270,8 @@ mod tests {
         let response = client
             .subscribe(
                 vec![
-                    "Vehicle.AverageSpeed",
-                    "Vehicle.Body.Raindetection.Intensity",
+                    "Vehicle.AverageSpeed".to_string(),
+                    "Vehicle.Body.Raindetection.Intensity".to_string(),
                 ],
                 None,
             )
@@ -1169,7 +1287,10 @@ mod tests {
     async fn test_subscribe_by_id() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let vss_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
+        let vss_paths = vec![
+            "Vehicle.Speed".to_string(),
+            "Vehicle.AverageSpeed".to_string(),
+        ];
         let path_id_map = client.resolve_ids_for_paths(vss_paths).await.unwrap();
 
         let signal_ids: Vec<i32> = path_id_map.values().copied().collect();
@@ -1195,7 +1316,10 @@ mod tests {
     async fn test_subscribe_by_id_with_invalid_buffer_size_will_return_invalid_argument() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let vss_paths = vec!["Vehicle.Speed", "Vehicle.AverageSpeed"];
+        let vss_paths = vec![
+            "Vehicle.Speed".to_string(),
+            "Vehicle.AverageSpeed".to_string(),
+        ];
         let path_id_map = client.resolve_ids_for_paths(vss_paths).await.unwrap();
 
         let signal_ids: Vec<i32> = path_id_map.values().copied().collect();
@@ -1224,7 +1348,9 @@ mod tests {
     async fn test_list_metadata() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.list_metadata("Vehicle", "*").await;
+        let response = client
+            .list_metadata(("Vehicle".to_string(), "*".to_string()))
+            .await;
         assert!(response.is_ok());
 
         let metadata_list = response.unwrap();
@@ -1236,7 +1362,9 @@ mod tests {
     async fn test_list_metadata_with_invalid_root_will_return_not_found() {
         let mut client = KuksaClientV2::new_test_client(Some(Read));
 
-        let response = client.list_metadata("InvalidRoot", "*").await;
+        let response = client
+            .list_metadata(("InvalidRoot".to_string(), "*".to_string()))
+            .await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -1248,7 +1376,9 @@ mod tests {
     async fn test_lists_metadata_without_auth_token_will_return_unauthenticated() {
         let mut client = KuksaClientV2::new_test_client(None);
 
-        let response = client.list_metadata("Vehicle", "*").await;
+        let response = client
+            .list_metadata(("Vehicle".to_string(), "*".to_string()))
+            .await;
         assert!(response.is_err());
 
         let err = response.unwrap_err();
@@ -1283,7 +1413,7 @@ mod tests {
 
     fn expect_status_code(err: ClientError, code: tonic::Code) {
         match err {
-            Status(status) => {
+            ClientError::Status(status) => {
                 assert_eq!(status.code(), code);
             }
             _ => panic!("unexpected error"),

@@ -1,5 +1,5 @@
 /********************************************************************************
-* Copyright (c) 2023 Contributors to the Eclipse Foundation
+* Copyright (c) 2025 Contributors to the Eclipse Foundation
 *
 * See the NOTICE file(s) distributed with this work for additional
 * information regarding copyright ownership.
@@ -12,6 +12,7 @@
 ********************************************************************************/
 
 use databroker_proto::sdv::databroker as proto;
+use kuksa_common::SDVClientTraitV1;
 use kuksa_sdv::*;
 
 use prost_types::Timestamp;
@@ -451,7 +452,7 @@ pub async fn sdv_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 let ts = Timestamp::from(SystemTime::now());
                                 let datapoints = HashMap::from([(
-                                    metadata.id,
+                                    metadata.name.clone(),
                                     proto::v1::Datapoint {
                                         timestamp: Some(ts),
                                         value: Some(data_value.unwrap()),

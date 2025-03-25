@@ -13,13 +13,14 @@
 
 use kuksa::KuksaClient;
 use kuksa_common::to_uri;
+use kuksa_common::ClientTraitV1;
 use std::thread;
 use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() {
     // Paths to subscribe
-    let paths = vec!["Vehicle.Speed"];
+    let paths = vec!["Vehicle.Speed".to_string()];
 
     // Initialize the KuksaClient
     let mut client: KuksaClient = KuksaClient::new(to_uri("127.0.0.1:55555").unwrap());

@@ -1,5 +1,5 @@
 /********************************************************************************
- * Copyright (c) 2023 Contributors to the Eclipse Foundation
+ * Copyright (c) 2025 Contributors to the Eclipse Foundation
  *
  * See the NOTICE file(s) distributed with this work for additional
  * information regarding copyright ownership.
@@ -17,6 +17,7 @@ use std::{collections::HashMap, future, time::SystemTime, vec};
 use cucumber::{cli, gherkin::Step, given, then, when, writer, World as _};
 use databroker::broker;
 use databroker_proto::kuksa::val::v1::{datapoint::Value, DataType, Datapoint};
+use kuksa_common::ClientTraitV1;
 use tracing::debug;
 use world::{DataBrokerWorld, ValueType};
 

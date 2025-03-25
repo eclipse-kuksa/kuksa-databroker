@@ -1,5 +1,5 @@
 /********************************************************************************
-* Copyright (c) 2023 Contributors to the Eclipse Foundation
+* Copyright (c) 2025 Contributors to the Eclipse Foundation
 *
 * See the NOTICE file(s) distributed with this work for additional
 * information regarding copyright ownership.
@@ -11,12 +11,18 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use std::convert::TryFrom;
+pub mod conversion;
+pub mod types;
 
 use databroker_proto::kuksa::val::v1::Error;
 use http::Uri;
+use log::info;
+use std::convert::TryFrom;
+use std::sync::Once;
 use tokio_stream::wrappers::BroadcastStream;
-use tonic::transport::Channel;
+use tonic::{async_trait, transport::Channel};
+
+static INIT: Once = Once::new();
 
 #[derive(Debug)]
 pub struct Client {
@@ -39,6 +45,204 @@ pub enum ClientError {
     Connection(String),
     Status(tonic::Status),
     Function(Vec<Error>),
+}
+
+#[async_trait]
+pub trait SDVClientTraitV1 {
+    type SensorUpdateType;
+    type UpdateActuationType;
+    type PathType;
+    type SubscribeType;
+    type PublishResponseType;
+    type GetResponseType;
+    type SubscribeResponseType;
+    type ProvideResponseType;
+    type ActuateResponseType;
+    type MetadataResponseType;
+
+    // from deeply embedded layer providing sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn update_datapoints(
+        &mut self,
+        datapoints: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError>;
+
+    // from application getting sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn get_datapoints(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError>;
+
+    // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn subscribe(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError>;
+
+    // from application requesting an actuation (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn set_datapoints(
+        &mut self,
+        datapoints: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError>;
+
+    // general functions
+    async fn get_metadata(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::MetadataResponseType, ClientError>;
+}
+
+#[async_trait]
+pub trait ClientTraitV1 {
+    type SensorUpdateType;
+    type UpdateActuationType;
+    type PathType;
+    type SubscribeType;
+    type PublishResponseType;
+    type GetResponseType;
+    type SubscribeResponseType;
+    type ProvideResponseType;
+    type ActuateResponseType;
+    type MetadataResponseType;
+
+    // from deeply embedded layer providing sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn set_current_values(
+        &mut self,
+        datapoints: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError>;
+
+    // from application getting sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn get_current_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError>;
+
+    // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn subscribe_target_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::ProvideResponseType, ClientError>;
+    // get is unary
+    async fn get_target_values(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError>;
+
+    // from provider side: pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn subscribe_current_values(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError>;
+    async fn subscribe(
+        &mut self,
+        paths: Self::SubscribeType,
+    ) -> Result<Self::SubscribeResponseType, ClientError>;
+
+    // from application requesting an actuation (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn set_target_values(
+        &mut self,
+        datapoints: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError>;
+
+    // general functions
+    async fn get_metadata(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::MetadataResponseType, ClientError>;
+}
+
+#[async_trait]
+pub trait ClientTraitV2 {
+    type SensorUpdateType;
+    type UpdateActuationType;
+    type MultipleUpdateActuationType;
+    type PathType;
+    type PathsType;
+    type IdsType;
+    type SubscribeType;
+    type SubscribeByIdType;
+    type PublishResponseType;
+    type GetResponseType;
+    type MultipleGetResponseType;
+    type SubscribeResponseType;
+    type SubscribeByIdResponseType;
+    type ProvideResponseType;
+    type ActuateResponseType;
+    type OpenProviderStreamResponseType;
+    type MetadataType;
+    type MetadataResponseType;
+    type ServerInfoType;
+
+    // from deeply embedded layer providing sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn publish_value(
+        &mut self,
+        signal_path: Self::PathType,
+        value: Self::SensorUpdateType,
+    ) -> Result<Self::PublishResponseType, ClientError>;
+
+    // from application getting sensor values (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn get_value(
+        &mut self,
+        path: Self::PathType,
+    ) -> Result<Self::GetResponseType, ClientError>;
+    async fn get_values(
+        &mut self,
+        paths: Self::PathsType,
+    ) -> Result<Self::MultipleGetResponseType, ClientError>;
+
+    // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn open_provider_stream(
+        &mut self,
+        buffer_size: Option<usize>,
+    ) -> Result<Self::OpenProviderStreamResponseType, ClientError>;
+
+    async fn provide_actuation(
+        &mut self,
+        paths: Self::PathType,
+    ) -> Result<Self::ProvideResponseType, ClientError>;
+
+    // from povider side pick up actuation requests (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn subscribe(
+        &mut self,
+        paths: Self::SubscribeType,
+        buffer_size: Option<u32>,
+    ) -> Result<Self::SubscribeResponseType, ClientError>;
+    async fn subscribe_by_id(
+        &mut self,
+        signal_ids: Self::SubscribeByIdType,
+        buffer_size: Option<u32>,
+    ) -> Result<Self::SubscribeByIdResponseType, ClientError>;
+
+    // from application requesting an actuation (to keep backwards compatibility the naming is different for the corresponding interfaces)
+    // if we do not want to put in the effort just give an unimplemented error for the function
+    async fn actuate(
+        &mut self,
+        signal_path: Self::PathType,
+        value: Self::UpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError>;
+    async fn batch_actuate(
+        &mut self,
+        datapoints: Self::MultipleUpdateActuationType,
+    ) -> Result<Self::ActuateResponseType, ClientError>;
+
+    // general functions
+    async fn list_metadata(
+        &mut self,
+        tuple: Self::MetadataType,
+    ) -> Result<Self::MetadataResponseType, ClientError>;
+    async fn get_server_info(&mut self) -> Result<Self::ServerInfoType, ClientError>;
 }
 
 impl std::error::Error for ClientError {}
@@ -110,8 +314,16 @@ pub fn to_uri(uri: impl AsRef<str>) -> Result<Uri, String> {
     tonic::transport::Uri::from_parts(parts).map_err(|err| format!("{err}"))
 }
 
+fn init_logger() {
+    INIT.call_once(|| {
+        env_logger::init();
+    });
+}
+
 impl Client {
     pub fn new(uri: Uri) -> Self {
+        init_logger();
+        info!("Creating client with URI: {}", uri);
         Client {
             uri,
             token: None,
