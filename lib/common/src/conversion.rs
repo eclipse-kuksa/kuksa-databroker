@@ -416,24 +416,9 @@ impl ConvertToV1<Option<i64>> for Option<SDVprotoV1::ValueRestriction> {
         match self {
             Some(val) => match val.typed_value {
                 Some(typed_value) => match typed_value {
-                    SDVprotoV1::value_restriction::TypedValue::String(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Bool(_) => panic!("wrong datatype!"),
                     SDVprotoV1::value_restriction::TypedValue::Int32(val) => Some(val as i64),
                     SDVprotoV1::value_restriction::TypedValue::Int64(val) => Some(val),
-                    SDVprotoV1::value_restriction::TypedValue::Uint32(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Uint64(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Float(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Double(_) => {
-                        panic!("wrong datatype!")
-                    }
+                    _ => panic!("wrong datatype!"),
                 },
                 None => None,
             },
@@ -447,24 +432,9 @@ impl ConvertToV1<Option<f64>> for Option<SDVprotoV1::ValueRestriction> {
         match self {
             Some(val) => match val.typed_value {
                 Some(typed_value) => match typed_value {
-                    SDVprotoV1::value_restriction::TypedValue::String(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Bool(_) => panic!("wrong datatype!"),
-                    SDVprotoV1::value_restriction::TypedValue::Int32(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Int64(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Uint32(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Uint64(_) => {
-                        panic!("wrong datatype!")
-                    }
                     SDVprotoV1::value_restriction::TypedValue::Float(val) => Some(val as f64),
                     SDVprotoV1::value_restriction::TypedValue::Double(val) => Some(val),
+                    _ => panic!("wrong datatype!"),
                 },
                 None => None,
             },
@@ -478,24 +448,9 @@ impl ConvertToV1<Option<u64>> for Option<SDVprotoV1::ValueRestriction> {
         match self {
             Some(val) => match val.typed_value {
                 Some(typed_value) => match typed_value {
-                    SDVprotoV1::value_restriction::TypedValue::String(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Bool(_) => panic!("wrong datatype!"),
-                    SDVprotoV1::value_restriction::TypedValue::Int32(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Int64(_) => {
-                        panic!("wrong datatype!")
-                    }
                     SDVprotoV1::value_restriction::TypedValue::Uint32(val) => Some(val as u64),
                     SDVprotoV1::value_restriction::TypedValue::Uint64(val) => Some(val),
-                    SDVprotoV1::value_restriction::TypedValue::Float(_) => {
-                        panic!("wrong datatype!")
-                    }
-                    SDVprotoV1::value_restriction::TypedValue::Double(_) => {
-                        panic!("wrong datatype!")
-                    }
+                    _ => panic!("wrong datatype!"),
                 },
                 None => None,
             },
@@ -856,22 +811,9 @@ impl ConvertToV1<Option<i64>> for Option<protoV2::Value> {
         match self {
             Some(val) => match val.typed_value {
                 Some(typed_value) => match typed_value {
-                    protoV2::value::TypedValue::String(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Bool(_) => panic!("wrong datatype!"),
                     protoV2::value::TypedValue::Int32(val) => Some(val as i64),
                     protoV2::value::TypedValue::Int64(val) => Some(val),
-                    protoV2::value::TypedValue::Uint32(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Uint64(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Float(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Double(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::StringArray(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::BoolArray(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Int32Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Int64Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Uint32Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Uint64Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::FloatArray(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::DoubleArray(_) => panic!("wrong datatype!"),
+                    _ => panic!("wrong datatype!"),
                 },
                 None => None,
             },
@@ -885,22 +827,9 @@ impl ConvertToV1<Option<f64>> for Option<protoV2::Value> {
         match self {
             Some(val) => match val.typed_value {
                 Some(typed_value) => match typed_value {
-                    protoV2::value::TypedValue::String(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Bool(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Int32(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Int64(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Uint32(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Uint64(_) => panic!("wrong datatype!"),
                     protoV2::value::TypedValue::Float(val) => Some(val as f64),
                     protoV2::value::TypedValue::Double(val) => Some(val),
-                    protoV2::value::TypedValue::StringArray(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::BoolArray(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Int32Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Int64Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Uint32Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Uint64Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::FloatArray(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::DoubleArray(_) => panic!("wrong datatype!"),
+                    _ => panic!("wrong datatype!"),
                 },
                 None => None,
             },
@@ -914,22 +843,9 @@ impl ConvertToV1<Option<u64>> for Option<protoV2::Value> {
         match self {
             Some(val) => match val.typed_value {
                 Some(typed_value) => match typed_value {
-                    protoV2::value::TypedValue::String(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Bool(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Int32(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Int64(_) => panic!("wrong datatype!"),
                     protoV2::value::TypedValue::Uint32(val) => Some(val as u64),
                     protoV2::value::TypedValue::Uint64(val) => Some(val),
-                    protoV2::value::TypedValue::Float(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Double(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::StringArray(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::BoolArray(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Int32Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Int64Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Uint32Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::Uint64Array(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::FloatArray(_) => panic!("wrong datatype!"),
-                    protoV2::value::TypedValue::DoubleArray(_) => panic!("wrong datatype!"),
+                    _ => panic!("wrong datatype!"),
                 },
                 None => None,
             },
