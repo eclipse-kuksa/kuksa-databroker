@@ -196,12 +196,13 @@ pub trait ActuationProvider {
 }
 
 #[async_trait::async_trait]
-pub trait SignalProvider {
+pub trait SignalProvider: Send + Sync + 'static {
     async fn update_filter(
         &self,
         update_fiters: HashMap<i32, u32>,
     ) -> Result<(), (SignalClaimError, String)>;
     fn is_available(&self) -> bool;
+    async fn get_value_action(&mut self, signals_ids: &Vec<i32>) -> Result<GetValuesAction, ()>;
 }
 
 #[derive(Clone)]
@@ -216,9 +217,13 @@ pub struct ActuationSubscription {
     permissions: Permissions,
 }
 
+pub struct GetValuesAction {
+    pub entries: HashMap<i32, Datapoint>,
+}
+
 pub struct SignalProviderSubscription {
     vss_ids: HashSet<i32>,
-    signal_provider: Box<dyn SignalProvider + Send + Sync + 'static>,
+    signal_provider: Box<dyn SignalProvider>,
     permissions: Permissions,
 }
 
@@ -2297,6 +2302,65 @@ impl AuthorizedAccess<'_, '_> {
             .unwrap()
             .vss_ids;
         key_set.is_subset(signal_request)
+    }
+
+    pub async fn get_values_broker(
+        &self,
+        vss_signals: HashSet<i32>,
+    ) -> Result<GetValuesAction, (ReadError, i32)> {
+        let mut subscriptions = self.broker.subscriptions.write().await;
+        let mut entries_response: HashMap<i32, Datapoint> = HashMap::new();
+
+        // Step 1: find the interseccion of the requested signals and each provider's signals
+        for (_, provider) in subscriptions.signal_provider_subscriptions.iter_mut() {
+            let intersection_signals_request: Vec<i32> = provider
+                .vss_ids
+                .intersection(&vss_signals)
+                .copied()
+                .collect();
+
+            //Step 2: check if there is any possible ReadError while reading any of the signals
+            for signal_id in &intersection_signals_request {
+                match self
+                    .broker
+                    .database
+                    .read()
+                    .await
+                    .authorized_read_access(self.permissions)
+                    .get_entry_by_id(*signal_id)
+                {
+                    Ok(_) => {}
+                    Err(err) => return Err((err, *signal_id)),
+                }
+            }
+
+            //Step 3: send to each provider the intersection signals requested
+            let response = provider
+                .signal_provider
+                .get_value_action(&intersection_signals_request)
+                .await;
+
+            //Step 4: collect responses from providers
+            match response {
+                Ok(value) => {
+                    entries_response.extend(value.entries);
+                }
+                Err(_) => {
+                    //Step 5: if provider did not return any item, then return the datapoint in database
+                    for signal_id in &intersection_signals_request {
+                        match self.get_datapoint(*signal_id).await {
+                            Ok(datapoint) => {
+                                entries_response.insert(*signal_id, datapoint.clone());
+                            }
+                            Err(err) => return Err((err, *signal_id)),
+                        }
+                    }
+                }
+            }
+        }
+        return Ok(GetValuesAction {
+            entries: entries_response,
+        });
     }
 }
 

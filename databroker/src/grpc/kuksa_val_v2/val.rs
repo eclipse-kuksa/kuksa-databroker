@@ -11,17 +11,16 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
-use std::{collections::HashMap, pin::Pin};
-
 use crate::{
     broker::{
-        self, ActuationChange, ActuationProvider, AuthorizedAccess, ReadError, SignalClaimError,
-        SignalProvider, SubscriptionError,
+        self, ActuationChange, ActuationProvider, AuthorizedAccess, GetValuesAction, ReadError,
+        SignalClaimError, SignalProvider, SubscriptionError,
     },
     glob::Matcher,
     permissions::Permissions,
     types::DataValue,
 };
+use std::{collections::HashMap, pin::Pin};
 
 use databroker_proto::kuksa::val::v2::{
     self as proto,
@@ -37,14 +36,21 @@ use kuksa::proto::v2::{
     ListMetadataResponse, ProvideActuationResponse, ProvideSignalResponse,
 };
 use std::collections::HashSet;
-use tokio::{select, sync::mpsc};
-use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
+use tokio::{
+    select,
+    sync::{broadcast, mpsc},
+};
+use tokio_stream::{
+    wrappers::{BroadcastStream, ReceiverStream},
+    Stream, StreamExt,
+};
 use tracing::debug;
 
 const MAX_REQUEST_PATH_LENGTH: usize = 1000;
 
 pub struct Provider {
     sender: mpsc::Sender<Result<OpenProviderStreamResponse, tonic::Status>>,
+    receiver: Option<BroadcastStream<databroker_proto::kuksa::val::v2::GetProviderValueResponse>>,
 }
 
 #[async_trait::async_trait]
@@ -135,6 +141,46 @@ impl SignalProvider for Provider {
     fn is_available(&self) -> bool {
         !self.sender.is_closed()
     }
+
+    async fn get_value_action(&mut self, signals_ids: &Vec<i32>) -> Result<GetValuesAction, ()> {
+        let request = OpenProviderStreamResponse {
+            action: Some(
+                open_provider_stream_response::Action::GetProviderValueRequest(
+                    proto::GetProviderValueRequest {
+                        request_id: 0,
+                        signal_ids: signals_ids.clone(),
+                    },
+                ),
+            ),
+        };
+
+        let result = self.sender.send(Ok(request)).await;
+        match result {
+            Ok(_) => {}
+            Err(err) => {
+                debug!("{}", err.to_string());
+            }
+        }
+        match self.receiver.as_mut() {
+            // Here is assumed that provider will return a response immediately, todo -> timeout configuration
+            Some(receiver) => match receiver.next().await {
+                Some(value) => match value {
+                    Ok(value) => {
+                        let mut entries_map = HashMap::new();
+                        for (id, datapoint) in value.entries {
+                            entries_map.insert(id, (&datapoint).into());
+                        }
+                        return Ok(GetValuesAction {
+                            entries: entries_map,
+                        });
+                    }
+                    Err(_) => Err(()),
+                },
+                None => Err(()),
+            },
+            None => Err(()),
+        }
+    }
 }
 
 #[tonic::async_trait]
@@ -166,19 +212,21 @@ impl proto::val_server::Val for broker::DataBroker {
             Err(err) => return Err(err),
         };
 
-        let datapoint = match broker.get_datapoint(signal_id).await {
+        let datapoint = match broker.get_values_broker(HashSet::from([signal_id])).await {
             Ok(datapoint) => datapoint,
-            Err(ReadError::NotFound) => return Err(tonic::Status::not_found("Path not found")),
-            Err(ReadError::PermissionDenied) => {
+            Err((ReadError::NotFound, _)) => {
+                return Err(tonic::Status::not_found("Path not found"))
+            }
+            Err((ReadError::PermissionDenied, _)) => {
                 return Err(tonic::Status::permission_denied("Permission denied"))
             }
-            Err(ReadError::PermissionExpired) => {
+            Err((ReadError::PermissionExpired, _)) => {
                 return Err(tonic::Status::unauthenticated("Permission expired"))
             }
         };
 
         Ok(tonic::Response::new(proto::GetValueResponse {
-            data_point: datapoint.into(),
+            data_point: datapoint.entries.values().next().unwrap().clone().into(),
         }))
     }
 
@@ -205,38 +253,41 @@ impl proto::val_server::Val for broker::DataBroker {
         let requested = request.into_inner().signal_ids;
         let mut response_datapoints = Vec::new();
 
+        let mut signals_requested = HashSet::new();
+
         for request in requested {
-            let signal_id = match get_signal(Some(request), &broker).await {
-                Ok(signal_id) => signal_id,
+            match get_signal(Some(request), &broker).await {
+                Ok(signal_id) => signals_requested.insert(signal_id),
                 Err(err) => return Err(err),
             };
+        }
 
-            match broker.get_datapoint(signal_id).await {
-                Ok(datapoint) => {
+        match broker.get_values_broker(signals_requested).await {
+            Ok(response) => {
+                for (_, datapoint) in response.entries {
                     let proto_datapoint_opt: Option<proto::Datapoint> = datapoint.into();
-                    //let proto_datapoint: proto::Datapoint = proto_datapoint_opt.into();
                     response_datapoints.push(proto_datapoint_opt.unwrap());
                 }
-                Err(ReadError::NotFound) => {
-                    return Err(tonic::Status::not_found(format!(
-                        "Path not found (id: {})",
-                        signal_id
-                    )));
-                }
-                Err(ReadError::PermissionDenied) => {
-                    return Err(tonic::Status::permission_denied(format!(
-                        "Permission denied(id: {})",
-                        signal_id
-                    )))
-                }
-                Err(ReadError::PermissionExpired) => {
-                    return Err(tonic::Status::unauthenticated(format!(
-                        "Permission expired (id: {})",
-                        signal_id
-                    )))
-                }
-            };
-        }
+            }
+            Err((ReadError::NotFound, signal_id)) => {
+                return Err(tonic::Status::not_found(format!(
+                    "Path not found (id: {})",
+                    signal_id
+                )));
+            }
+            Err((ReadError::PermissionDenied, signal_id)) => {
+                return Err(tonic::Status::permission_denied(format!(
+                    "Permission denied(id: {})",
+                    signal_id
+                )))
+            }
+            Err((ReadError::PermissionExpired, signal_id)) => {
+                return Err(tonic::Status::unauthenticated(format!(
+                    "Permission expired (id: {})",
+                    signal_id
+                )))
+            }
+        };
 
         Ok(tonic::Response::new(proto::GetValuesResponse {
             data_points: response_datapoints,
@@ -802,6 +853,7 @@ impl proto::val_server::Val for broker::DataBroker {
         let broker = self.clone();
         // Create stream (to be returned)
         let (response_stream_sender, response_stream_receiver) = mpsc::channel(10);
+        let (get_value_sender, _) = broadcast::channel(1);
 
         // Listening on stream
         tokio::spawn(async move {
@@ -862,7 +914,8 @@ impl proto::val_server::Val for broker::DataBroker {
                                             Some(ProvideSignalRequest(provide_signal_request)) => {
                                                 //Register provider and channel to receive filter requests.
                                                 //provider_id = Some(broker.generate_provider_id().await);
-                                                let response = register_provided_signals(&broker, &provide_signal_request, response_stream_sender.clone()).await;
+                                                //let ref_receiver = Arc::clone(Mutex::new(get_value_receiver));
+                                                let response = register_provided_signals(&broker, &provide_signal_request, response_stream_sender.clone(), get_value_sender.subscribe()).await;
                                                 match response {
                                                     Ok(value) => {
                                                         provider_id = Some(value.0);
@@ -882,8 +935,12 @@ impl proto::val_server::Val for broker::DataBroker {
                                             Some(UpdateFilterResponse(_update_filter_response)) => {
                                                 todo!();
                                             }
-                                            Some(GetProviderValueResponse(_get_provider_value_response)) => {
-                                                todo!();
+                                            Some(GetProviderValueResponse(get_provider_value_response)) => {
+                                                println!("Received GetProviderValueResponse(get_provider_value_response))");
+                                                if let Err(err) = get_value_sender.send(get_provider_value_response)
+                                                {
+                                                    debug!("Failed to send tonic error: {}", err)
+                                                }
                                             }
                                             Some(ProviderErrorIndication(_provider_error_indication)) => {
                                                 publish_provider_error(&broker, provider_id.unwrap().try_into().unwrap()).await;
@@ -975,7 +1032,10 @@ async fn provide_actuation(
     all_vss_ids.extend(vss_ids);
     all_vss_ids.extend(resolved_vss_ids);
 
-    let provider = Provider { sender };
+    let provider = Provider {
+        sender,
+        receiver: None,
+    };
 
     match broker
         .provide_actuation(all_vss_ids, Box::new(provider))
@@ -1003,8 +1063,12 @@ async fn register_provided_signals(
     broker: &AuthorizedAccess<'_, '_>,
     request: &databroker_proto::kuksa::val::v2::ProvideSignalRequest,
     sender: mpsc::Sender<Result<OpenProviderStreamResponse, tonic::Status>>,
+    receiver: broadcast::Receiver<databroker_proto::kuksa::val::v2::GetProviderValueResponse>,
 ) -> Result<(u32, OpenProviderStreamResponse), tonic::Status> {
-    let provider = Provider { sender };
+    let provider = Provider {
+        sender,
+        receiver: Some(BroadcastStream::new(receiver)),
+    };
 
     let all_vss_ids = request.signals_sample_intervals.keys().copied().collect();
 
