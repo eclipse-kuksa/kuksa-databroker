@@ -47,6 +47,29 @@ message Value {
   }
 }
 
+message SampleInterval {
+  uint32 interval_ms = 1;
+}
+
+enum FilterError {
+  FILTER_ERROR_CODE_UNSPECIFIED      = 0;
+  FILTER_ERROR_CODE_UNKNOWN_SINGAL_ID = 1;
+}
+
+message Filter {
+  // Duration of the active call. If it is not set, call will last for ever.
+  uint32 duration_ms                 = 1;
+  // Min desired sample update interval.
+  SampleInterval min_sample_interval = 2;
+}
+
+// Could be extended in the future with more errors
+enum ProviderError {
+  CODE_UNSPECIFIED      = 0;
+  CODE_NETWORK_ERROR    = 1;
+  CODE_OVERLOAD         = 2;
+}
+
 message SignalID {
   oneof signal {
     // Numeric identifier to the signal
@@ -114,6 +137,8 @@ message Metadata {
   Value min                            = 18;
   Value max                            = 19;
 
+  // Minimum sample interval at which its provider can publish the signal value
+  SampleInterval min_sample_interval   = 20;
 }
 
 // VSS Data type of a signal

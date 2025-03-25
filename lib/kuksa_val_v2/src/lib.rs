@@ -428,6 +428,7 @@ impl ClientTraitV2 for KuksaClientV2 {
         let subscribe_request = SubscribeRequest {
             signal_paths,
             buffer_size: buffer_size.unwrap_or(0),
+            filter: None,
         };
 
         match client.subscribe(subscribe_request).await {
@@ -467,6 +468,7 @@ impl ClientTraitV2 for KuksaClientV2 {
         let subscribe_by_id_request = SubscribeByIdRequest {
             signal_ids,
             buffer_size: buffer_size.unwrap_or(0),
+            filter: None,
         };
 
         match client.subscribe_by_id(subscribe_by_id_request).await {

@@ -25,7 +25,8 @@ use crate::{
 use databroker_proto::kuksa::val::v2::{
     self as proto,
     open_provider_stream_request::Action::{
-        BatchActuateStreamResponse, ProvideActuationRequest, PublishValuesRequest,
+        BatchActuateStreamResponse, GetProviderValueResponse, ProvideActuationRequest,
+        ProvideSignalRequest, ProviderErrorIndication, PublishValuesRequest, UpdateFilterResponse,
     },
     open_provider_stream_response, OpenProviderStreamResponse, PublishValuesResponse,
 };
@@ -342,6 +343,95 @@ impl proto::val_server::Val for broker::DataBroker {
                 tonic::Code::InvalidArgument,
                 "Subscription buffer_size max allowed value is 1000",
             )),
+        }
+    }
+
+    async fn actuate_stream(
+        &self,
+        request: tonic::Request<tonic::Streaming<proto::ActuateRequest>>,
+    ) -> Result<tonic::Response<proto::ActuateResponse>, tonic::Status> {
+        debug!(?request);
+        let permissions = match request.extensions().get::<Permissions>() {
+            Some(permissions) => {
+                debug!(?permissions);
+                permissions.clone()
+            }
+            None => return Err(tonic::Status::unauthenticated("Unauthenticated")),
+        };
+
+        let mut stream = request.into_inner();
+
+        let mut shutdown_trigger = self.get_shutdown_trigger();
+
+        // Copy (to move into task below)
+        let broker = self.clone();
+
+        // Listening on stream
+        let join_handle = tokio::spawn(async move {
+            let permissions = permissions;
+            let broker = broker.authorized_access(&permissions);
+            loop {
+                select! {
+                    message = stream.message() => {
+                        match message {
+                            Ok(request) => {
+                                match request {
+                                    Some(actuator_request) => {
+                                        let value = actuator_request.value
+                                        .ok_or_else(|| tonic::Status::invalid_argument("No value provided"))?;
+
+                                        let signal = actuator_request
+                                            .signal_id
+                                            .ok_or(tonic::Status::invalid_argument("No signal_id provided"))?
+                                            .signal;
+
+                                        match &signal {
+                                            Some(proto::signal_id::Signal::Path(ref path)) => {
+                                                let id = broker.get_id_by_path(path).await
+                                                    .ok_or_else(|| tonic::Status::not_found(format!("Invalid path: {}", path)))?;
+                                                // Propagate error from actuate.
+                                                broker.actuate(&id, &DataValue::from(value))
+                                                    .await
+                                                    .map_err(|(error, code)| error.to_tonic_status(code))?;
+                                            }
+                                            Some(proto::signal_id::Signal::Id(ref id)) => {
+                                                broker.actuate(id, &DataValue::from(value))
+                                                    .await
+                                                    .map_err(|(error, code)| error.to_tonic_status(code))?;
+                                            }
+                                            None => {
+                                                return Err(tonic::Status::invalid_argument("Signal missing in request"));
+                                            }
+                                        }
+                                    },
+                                    None => {
+                                        debug!("client: no more messages");
+                                        break;
+                                    }
+                                }
+                            },
+                            Err(err) => {
+                                debug!("client: connection broken: {:?}", err);
+                                break;
+                            },
+                        }
+                    },
+                    _ = shutdown_trigger.recv() => {
+                        debug!("client: shutdown received");
+                        break;
+                    }
+                }
+            }
+            Ok::<(), tonic::Status>(())
+        });
+
+        match join_handle.await {
+            Ok(Ok(())) => Ok(tonic::Response::new(proto::ActuateResponse {})),
+            Ok(Err(status)) => Err(status),
+            Err(join_error) => Err(tonic::Status::internal(format!(
+                "Actuate stream error: {:?}",
+                join_error
+            ))),
         }
     }
 
@@ -693,6 +783,18 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
 
                                             },
+                                            Some(ProvideSignalRequest(_provide_signal_request)) => {
+                                                todo!();
+                                            }
+                                            Some(UpdateFilterResponse(_update_filter_response)) => {
+                                                todo!();
+                                            }
+                                            Some(GetProviderValueResponse(_get_provider_value_response)) => {
+                                                todo!();
+                                            }
+                                            Some(ProviderErrorIndication(_provide_error_indication)) => {
+                                                todo!();
+                                            }
                                             None => {
 
                                             },
@@ -932,7 +1034,8 @@ mod tests {
     use crate::{broker::DataBroker, permissions};
     use databroker_proto::kuksa::val::v2::val_server::Val;
     use proto::open_provider_stream_response::Action::{
-        BatchActuateStreamRequest, ProvideActuationResponse, PublishValuesResponse,
+        BatchActuateStreamRequest, GetProviderValueRequest, ProvideActuationResponse,
+        ProvideSignalResponse, PublishValuesResponse, UpdateFilterRequest,
     };
     use proto::{
         open_provider_stream_request, BatchActuateRequest, OpenProviderStreamRequest,
@@ -1901,6 +2004,7 @@ mod tests {
         let mut request = tonic::Request::new(proto::SubscribeRequest {
             signal_paths: vec!["test.datapoint1".to_string()],
             buffer_size: 5,
+            filter: None,
         });
 
         request
@@ -2048,6 +2152,7 @@ mod tests {
         let mut request = tonic::Request::new(proto::SubscribeByIdRequest {
             signal_ids: vec![entry_id],
             buffer_size: 5,
+            filter: None,
         });
 
         request
@@ -2213,6 +2318,15 @@ mod tests {
                                     }
                                 }
                                 Some(BatchActuateStreamRequest(_)) => {
+                                    panic!("Should not happen")
+                                }
+                                Some(ProvideSignalResponse(_)) => {
+                                    panic!("Should not happen")
+                                }
+                                Some(UpdateFilterRequest(_)) => {
+                                    panic!("Should not happen")
+                                }
+                                Some(GetProviderValueRequest(_)) => {
                                     panic!("Should not happen")
                                 }
                                 None => {
@@ -3125,6 +3239,202 @@ mod tests {
                     .expect("result_response should be Some");
 
                 assert!(result_response.is_ok())
+            }
+            Err(_) => {
+                panic!("Should not happen")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_actuate_stream_out_of_range() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.Cabin.Infotainment.Navigation.Volume".to_owned(),
+                broker::DataType::Uint8,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                Some(broker::types::DataValue::Uint32(0)), // min
+                Some(broker::types::DataValue::Uint32(100)), // max
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let vss_id = authorized_access
+            .get_id_by_path("Vehicle.Cabin.Infotainment.Navigation.Volume")
+            .await
+            .expect(
+                "Resolving the id of Vehicle.Cabin.Infotainment.Navigation.Volume should succeed",
+            );
+        let vss_ids = vec![vss_id];
+
+        let (sender, _) = mpsc::channel(10);
+        let actuation_provider = Provider { sender };
+        authorized_access
+            .provide_actuation(vss_ids, Box::new(actuation_provider))
+            .await
+            .expect("Registering a new Actuation Provider should succeed");
+
+        let request = ActuateRequest {
+            signal_id: Some(SignalId {
+                signal: Some(proto::signal_id::Signal::Path(
+                    "Vehicle.Cabin.Infotainment.Navigation.Volume".to_string(),
+                )),
+            }),
+            value: Some(Value {
+                typed_value: Some(proto::value::TypedValue::Uint32(200)),
+            }),
+        };
+
+        let mut streaming_request = tonic_mock::streaming_request(vec![request]);
+        streaming_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::actuate_stream(&broker, streaming_request).await {
+            Ok(_) => {
+                panic!("Should not happen")
+            }
+            Err(err) => {
+                assert_eq!(err.code(), tonic::Code::InvalidArgument)
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_actuate_stream_signal_not_found() {
+        let broker = DataBroker::default();
+
+        let request = ActuateRequest {
+            signal_id: Some(SignalId {
+                signal: Some(proto::signal_id::Signal::Path(
+                    "Vehicle.Cabin.Non.Existing".to_string(),
+                )),
+            }),
+            value: Some(Value {
+                typed_value: Some(proto::value::TypedValue::Bool(true)),
+            }),
+        };
+
+        let mut streaming_request = tonic_mock::streaming_request(vec![request]);
+        streaming_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::actuate_stream(&broker, streaming_request).await {
+            Ok(_) => {
+                panic!("Should not happen")
+            }
+            Err(err) => {
+                assert_eq!(err.code(), tonic::Code::NotFound)
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_actuate_stream_can_provider_unavailable() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.ABS.IsEnabled".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None, // min
+                None, // max
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let request = ActuateRequest {
+            signal_id: Some(SignalId {
+                signal: Some(proto::signal_id::Signal::Path(
+                    "Vehicle.ADAS.ABS.IsEnabled".to_string(),
+                )),
+            }),
+            value: Some(Value {
+                typed_value: Some(proto::value::TypedValue::Bool(true)),
+            }),
+        };
+
+        let mut streaming_request = tonic_mock::streaming_request(vec![request]);
+        streaming_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::actuate_stream(&broker, streaming_request).await {
+            Ok(_) => {
+                panic!("Should not happen")
+            }
+            Err(err) => {
+                assert_eq!(err.code(), tonic::Code::Unavailable)
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_actuate_stream_success() {
+        let broker = DataBroker::default();
+        let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        authorized_access
+            .add_entry(
+                "Vehicle.ADAS.ABS.IsEnabled".to_owned(),
+                broker::DataType::Bool,
+                broker::ChangeType::OnChange,
+                broker::EntryType::Actuator,
+                "Some funny description".to_owned(),
+                None, // min
+                None, // max
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        let vss_id = authorized_access
+            .get_id_by_path("Vehicle.ADAS.ABS.IsEnabled")
+            .await
+            .expect("Resolving the id of Vehicle.ADAS.ABS.IsEnabled should succeed");
+        let vss_ids = vec![vss_id];
+
+        let (sender, mut _receiver) = mpsc::channel(10);
+        let actuation_provider = Provider { sender };
+        authorized_access
+            .provide_actuation(vss_ids, Box::new(actuation_provider))
+            .await
+            .expect("Registering a new Actuation Provider should succeed");
+
+        let request = ActuateRequest {
+            signal_id: Some(SignalId {
+                signal: Some(proto::signal_id::Signal::Path(
+                    "Vehicle.ADAS.ABS.IsEnabled".to_string(),
+                )),
+            }),
+            value: Some(Value {
+                typed_value: Some(proto::value::TypedValue::Bool(true)),
+            }),
+        };
+
+        let mut streaming_request = tonic_mock::streaming_request(vec![request]);
+        streaming_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        match proto::val_server::Val::actuate_stream(&broker, streaming_request).await {
+            Ok(response) => {
+                assert!(response.into_inner().eq(&ActuateResponse {}));
             }
             Err(_) => {
                 panic!("Should not happen")
