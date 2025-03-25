@@ -14,13 +14,13 @@
 pub mod conversion;
 pub mod types;
 
-use std::convert::TryFrom;
-use log::info;
 use databroker_proto::kuksa::val::v1::Error;
 use http::Uri;
+use log::info;
+use std::convert::TryFrom;
+use std::sync::Once;
 use tokio_stream::wrappers::BroadcastStream;
 use tonic::{async_trait, transport::Channel};
-use std::sync::Once;
 
 static INIT: Once = Once::new();
 
