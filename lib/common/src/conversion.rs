@@ -2506,7 +2506,7 @@ mod tests {
 
     // impl ConvertToV2<SensorUpdateTypeV2> for protoV1::Datapoint {}
     #[test]
-    fn test_dp_convert_to_v2_datapoint_v1() {
+    fn test_convert_to_v2_datapoint_v1() {
         let test_cases = vec![
             (
                 protoV1::Datapoint {
@@ -2670,8 +2670,9 @@ mod tests {
     }
 
     // impl ConvertToV2<PathsTypeV2> for PathTypeV1 {}
+    // impl ConvertToV2<PathTypeV2> for PathTypeV1 {}
     #[test]
-    fn test_convert_path_type_v1_to_paths_type_v2() {
+    fn test_convert_to_v2_path_type_v1() {
         let paths: PathTypeV1 = vec![
             "Vehicle.Engine.Speed".to_string(),
             "Vehicle.Engine.RPM".to_string(),
@@ -2688,7 +2689,7 @@ mod tests {
 
     // impl ConvertToV2<MetadataTypeV2> for PathTypeV1 {}
     #[test]
-    fn test_convert_path_type_v1_to_metadata_type_v2() {
+    fn test_convert_to_v2_metadata_v1() {
         let paths: PathTypeV1 = vec![
             "Vehicle.Engine.Speed".to_string(),
             "Vehicle.Engine.RPM".to_string(),
@@ -2700,7 +2701,7 @@ mod tests {
     // impl ConvertToV2<MultipleUpdateActuationTypeV2> for UpdateActuationTypeV1 {}
     // only check one possibility since test for impl ConvertToV2<SensorUpdateTypeV2> for protoV1::Datapoint covers that
     #[test]
-    fn test_convert_update_actuation_type_v1_to_multiple_update_actuation_type_v2() {
+    fn test_convert_to_v2_update_actuation_v1() {
         let mut update_map: UpdateActuationTypeV1 = HashMap::new();
         update_map.insert(
             "Vehicle.Engine.Speed".to_string(),
