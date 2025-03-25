@@ -1992,6 +1992,7 @@ mod tests {
             deprecation: "".to_string(),
             unit: "".to_string(),
             allowed_values: None,
+            min_sample_interval: None,
         }];
         let expected_metadata_response = vec![protoV1::DataEntry {
             metadata: Some(protoV1::Metadata {
@@ -2031,6 +2032,7 @@ mod tests {
                     deprecation: "".to_string(),
                     unit: "".to_string(),
                     allowed_values: None,
+                    min_sample_interval: None,
                 },
                 protoV1::Metadata {
                     data_type: protoV1::DataType::Int32.into(),
@@ -2066,6 +2068,7 @@ mod tests {
                             },
                         )),
                     }),
+                    min_sample_interval: None,
                 },
                 protoV1::Metadata {
                     data_type: protoV1::DataType::Float.into(),
@@ -2109,6 +2112,7 @@ mod tests {
                             },
                         )),
                     }),
+                    min_sample_interval: None,
                 },
                 protoV1::Metadata {
                     data_type: protoV1::DataType::Uint32.into(),
@@ -2150,6 +2154,7 @@ mod tests {
                             },
                         )),
                     }),
+                    min_sample_interval: None,
                 },
                 protoV1::Metadata {
                     data_type: protoV1::DataType::Uint64.into(),
@@ -2193,6 +2198,7 @@ mod tests {
                             },
                         )),
                     }),
+                    min_sample_interval: None,
                 },
                 protoV1::Metadata {
                     data_type: protoV1::DataType::Double.into(),
@@ -2236,6 +2242,7 @@ mod tests {
                             },
                         )),
                     }),
+                    min_sample_interval: None,
                 },
                 protoV1::Metadata {
                     data_type: protoV1::DataType::String.into(),
