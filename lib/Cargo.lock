@@ -616,6 +616,8 @@ dependencies = [
  "env_logger",
  "http",
  "log",
+ "prost 0.12.6",
+ "prost-types",
  "tokio",
  "tokio-stream",
  "tonic",
