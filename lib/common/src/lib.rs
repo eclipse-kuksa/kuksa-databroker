@@ -15,11 +15,14 @@ pub mod conversion;
 pub mod types;
 
 use std::convert::TryFrom;
-
+use log::info;
 use databroker_proto::kuksa::val::v1::Error;
 use http::Uri;
 use tokio_stream::wrappers::BroadcastStream;
 use tonic::{async_trait, transport::Channel};
+use std::sync::Once;
+
+static INIT: Once = Once::new();
 
 #[derive(Debug)]
 pub struct Client {
@@ -311,9 +314,16 @@ pub fn to_uri(uri: impl AsRef<str>) -> Result<Uri, String> {
     tonic::transport::Uri::from_parts(parts).map_err(|err| format!("{err}"))
 }
 
+fn init_logger() {
+    INIT.call_once(|| {
+        env_logger::init();
+    });
+}
+
 impl Client {
     pub fn new(uri: Uri) -> Self {
-        env_logger::init();
+        init_logger();
+        info!("Creating client with URI: {}", uri);
         Client {
             uri,
             token: None,
