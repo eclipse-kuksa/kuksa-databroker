@@ -202,7 +202,7 @@ pub trait SignalProvider: Send + Sync + 'static {
         update_fiters: HashMap<i32, u32>,
     ) -> Result<(), (SignalClaimError, String)>;
     fn is_available(&self) -> bool;
-    async fn get_value_action(&mut self, signals_ids: &Vec<i32>) -> Result<GetValuesAction, ()>;
+    async fn get_values_action(&mut self, signals_ids: Vec<i32>) -> Result<GetValuesAction, ()>;
 }
 
 #[derive(Clone)]
@@ -1847,7 +1847,7 @@ impl AuthorizedAccess<'_, '_> {
             .filter_manager
             .write()
             .await
-            .insert_and_get_new_update_filter(signal_ids, interval_ms, uuid_subscription);
+            .add_new_update_filter(signal_ids, interval_ms, uuid_subscription);
 
         DataBroker::update_filter_to_providers(
             new_update_filter,
@@ -2307,7 +2307,7 @@ impl AuthorizedAccess<'_, '_> {
             //Step 3: send to each provider the intersection signals requested
             let response = provider
                 .signal_provider
-                .get_value_action(&intersection_signals_request)
+                .get_values_action(intersection_signals_request.clone())
                 .await;
 
             //Step 4: collect responses from providers
@@ -2328,9 +2328,9 @@ impl AuthorizedAccess<'_, '_> {
                 }
             }
         }
-        return Ok(GetValuesAction {
+        Ok(GetValuesAction {
             entries: entries_response,
-        });
+        })
     }
 }
 
@@ -2443,13 +2443,13 @@ impl DataBroker {
                     if new_connected_providers_count > connected_providers_count {
                         connected_providers_count += 1;
                     }
-                    let disjoint_map = filter_manager
+                    let new_update_filter = filter_manager
                         .write()
                         .await
-                        .remove_and_get_new_update_filter(closed_change_subscriptions);
+                        .remove_filter_by_uuid(closed_change_subscriptions);
 
                     Self::update_filter_to_providers(
-                        disjoint_map,
+                        new_update_filter,
                         &subscriptions.read().await.signal_provider_subscriptions,
                     )
                     .await;

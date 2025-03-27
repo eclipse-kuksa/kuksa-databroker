@@ -142,7 +142,7 @@ impl SignalProvider for Provider {
         !self.sender.is_closed()
     }
 
-    async fn get_value_action(&mut self, signals_ids: &Vec<i32>) -> Result<GetValuesAction, ()> {
+    async fn get_values_action(&mut self, signals_ids: Vec<i32>) -> Result<GetValuesAction, ()> {
         let request = OpenProviderStreamResponse {
             action: Some(
                 open_provider_stream_response::Action::GetProviderValueRequest(
@@ -2853,7 +2853,10 @@ mod tests {
         let vss_ids = vec![vss_id];
 
         let (sender, _) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -2976,7 +2979,10 @@ mod tests {
         let vss_ids = vec![vss_id];
 
         let (sender, mut receiver) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -3074,7 +3080,10 @@ mod tests {
         let vss_ids = vec![vss_id_abs, vss_id_cruise_control, vss_id_navigation_volume];
 
         let (sender, _receiver) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -3224,7 +3233,10 @@ mod tests {
         let vss_ids = vec![vss_id_abs];
 
         let (sender, _receiver) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -3314,7 +3326,10 @@ mod tests {
         let vss_ids = vec![vss_id_abs, vss_id_cruise_control];
 
         let (sender, mut receiver) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -3481,7 +3496,10 @@ mod tests {
         let vss_ids = vec![vss_id];
 
         let (sender, _) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -3616,7 +3634,10 @@ mod tests {
         let vss_ids = vec![vss_id];
 
         let (sender, mut _receiver) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
