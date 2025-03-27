@@ -2398,30 +2398,6 @@ impl DataBroker {
 
                             // TODO
                             //set disconnected provider's signals to none and update subscription with a notify
-                            // let mut changed = HashMap::new();
-                            // {
-                            //     let mut local_database = database.write().await;
-                            //     for signal_id in &provider_signals_set {
-                            //         match local_database.entries.get_mut(signal_id) {
-                            //             Some(entry) => {
-                            //                 entry.datapoint = Datapoint {
-                            //                     ts: std::time::SystemTime::now(),
-                            //                     source_ts: None,
-                            //                     value: DataValue::NotAvailable,
-                            //                 };
-                            //                 let mut hash_set = HashSet::new();
-                            //                 hash_set.insert(Field::Datapoint);
-                            //                 changed.insert(*signal_id, hash_set);
-                            //             }
-                            //             None => {}
-                            //         }
-                            //     }
-                            // }
-
-                            // let read_database = database.read().await;
-                            // for (_, subscription) in &mut *remaining_subscriptions {
-                            //     subscription.notify(Some(&changed), &read_database).await;
-                            // }
                         }
                     }
                 }
