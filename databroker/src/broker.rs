@@ -1836,31 +1836,6 @@ impl AuthorizedAccess<'_, '_> {
         Ok(stream)
     }
 
-    async fn propagate_new_filter_to_provider(
-        &self,
-        interval_ms: u32,
-        signal_ids: Vec<i32>,
-        uuid_subscription: Uuid,
-    ) {
-        let new_update_filter = self
-            .broker
-            .filter_manager
-            .write()
-            .await
-            .add_new_update_filter(signal_ids, interval_ms, uuid_subscription);
-
-        DataBroker::update_filter_to_providers(
-            new_update_filter,
-            &self
-                .broker
-                .subscriptions
-                .read()
-                .await
-                .signal_provider_subscriptions,
-        )
-        .await;
-    }
-
     pub async fn subscribe_query(
         &self,
         query: &str,
@@ -2188,6 +2163,31 @@ impl AuthorizedAccess<'_, '_> {
                 "Permission expired".to_string(),
             )),
         }
+    }
+
+    async fn propagate_new_filter_to_provider(
+        &self,
+        interval_ms: u32,
+        signal_ids: Vec<i32>,
+        uuid_subscription: Uuid,
+    ) {
+        let new_update_filter = self
+            .broker
+            .filter_manager
+            .write()
+            .await
+            .add_new_update_filter(signal_ids, interval_ms, uuid_subscription);
+
+        DataBroker::update_filter_to_providers(
+            new_update_filter,
+            &self
+                .broker
+                .subscriptions
+                .read()
+                .await
+                .signal_provider_subscriptions,
+        )
+        .await;
     }
 
     pub async fn register_signals(
