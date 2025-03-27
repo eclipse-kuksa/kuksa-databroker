@@ -18,7 +18,7 @@ pub use crate::types;
 use crate::query;
 pub use crate::types::{ChangeType, DataType, DataValue, EntryType};
 
-use tokio::sync::{broadcast, mpsc, RwLock, RwLockReadGuard};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::time::Instant;
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tokio_stream::{Stream, StreamExt};
@@ -882,7 +882,7 @@ impl Subscriptions {
     }
 
     #[cfg_attr(feature="otel", tracing::instrument(name="signal_provider_subscriptions_cleanup", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
-    pub fn cleanup_signal_providers(&mut self) -> HashMap<u32, HashSet<i32>> {
+    pub fn cleanup_signal_providers_subscriptions(&mut self) -> HashMap<u32, HashSet<i32>> {
         let mut closed_signal_providers: HashMap<u32, HashSet<i32>> = HashMap::new();
         self.signal_provider_subscriptions
             .retain(|provider_id, signal_provider| {
@@ -1779,10 +1779,10 @@ impl AuthorizedAccess<'_, '_> {
             1
         };
 
-        let mut filter_ms = 0;
+        let mut interval_filter_ms = 0;
         let interval_ms = match interval_ms {
             Some(period) => {
-                filter_ms = period;
+                interval_filter_ms = period;
                 Some(Duration::from_millis(period as u64))
             }
             None => None,
@@ -1812,13 +1812,16 @@ impl AuthorizedAccess<'_, '_> {
             .await
             .add_change_subscription(subscription);
 
-        let _ = self
-            .handle_subscribe_filter(
-                filter_ms,
-                valid_entries.keys().cloned().collect(),
-                uuid_subscription,
-            )
-            .await;
+        // Only handle filters greater than 0
+        if interval_filter_ms > 0 {
+            let _ = self
+                .propagate_new_filter_to_provider(
+                    interval_filter_ms,
+                    valid_entries.keys().cloned().collect(),
+                    uuid_subscription,
+                )
+                .await;
+        }
 
         let stream = BroadcastStream::new(receiver).map(move |result| match result {
             Ok(message) => message,
@@ -1833,60 +1836,27 @@ impl AuthorizedAccess<'_, '_> {
         Ok(stream)
     }
 
-    async fn handle_subscribe_filter(
+    async fn propagate_new_filter_to_provider(
         &self,
         interval_ms: u32,
         signal_ids: Vec<i32>,
         uuid_subscription: Uuid,
     ) {
-        let current_filter_map = self
+        let new_update_filter = self
             .broker
             .filter_manager
-            .read()
+            .write()
             .await
-            .get_signals_ids_with_lowest_interval();
+            .insert_and_get_new_update_filter(signal_ids, interval_ms, uuid_subscription);
 
-        for signal_id in signal_ids {
-            self.broker.filter_manager.write().await.insert_filter(
-                signal_id,
-                interval_ms,
-                uuid_subscription,
-            );
-        }
-
-        let target_filter_map = self
-            .broker
-            .filter_manager
-            .read()
-            .await
-            .get_signals_ids_with_lowest_interval();
-
-        //assert_eq!(current_filter_map.len(), target_filter_map.len());
-
-        let disjoint_map = if !current_filter_map.is_empty() {
-            target_filter_map
-                .into_iter()
-                .filter_map(|(k, v1)| {
-                    let value = current_filter_map.get(&k);
-                    match value {
-                        Some(sample_interval) => {
-                            if *sample_interval != v1 {
-                                Some((k, v1))
-                            } else {
-                                None
-                            }
-                        }
-                        None => Some((k, v1)),
-                    }
-                })
-                .collect()
-        } else {
-            target_filter_map
-        };
-
-        DataBroker::update_filters_to_providers(
-            disjoint_map,
-            self.broker.subscriptions.read().await,
+        DataBroker::update_filter_to_providers(
+            new_update_filter,
+            &self
+                .broker
+                .subscriptions
+                .read()
+                .await
+                .signal_provider_subscriptions,
         )
         .await;
     }
@@ -2397,34 +2367,27 @@ impl DataBroker {
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
 
-            let mut num_providers = 0;
+            let mut connected_providers_count = 0;
 
             loop {
                 interval.tick().await;
 
                 subscriptions.write().await.cleanup(); // Cleanup dropped subscriptions
 
-                // Step 1
-                // clean up subscriptions
-                let closed_change_subscriptions =
-                    subscriptions.write().await.cleanup_change_subscriptions();
+                // clean up disconnected providers
+                let closed_signal_providers = subscriptions
+                    .write()
+                    .await
+                    .cleanup_signal_providers_subscriptions();
 
-                // let providers_before_cleaning =
-                //     &subscriptions.read().await.signal_provider_subscriptions;
-
-                let cleanedup_signal_providers =
-                    subscriptions.write().await.cleanup_signal_providers();
-
-                if !closed_change_subscriptions.is_empty() || !cleanedup_signal_providers.is_empty()
-                {
-                    // Step 2
+                if !closed_signal_providers.is_empty() {
                     // Inform remaining subscriptions about not available providers
                     {
                         let remaining_subscriptions =
                             &mut subscriptions.write().await.change_subscriptions;
 
-                        // check which subscription contains a signal of the not available providers:
-                        for (_, provider_signals_set) in cleanedup_signal_providers {
+                        // check which subscription contains a signal of the closed providers:
+                        for (_, provider_signals_set) in closed_signal_providers {
                             for (_, subscription) in remaining_subscriptions.iter_mut() {
                                 let key_set: HashSet<_> =
                                     subscription.entries.keys().cloned().collect();
@@ -2432,77 +2395,79 @@ impl DataBroker {
                                     subscription.send_none_to_receiver().await;
                                 }
                             }
+
+                            // TODO
+                            //set disconnected provider's signals to none and update subscription with a notify
+                            // let mut changed = HashMap::new();
+                            // {
+                            //     let mut local_database = database.write().await;
+                            //     for signal_id in &provider_signals_set {
+                            //         match local_database.entries.get_mut(signal_id) {
+                            //             Some(entry) => {
+                            //                 entry.datapoint = Datapoint {
+                            //                     ts: std::time::SystemTime::now(),
+                            //                     source_ts: None,
+                            //                     value: DataValue::NotAvailable,
+                            //                 };
+                            //                 let mut hash_set = HashSet::new();
+                            //                 hash_set.insert(Field::Datapoint);
+                            //                 changed.insert(*signal_id, hash_set);
+                            //             }
+                            //             None => {}
+                            //         }
+                            //     }
+                            // }
+
+                            // let read_database = database.read().await;
+                            // for (_, subscription) in &mut *remaining_subscriptions {
+                            //     subscription.notify(Some(&changed), &read_database).await;
+                            // }
                         }
                     }
+                }
 
-                    let read_subscriptions = subscriptions.read().await;
+                // clean up disconnected subscriptions
+                let closed_change_subscriptions =
+                    subscriptions.write().await.cleanup_change_subscriptions();
 
-                    let num_providers_connected =
-                        read_subscriptions.signal_provider_subscriptions.len();
+                let new_connected_providers_count = subscriptions
+                    .read()
+                    .await
+                    .signal_provider_subscriptions
+                    .len();
 
-                    if !closed_change_subscriptions.is_empty()
-                        || num_providers_connected > num_providers
-                    {
-                        let change_subscription_closed = closed_change_subscriptions.is_empty();
-                        num_providers += 1;
-
-                        let current_filter_map = filter_manager
-                            .read()
-                            .await
-                            .get_signals_ids_with_lowest_interval();
-
-                        if !change_subscription_closed {
-                            filter_manager
-                                .write()
-                                .await
-                                .remove_interval_by_uuid(closed_change_subscriptions);
-                        }
-
-                        let target_filter_map = filter_manager
-                            .read()
-                            .await
-                            .get_signals_ids_with_lowest_interval();
-
-                        let disjoint_map = if !change_subscription_closed {
-                            current_filter_map
-                                .into_iter()
-                                .filter_map(|(k, v1)| {
-                                    let value = target_filter_map.get(&k);
-                                    match value {
-                                        Some(sample_interval) => {
-                                            if *sample_interval != v1 {
-                                                Some((k, *sample_interval))
-                                            } else {
-                                                None
-                                            }
-                                        }
-                                        None => Some((k, 0)),
-                                    }
-                                })
-                                .collect()
-                        } else {
-                            current_filter_map
-                        };
-
-                        Self::update_filters_to_providers(disjoint_map, subscriptions.read().await)
-                            .await;
+                // If closed subscription update new filters to providers or new provider connected
+                if !closed_change_subscriptions.is_empty()
+                    || new_connected_providers_count > connected_providers_count
+                {
+                    if new_connected_providers_count > connected_providers_count {
+                        connected_providers_count += 1;
                     }
+                    let disjoint_map = filter_manager
+                        .write()
+                        .await
+                        .remove_and_get_new_update_filter(closed_change_subscriptions);
 
-                    if num_providers_connected < num_providers {
-                        num_providers -= 1;
-                    }
+                    Self::update_filter_to_providers(
+                        disjoint_map,
+                        &subscriptions.read().await.signal_provider_subscriptions,
+                    )
+                    .await;
+                }
+
+                if new_connected_providers_count < connected_providers_count {
+                    connected_providers_count -= 1;
                 }
             }
         });
     }
 
-    async fn update_filters_to_providers(
+    async fn update_filter_to_providers(
         update_signal_intervals: HashMap<i32, u32>,
-        subscriptions: RwLockReadGuard<'_, Subscriptions>,
+        providers: &HashMap<u32, SignalProviderSubscription>,
     ) {
-        let providers = &(subscriptions.signal_provider_subscriptions);
-
         for provider in providers.values() {
+            // Find which provider contains any of the signals to be updated with new interval.
             let update_signal_map: HashMap<i32, u32> = provider
                 .vss_ids
                 .iter()
@@ -2514,6 +2479,7 @@ impl DataBroker {
                 })
                 .collect();
 
+            // Send to each provider the new (signal_id, new_interval) map.
             if !update_signal_map.is_empty() {
                 provider
                     .signal_provider
