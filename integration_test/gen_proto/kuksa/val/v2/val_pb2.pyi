@@ -619,19 +619,18 @@ class GetProviderValueRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     REQUEST_ID_FIELD_NUMBER: builtins.int
-    REQUEST_FIELD_NUMBER: builtins.int
+    SIGNAL_IDS_FIELD_NUMBER: builtins.int
     request_id: builtins.int
     """/ Unique request id for the stream that can be used to match the corresponding response."""
     @property
-    def request(self) -> global___GetValueRequest: ...
+    def signal_ids(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]: ...
     def __init__(
         self,
         *,
         request_id: builtins.int = ...,
-        request: global___GetValueRequest | None = ...,
+        signal_ids: collections.abc.Iterable[builtins.int] | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["request", b"request"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["request", b"request", "request_id", b"request_id"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["request_id", b"request_id", "signal_ids", b"signal_ids"]) -> None: ...
 
 global___GetProviderValueRequest = GetProviderValueRequest
 
@@ -639,20 +638,37 @@ global___GetProviderValueRequest = GetProviderValueRequest
 class GetProviderValueResponse(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
+    @typing.final
+    class EntriesEntry(google.protobuf.message.Message):
+        DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+        KEY_FIELD_NUMBER: builtins.int
+        VALUE_FIELD_NUMBER: builtins.int
+        key: builtins.int
+        @property
+        def value(self) -> kuksa.val.v2.types_pb2.Datapoint: ...
+        def __init__(
+            self,
+            *,
+            key: builtins.int = ...,
+            value: kuksa.val.v2.types_pb2.Datapoint | None = ...,
+        ) -> None: ...
+        def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
+        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+
     REQUEST_ID_FIELD_NUMBER: builtins.int
-    RESPONSE_FIELD_NUMBER: builtins.int
+    ENTRIES_FIELD_NUMBER: builtins.int
     request_id: builtins.int
     """/ Unique request id for the stream that can be used to match the corresponding request."""
     @property
-    def response(self) -> global___GetValueResponse: ...
+    def entries(self) -> google.protobuf.internal.containers.MessageMap[builtins.int, kuksa.val.v2.types_pb2.Datapoint]: ...
     def __init__(
         self,
         *,
         request_id: builtins.int = ...,
-        response: global___GetValueResponse | None = ...,
+        entries: collections.abc.Mapping[builtins.int, kuksa.val.v2.types_pb2.Datapoint] | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["response", b"response"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["request_id", b"request_id", "response", b"response"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["entries", b"entries", "request_id", b"request_id"]) -> None: ...
 
 global___GetProviderValueResponse = GetProviderValueResponse
 

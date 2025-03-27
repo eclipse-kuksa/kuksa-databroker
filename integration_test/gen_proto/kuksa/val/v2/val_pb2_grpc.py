@@ -59,6 +59,11 @@ class VALStub(object):
                 request_serializer=kuksa_dot_val_dot_v2_dot_val__pb2.ActuateRequest.SerializeToString,
                 response_deserializer=kuksa_dot_val_dot_v2_dot_val__pb2.ActuateResponse.FromString,
                 _registered_method=True)
+        self.ActuateStream = channel.stream_unary(
+                '/kuksa.val.v2.VAL/ActuateStream',
+                request_serializer=kuksa_dot_val_dot_v2_dot_val__pb2.ActuateRequest.SerializeToString,
+                response_deserializer=kuksa_dot_val_dot_v2_dot_val__pb2.ActuateResponse.FromString,
+                _registered_method=True)
         self.BatchActuate = channel.unary_unary(
                 '/kuksa.val.v2.VAL/BatchActuate',
                 request_serializer=kuksa_dot_val_dot_v2_dot_val__pb2.BatchActuateRequest.SerializeToString,
@@ -173,6 +178,28 @@ class VALServicer(object):
 
     def Actuate(self, request, context):
         """Actuate a single actuator
+
+        Returns (GRPC error code):
+        NOT_FOUND if the actuator does not exist.
+        PERMISSION_DENIED if access is denied for the actuator.
+        UNAUTHENTICATED if no credentials provided or credentials has expired
+        UNAVAILABLE if there is no provider currently providing the actuator
+        DATA_LOSS is there is a internal TransmissionFailure
+        INVALID_ARGUMENT
+        - if the provided path is not an actuator.
+        - if the data type used in the request does not match
+        the data type of the addressed signal
+        - if the requested value is not accepted,
+        e.g. if sending an unsupported enum value
+        - if the provided value is out of the min/max range specified
+
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ActuateStream(self, request_iterator, context):
+        """Actuate a single actuator in a gRPC stream -> Use for low latency and high throughput
 
         Returns (GRPC error code):
         NOT_FOUND if the actuator does not exist.
@@ -328,6 +355,11 @@ def add_VALServicer_to_server(servicer, server):
             ),
             'Actuate': grpc.unary_unary_rpc_method_handler(
                     servicer.Actuate,
+                    request_deserializer=kuksa_dot_val_dot_v2_dot_val__pb2.ActuateRequest.FromString,
+                    response_serializer=kuksa_dot_val_dot_v2_dot_val__pb2.ActuateResponse.SerializeToString,
+            ),
+            'ActuateStream': grpc.stream_unary_rpc_method_handler(
+                    servicer.ActuateStream,
                     request_deserializer=kuksa_dot_val_dot_v2_dot_val__pb2.ActuateRequest.FromString,
                     response_serializer=kuksa_dot_val_dot_v2_dot_val__pb2.ActuateResponse.SerializeToString,
             ),
@@ -490,6 +522,33 @@ class VAL(object):
             request,
             target,
             '/kuksa.val.v2.VAL/Actuate',
+            kuksa_dot_val_dot_v2_dot_val__pb2.ActuateRequest.SerializeToString,
+            kuksa_dot_val_dot_v2_dot_val__pb2.ActuateResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ActuateStream(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_unary(
+            request_iterator,
+            target,
+            '/kuksa.val.v2.VAL/ActuateStream',
             kuksa_dot_val_dot_v2_dot_val__pb2.ActuateRequest.SerializeToString,
             kuksa_dot_val_dot_v2_dot_val__pb2.ActuateResponse.FromString,
             options,
