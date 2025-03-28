@@ -103,7 +103,7 @@ impl Viss for Server {
             }));
         } else if let Some(Filter::Paths(paths_filter)) = &request.filter {
             let request_path = request.path.as_ref();
-            if request.path.contains('*') {
+            if request_path.contains('*') {
                 return Err(GetErrorResponse {
                     request_id,
                     ts: SystemTime::now().into(),
