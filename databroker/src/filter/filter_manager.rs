@@ -14,17 +14,16 @@
 use std::collections::{BTreeSet, HashMap};
 use uuid::Uuid;
 
-type SignalId = i32;
-type Interval = u32;
-type SubscriptionUuid = Uuid;
+use crate::types::{SignalId, TimeInterval};
 
+type SubscriptionUuid = Uuid;
 ///
 /// FilterManager:
 /// Contains a small database with the signal_id, interval_ms and subscription_uuid
 ///
 #[derive(Default)]
 pub struct FilterManager {
-    database: HashMap<SignalId, BTreeSet<(Interval, SubscriptionUuid)>>,
+    database: HashMap<SignalId, BTreeSet<(TimeInterval, SubscriptionUuid)>>,
 }
 
 impl FilterManager {
@@ -32,7 +31,7 @@ impl FilterManager {
     /// Returns a HashMap containing each signal_id present in the map,
     /// along with its corresponding lowest associated filter.
     ///
-    fn get_lowest_filter_interval_per_signal(&self) -> HashMap<SignalId, Interval> {
+    fn get_lowest_filter_interval_per_signal(&self) -> HashMap<SignalId, TimeInterval> {
         self.database
             .clone()
             .into_iter()
@@ -50,10 +49,10 @@ impl FilterManager {
     ///
     pub fn add_new_update_filter(
         &mut self,
-        signal_ids: Vec<i32>,
-        sample_interval: u32,
+        signal_ids: Vec<SignalId>,
+        sample_interval: TimeInterval,
         subscription_uuid: Uuid,
-    ) -> HashMap<SignalId, Interval> {
+    ) -> HashMap<SignalId, TimeInterval> {
         // Get the signals ids and their intervals before updating anything.
         let current_lowest_interval_per_signal = self.get_lowest_filter_interval_per_signal();
 
@@ -100,7 +99,7 @@ impl FilterManager {
     pub fn remove_filter_by_subscription_uuid(
         &mut self,
         target: Vec<Uuid>,
-    ) -> HashMap<SignalId, Interval> {
+    ) -> HashMap<SignalId, Option<TimeInterval>> {
         // Get the signals ids and their intervals before removing anything.
         let current_lowest_interval_per_signal = self.get_lowest_filter_interval_per_signal();
 
@@ -140,17 +139,20 @@ impl FilterManager {
                     match value {
                         Some(sample_interval) => {
                             if *sample_interval != lowest_inteval {
-                                Some((signal_id, *sample_interval))
+                                Some((signal_id, Some(*sample_interval)))
                             } else {
                                 None
                             }
                         }
-                        None => Some((signal_id, 0)),
+                        None => Some((signal_id, None)),
                     }
                 })
                 .collect()
         } else {
             updated_lowest_interval_per_signal
+                .into_iter()
+                .map(|(key, value)| (key, Some(value)))
+                .collect()
         };
         update_only_new_interval_filter
     }
@@ -164,11 +166,13 @@ pub mod tests {
     async fn add_filter() {
         let mut filter_manager = FilterManager::default();
 
-        let (singal_id_1, sample_interval_1) = (1, 10);
-        let (singal_id_2, sample_interval_2) = (2, 100);
-        let (singal_id_3, sample_interval_3) = (3, 1000);
-        let (all_singals_ids, min_sample_interval) =
-            (vec![singal_id_1, singal_id_2, singal_id_3], 1);
+        let (singal_id_1, sample_interval_1) = (SignalId::new(1), TimeInterval::new(10));
+        let (singal_id_2, sample_interval_2) = (SignalId::new(2), TimeInterval::new(100));
+        let (singal_id_3, sample_interval_3) = (SignalId::new(3), TimeInterval::new(1000));
+        let (all_singals_ids, min_sample_interval) = (
+            vec![singal_id_1, singal_id_2, singal_id_3],
+            TimeInterval::new(1),
+        );
 
         filter_manager.add_new_update_filter(vec![singal_id_1], sample_interval_1, Uuid::default());
         filter_manager.add_new_update_filter(vec![singal_id_2], sample_interval_2, Uuid::default());
@@ -194,12 +198,15 @@ pub mod tests {
     async fn remove_filter() {
         let mut filter_manager = FilterManager::default();
 
-        let (singal_id_1, sample_interval_1, sub_1) = (1, 10, Uuid::new_v4());
-        let (singal_id_2, sample_interval_2, sub_2) = (2, 100, Uuid::new_v4());
-        let (singal_id_3, sample_interval_3, sub_3) = (3, 1000, Uuid::new_v4());
+        let (singal_id_1, sample_interval_1, sub_1) =
+            (SignalId::new(1), TimeInterval::new(10), Uuid::new_v4());
+        let (singal_id_2, sample_interval_2, sub_2) =
+            (SignalId::new(2), TimeInterval::new(100), Uuid::new_v4());
+        let (singal_id_3, sample_interval_3, sub_3) =
+            (SignalId::new(3), TimeInterval::new(1000), Uuid::new_v4());
         let (all_singals_ids, min_sample_interval, all_uuid) = (
             vec![singal_id_1, singal_id_2, singal_id_3],
-            1,
+            TimeInterval::new(1),
             Uuid::new_v4(),
         );
 
@@ -224,9 +231,9 @@ pub mod tests {
         assert_eq!(
             update_filter_after_remove,
             HashMap::from([
-                (singal_id_1, sample_interval_1),
-                (singal_id_2, sample_interval_2),
-                (singal_id_3, sample_interval_3)
+                (singal_id_1, Some(sample_interval_1)),
+                (singal_id_2, Some(sample_interval_2)),
+                (singal_id_3, Some(sample_interval_3))
             ])
         );
 
@@ -235,7 +242,7 @@ pub mod tests {
 
         assert_eq!(
             update_filter_after_remove_sub1_and_sub2,
-            HashMap::from([(singal_id_1, 0), (singal_id_2, 0)])
+            HashMap::from([(singal_id_1, None), (singal_id_2, None)])
         );
 
         let update_filter_after_remove_sub3 =
@@ -243,7 +250,7 @@ pub mod tests {
 
         assert_eq!(
             update_filter_after_remove_sub3,
-            HashMap::from([(singal_id_3, 0)])
+            HashMap::from([(singal_id_3, None)])
         );
     }
 }

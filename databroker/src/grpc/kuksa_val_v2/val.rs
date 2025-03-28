@@ -13,15 +13,16 @@
 
 use indexmap::IndexMap;
 use std::{collections::HashMap, pin::Pin};
+use uuid::Uuid;
 
 use crate::{
     broker::{
-        self, ActuationChange, ActuationProvider, AuthorizedAccess, GetValuesAction, ReadError,
-        SignalClaimError, SignalProvider, SubscriptionError,
+        self, ActuationChange, ActuationProvider, AuthorizedAccess, GetValuesProviderResponse,
+        ReadError, RegisterSignalError, SignalProvider, SubscriptionError,
     },
     glob::Matcher,
     permissions::Permissions,
-    types::DataValue,
+    types::{DataValue, SignalId, TimeInterval},
 };
 
 use databroker_proto::kuksa::val::v2::{
@@ -103,20 +104,19 @@ impl ActuationProvider for Provider {
 impl SignalProvider for Provider {
     async fn update_filter(
         &self,
-        update_filter: HashMap<i32, u32>,
-    ) -> Result<(), (SignalClaimError, String)> {
+        update_filter: HashMap<SignalId, Option<TimeInterval>>,
+    ) -> Result<(), (RegisterSignalError, String)> {
         let mut filters_update: HashMap<i32, proto::Filter> = HashMap::new();
-        for (signal_id, interval_ms) in update_filter {
-            let min_sample_interval = if interval_ms != 0 {
-                Some(proto::SampleInterval { interval_ms })
-            } else {
-                None
-            };
+        for (signal_id, time_interval) in update_filter {
+            let min_sample_interval = time_interval.map(|time_interval| proto::SampleInterval {
+                interval_ms: time_interval.interval_ms(),
+            });
+
             let filter = proto::Filter {
                 duration_ms: 0,
                 min_sample_interval,
             };
-            filters_update.insert(signal_id, filter);
+            filters_update.insert(signal_id.id(), filter);
         }
 
         let filter_request = proto::UpdateFilterRequest {
@@ -134,7 +134,7 @@ impl SignalProvider for Provider {
         let result = self.sender.send(Ok(response)).await;
         if result.is_err() {
             return Err((
-                SignalClaimError::TransmissionFailure,
+                RegisterSignalError::TransmissionFailure,
                 "An error occured while sending the data".to_string(),
             ));
         }
@@ -145,13 +145,16 @@ impl SignalProvider for Provider {
         !self.sender.is_closed()
     }
 
-    async fn get_values_action(&mut self, signals_ids: Vec<i32>) -> Result<GetValuesAction, ()> {
+    async fn get_signals_values_from_provider(
+        &mut self,
+        signals_ids: Vec<SignalId>,
+    ) -> Result<GetValuesProviderResponse, ()> {
         let request = OpenProviderStreamResponse {
             action: Some(
                 open_provider_stream_response::Action::GetProviderValueRequest(
                     proto::GetProviderValueRequest {
                         request_id: 0,
-                        signal_ids: signals_ids.clone(),
+                        signal_ids: signals_ids.iter().map(|signal_id| signal_id.id()).collect(),
                     },
                 ),
             ),
@@ -172,9 +175,9 @@ impl SignalProvider for Provider {
                         Ok(value) => {
                             let mut entries_map = IndexMap::new();
                             for (id, datapoint) in value.entries {
-                                entries_map.insert(id, (&datapoint).into());
+                                entries_map.insert(SignalId::new(id), (&datapoint).into());
                             }
-                            return Ok(GetValuesAction {
+                            return Ok(GetValuesProviderResponse {
                                 entries: entries_map,
                             });
                         }
@@ -214,7 +217,7 @@ impl proto::val_server::Val for broker::DataBroker {
         let request = request.into_inner();
 
         let signal_id = match get_signal(request.signal_id, &broker).await {
-            Ok(signal_id) => signal_id,
+            Ok(signal_id) => SignalId::new(signal_id),
             Err(err) => return Err(err),
         };
 
@@ -264,7 +267,7 @@ impl proto::val_server::Val for broker::DataBroker {
         for request in requested {
             match get_signal(Some(request), &broker).await {
                 Ok(signal_id) => {
-                    signals_requested.push(signal_id);
+                    signals_requested.push(SignalId::new(signal_id));
                 }
                 Err(err) => return Err(err),
             };
@@ -867,7 +870,7 @@ impl proto::val_server::Val for broker::DataBroker {
         tokio::spawn(async move {
             let permissions = permissions;
             let broker = broker.authorized_access(&permissions);
-            let mut provider_id: Option<u32> = None;
+            let mut local_provider_uuid: Option<Uuid> = None;
             loop {
                 select! {
                     message = stream.message() => {
@@ -884,8 +887,8 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
                                             },
                                             Some(PublishValuesRequest(publish_values_request)) => {
-                                                if provider_id.is_some() {
-                                                    let response = publish_values(&broker, provider_id.unwrap(), &publish_values_request).await;
+                                                if local_provider_uuid.is_some() {
+                                                    let response = publish_values(&broker, local_provider_uuid.unwrap(), &publish_values_request).await;
                                                     if let Some(value) = response {
                                                         if let Err(err) = response_stream_sender.send(value).await {
                                                             debug!("Failed to send error response: {}", err);
@@ -920,13 +923,10 @@ impl proto::val_server::Val for broker::DataBroker {
 
                                             },
                                             Some(ProvideSignalRequest(provide_signal_request)) => {
-                                                //Register provider and channel to receive filter requests.
-                                                //provider_id = Some(broker.generate_provider_id().await);
-                                                //let ref_receiver = Arc::clone(Mutex::new(get_value_receiver));
                                                 let response = register_provided_signals(&broker, &provide_signal_request, response_stream_sender.clone(), get_value_sender.subscribe()).await;
                                                 match response {
                                                     Ok(value) => {
-                                                        provider_id = Some(value.0);
+                                                        local_provider_uuid = Some(value.0);
                                                         if let Err(err) = response_stream_sender.send(Ok(value.1)).await
                                                         {
                                                             debug!("Failed to send response: {}", err)
@@ -950,7 +950,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
                                             }
                                             Some(ProviderErrorIndication(_provider_error_indication)) => {
-                                                publish_provider_error(&broker, provider_id.unwrap().try_into().unwrap()).await;
+                                                publish_provider_error(&broker, local_provider_uuid.unwrap()).await;
                                             }
                                             None => {
 
@@ -1071,19 +1071,23 @@ async fn register_provided_signals(
     request: &databroker_proto::kuksa::val::v2::ProvideSignalRequest,
     sender: mpsc::Sender<Result<OpenProviderStreamResponse, tonic::Status>>,
     receiver: broadcast::Receiver<databroker_proto::kuksa::val::v2::GetProviderValueResponse>,
-) -> Result<(u32, OpenProviderStreamResponse), tonic::Status> {
+) -> Result<(Uuid, OpenProviderStreamResponse), tonic::Status> {
     let provider = Provider {
         sender,
         receiver: Some(BroadcastStream::new(receiver)),
     };
 
-    let all_vss_ids = request.signals_sample_intervals.keys().copied().collect();
+    let all_vss_ids = request
+        .signals_sample_intervals
+        .keys()
+        .map(|signal| SignalId::new(*signal))
+        .collect();
 
     match broker
         .register_signals(all_vss_ids, Box::new(provider))
         .await
     {
-        Ok(provider_id) => {
+        Ok(provider_uuid) => {
             let provide_signal_response = ProvideSignalResponse {};
             let response = OpenProviderStreamResponse {
                 action: Some(
@@ -1092,27 +1096,27 @@ async fn register_provided_signals(
                     ),
                 ),
             };
-            Ok((provider_id, response))
+            Ok((provider_uuid, response))
         }
         Err(error) => Err(error.0.to_tonic_status(error.1)),
     }
 }
 
-async fn publish_provider_error(broker: &AuthorizedAccess<'_, '_>, provide_id: i32) {
-    let _provider_list = broker.publish_provider_error(provide_id);
+async fn publish_provider_error(broker: &AuthorizedAccess<'_, '_>, provide_uuid: Uuid) {
+    let _provider_list = broker.publish_provider_error(provide_uuid);
 }
 
 async fn publish_values(
     broker: &AuthorizedAccess<'_, '_>,
-    provider_id: u32,
+    provider_uuid: Uuid,
     request: &databroker_proto::kuksa::val::v2::PublishValuesRequest,
 ) -> Option<Result<OpenProviderStreamResponse, tonic::Status>> {
-    let mut request_signal_set: HashSet<i32> = HashSet::new();
+    let mut request_signal_set: HashSet<SignalId> = HashSet::new();
     let ids: Vec<(i32, broker::EntryUpdate)> = request
         .data_points
         .iter()
         .map(|(id, datapoint)| {
-            request_signal_set.insert(*id);
+            request_signal_set.insert(SignalId::new(*id));
             (
                 *id,
                 broker::EntryUpdate {
@@ -1132,7 +1136,7 @@ async fn publish_values(
         .collect();
 
     if broker
-        .valid_provider_publish_signals(provider_id as i32, &request_signal_set)
+        .valid_provider_publish_signals(provider_uuid, &request_signal_set)
         .await
     {
         match broker.update_entries(ids).await {
