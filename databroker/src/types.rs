@@ -487,6 +487,34 @@ impl DataValue {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct SignalId {
+    id: i32,
+}
+
+impl SignalId {
+    pub fn new(id: i32) -> Self {
+        Self { id }
+    }
+    pub fn id(&self) -> i32 {
+        self.id
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
+pub struct TimeInterval {
+    ms: u32,
+}
+
+impl TimeInterval {
+    pub fn new(ms: u32) -> Self {
+        Self { ms }
+    }
+    pub fn interval_ms(&self) -> u32 {
+        self.ms
+    }
+}
+
 #[derive(Debug)]
 pub struct ExecutionInputImplData {
     pub value: DataValue,

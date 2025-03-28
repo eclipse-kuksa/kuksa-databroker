@@ -117,14 +117,14 @@ pub struct SubscribeRequest {
     pub path: Path,
     pub request_id: RequestId,
     pub authorization: Option<String>,
-    // filter: Option<Filter>,
+    pub filter: Option<Filter>,
 }
 
 #[derive(Serialize)]
 #[serde(tag = "action", rename = "subscribe", rename_all = "camelCase")]
 pub struct SubscribeSuccessResponse {
-    pub request_id: RequestId,
     pub subscription_id: SubscriptionId,
+    pub request_id: RequestId,
     pub ts: Timestamp,
 }
 
@@ -198,6 +198,8 @@ pub enum Filter {
     StaticMetadata(StaticMetadataFilter),
     #[serde(rename = "paths")]
     Paths(PathsFilter),
+    #[serde(rename = "timebased")]
+    Timebased(TimebasedFilter),
 }
 
 #[derive(Deserialize)]
@@ -210,6 +212,12 @@ pub struct PathsFilter {
 #[serde(rename_all = "camelCase")]
 pub struct StaticMetadataFilter {
     // pub parameters: Option<StaticMetadataParameters>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimebasedFilter {
+    pub period: u32,
 }
 
 // Unique id value specified by the client. Returned by the server in the
@@ -403,6 +411,7 @@ pub enum Error {
     NotFoundInvalidSubscriptionId,
     InternalServerError,
     NotImplemented,
+    ServiceUnavailable,
 }
 
 impl From<Error> for ErrorSpec {
@@ -490,6 +499,11 @@ impl From<Error> for ErrorSpec {
             // BadGateway          502  bad_gateway               The server was acting as a gateway or proxy and received an invalid response from an upstream server.
             // ServiceUnavailable  503  service_unavailable       The server is currently unable to handle the request due to a temporary overload or scheduled maintenance (which may be alleviated after some delay).
             // GatewayTimeout      504  gateway_timeout           The server did not receive a timely response from an upstream server it needed to access in order to complete the request.
+            Error::ServiceUnavailable => ErrorSpec {
+                number: 503,
+                reason: "service_unavailable".into(),
+                message: "The server is temporarily unable to handle the request.".into(),
+            },
         }
     }
 }
