@@ -18,6 +18,7 @@ pub use crate::types;
 use crate::query;
 pub use crate::types::{ChangeType, DataType, DataValue, EntryType};
 
+use indexmap::IndexMap;
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::time::Instant;
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
@@ -218,7 +219,7 @@ pub struct ActuationSubscription {
 }
 
 pub struct GetValuesAction {
-    pub entries: HashMap<i32, Datapoint>,
+    pub entries: IndexMap<i32, Datapoint>,
 }
 
 pub struct SignalProviderSubscription {
@@ -2276,55 +2277,68 @@ impl AuthorizedAccess<'_, '_> {
 
     pub async fn get_values_broker(
         &self,
-        vss_signals: HashSet<i32>,
+        vss_signals: Vec<i32>,
     ) -> Result<GetValuesAction, (ReadError, i32)> {
         let mut subscriptions = self.broker.subscriptions.write().await;
-        let mut entries_response: HashMap<i32, Datapoint> = HashMap::new();
+        let mut entries_response: IndexMap<i32, Datapoint> = IndexMap::new();
 
-        // Step 1: find the interseccion of the requested signals and each provider's signals
-        for (_, provider) in subscriptions.signal_provider_subscriptions.iter_mut() {
-            let intersection_signals_request: Vec<i32> = provider
-                .vss_ids
-                .intersection(&vss_signals)
-                .copied()
-                .collect();
+        // if there are providers connected then forward the get value request to them
+        if !subscriptions.signal_provider_subscriptions.is_empty() {
+            // Step 1: find the interseccion of the requested signals and each provider's signals
+            for (_, provider) in subscriptions.signal_provider_subscriptions.iter_mut() {
+                let intersection_signals_request: Vec<i32> = provider
+                    .vss_ids
+                    .intersection(&vss_signals.clone().into_iter().collect())
+                    .copied()
+                    .collect();
 
-            //Step 2: check if there is any possible ReadError while reading any of the signals
-            for signal_id in &intersection_signals_request {
-                match self
-                    .broker
-                    .database
-                    .read()
-                    .await
-                    .authorized_read_access(self.permissions)
-                    .get_entry_by_id(*signal_id)
-                {
-                    Ok(_) => {}
-                    Err(err) => return Err((err, *signal_id)),
+                //Step 2: check if there is any possible ReadError while reading any of the signals
+                for signal_id in &intersection_signals_request {
+                    match self
+                        .broker
+                        .database
+                        .read()
+                        .await
+                        .authorized_read_access(self.permissions)
+                        .get_entry_by_id(*signal_id)
+                    {
+                        Ok(_) => {}
+                        Err(err) => return Err((err, *signal_id)),
+                    }
                 }
-            }
 
-            //Step 3: send to each provider the intersection signals requested
-            let response = provider
-                .signal_provider
-                .get_values_action(intersection_signals_request.clone())
-                .await;
+                //Step 3: send to each provider the intersection signals requested
+                let response = provider
+                    .signal_provider
+                    .get_values_action(intersection_signals_request.clone())
+                    .await;
 
-            //Step 4: collect responses from providers
-            match response {
-                Ok(value) => {
-                    entries_response.extend(value.entries);
-                }
-                Err(_) => {
-                    //Step 5: if provider did not return any item, then return the datapoint in database
-                    for signal_id in &intersection_signals_request {
-                        match self.get_datapoint(*signal_id).await {
-                            Ok(datapoint) => {
-                                entries_response.insert(*signal_id, datapoint.clone());
+                //Step 4: collect responses from providers
+                match response {
+                    Ok(value) => {
+                        entries_response.extend(value.entries);
+                    }
+                    Err(_) => {
+                        //Step 5: if provider did not return any item, then return the datapoint in database
+                        for signal_id in &intersection_signals_request {
+                            match self.get_datapoint(*signal_id).await {
+                                Ok(datapoint) => {
+                                    entries_response.insert(*signal_id, datapoint.clone());
+                                }
+                                Err(err) => return Err((err, *signal_id)),
                             }
-                            Err(err) => return Err((err, *signal_id)),
                         }
                     }
+                }
+            }
+        } else {
+            // if not just send to the client database last database values
+            for signal_id in &vss_signals {
+                match self.get_datapoint(*signal_id).await {
+                    Ok(datapoint) => {
+                        entries_response.insert(*signal_id, datapoint.clone());
+                    }
+                    Err(err) => return Err((err, *signal_id)),
                 }
             }
         }
@@ -2422,7 +2436,7 @@ impl DataBroker {
                     let new_update_filter = filter_manager
                         .write()
                         .await
-                        .remove_filter_by_uuid(closed_change_subscriptions);
+                        .remove_filter_by_subscription_uuid(closed_change_subscriptions);
 
                     Self::update_filter_to_providers(
                         new_update_filter,

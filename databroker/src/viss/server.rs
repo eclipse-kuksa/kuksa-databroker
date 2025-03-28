@@ -272,7 +272,5 @@ fn parse_v2_msg(msg: &str) -> Result<v2::Request, v2::GenericErrorResponse> {
 }
 
 fn serialize(response: impl v2::Response) -> Result<String, serde_json::Error> {
-    let response_r = serde_json::to_string(&response);
-    println!("{}", response_r.as_ref().unwrap());
-    response_r
+    serde_json::to_string(&response)
 }

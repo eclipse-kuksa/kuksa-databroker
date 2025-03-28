@@ -11,6 +11,9 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
+use indexmap::IndexMap;
+use std::{collections::HashMap, pin::Pin};
+
 use crate::{
     broker::{
         self, ActuationChange, ActuationProvider, AuthorizedAccess, GetValuesAction, ReadError,
@@ -20,7 +23,6 @@ use crate::{
     permissions::Permissions,
     types::DataValue,
 };
-use std::{collections::HashMap, pin::Pin};
 
 use databroker_proto::kuksa::val::v2::{
     self as proto,
@@ -39,6 +41,7 @@ use std::collections::HashSet;
 use tokio::{
     select,
     sync::{broadcast, mpsc},
+    time::timeout,
 };
 use tokio_stream::{
     wrappers::{BroadcastStream, ReceiverStream},
@@ -163,21 +166,24 @@ impl SignalProvider for Provider {
         }
         match self.receiver.as_mut() {
             // Here is assumed that provider will return a response immediately, todo -> timeout configuration
-            Some(receiver) => match receiver.next().await {
-                Some(value) => match value {
-                    Ok(value) => {
-                        let mut entries_map = HashMap::new();
-                        for (id, datapoint) in value.entries {
-                            entries_map.insert(id, (&datapoint).into());
+            Some(receiver) => {
+                match timeout(tokio::time::Duration::from_secs(1), receiver.next()).await {
+                    Ok(Some(value)) => match value {
+                        Ok(value) => {
+                            let mut entries_map = IndexMap::new();
+                            for (id, datapoint) in value.entries {
+                                entries_map.insert(id, (&datapoint).into());
+                            }
+                            return Ok(GetValuesAction {
+                                entries: entries_map,
+                            });
                         }
-                        return Ok(GetValuesAction {
-                            entries: entries_map,
-                        });
-                    }
-                    Err(_) => Err(()),
-                },
-                None => Err(()),
-            },
+                        Err(_) => Err(()),
+                    },
+                    // Either the stream ended (None) or the timeout elapsed (Err).
+                    Ok(None) | Err(_) => Err(()),
+                }
+            }
             None => Err(()),
         }
     }
@@ -212,7 +218,7 @@ impl proto::val_server::Val for broker::DataBroker {
             Err(err) => return Err(err),
         };
 
-        let datapoint = match broker.get_values_broker(HashSet::from([signal_id])).await {
+        let datapoint = match broker.get_values_broker(Vec::from([signal_id])).await {
             Ok(datapoint) => datapoint,
             Err((ReadError::NotFound, _)) => {
                 return Err(tonic::Status::not_found("Path not found"))
@@ -253,11 +259,13 @@ impl proto::val_server::Val for broker::DataBroker {
         let requested = request.into_inner().signal_ids;
         let mut response_datapoints = Vec::new();
 
-        let mut signals_requested = HashSet::new();
+        let mut signals_requested = Vec::new();
 
         for request in requested {
             match get_signal(Some(request), &broker).await {
-                Ok(signal_id) => signals_requested.insert(signal_id),
+                Ok(signal_id) => {
+                    signals_requested.push(signal_id);
+                }
                 Err(err) => return Err(err),
             };
         }
@@ -853,7 +861,7 @@ impl proto::val_server::Val for broker::DataBroker {
         let broker = self.clone();
         // Create stream (to be returned)
         let (response_stream_sender, response_stream_receiver) = mpsc::channel(10);
-        let (get_value_sender, _) = broadcast::channel(1);
+        let (get_value_sender, _) = broadcast::channel(10);
 
         // Listening on stream
         tokio::spawn(async move {
@@ -883,7 +891,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                                             debug!("Failed to send error response: {}", err);
                                                         }
                                                     }
-                                                } else if let Err(err) = response_stream_sender.send(Err(tonic::Status::aborted("Provider has not provided the signals, please call ProvideSignalRequest first"))).await {
+                                                } else if let Err(err) = response_stream_sender.send(Err(tonic::Status::aborted("Provider has not claimed the signals, please call ProvideSignalRequest first"))).await {
                                                     debug!("Failed to send error response: {}", err);
                                                 }
                                             },
@@ -936,7 +944,6 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 todo!();
                                             }
                                             Some(GetProviderValueResponse(get_provider_value_response)) => {
-                                                println!("Received GetProviderValueResponse(get_provider_value_response))");
                                                 if let Err(err) = get_value_sender.send(get_provider_value_response)
                                                 {
                                                     debug!("Failed to send tonic error: {}", err)
@@ -1619,7 +1626,7 @@ mod tests {
         static SIGNAL1: &str = "test.datapoint1";
         static SIGNAL2: &str = "test.datapoint2";
 
-        let broker = DataBroker::default();
+        let broker: DataBroker = DataBroker::default();
 
         let timestamp = std::time::SystemTime::now();
 
@@ -2445,7 +2452,7 @@ mod tests {
         Test open_provider_stream service method
     */
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_open_provider_stream() {
+    async fn test_publish_value_request_without_first_claiming_it() {
         let broker = DataBroker::default();
         let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
         let request_id = 1;
@@ -2510,18 +2517,8 @@ mod tests {
                                 Some(ProvideActuationResponse(_)) => {
                                     panic!("Should not happen")
                                 }
-                                Some(PublishValuesResponse(publish_values_response)) => {
-                                    assert_eq!(publish_values_response.request_id, request_id);
-                                    assert_eq!(publish_values_response.status.len(), 1);
-                                    match publish_values_response.status.get(&entry_id) {
-                                        Some(value) => {
-                                            assert_eq!(value.code, 1);
-                                            assert_eq!(value.message, "Wrong Type");
-                                        }
-                                        None => {
-                                            panic!("Should not happen")
-                                        }
-                                    }
+                                Some(PublishValuesResponse(_)) => {
+                                    panic!("Should not happen")
                                 }
                                 Some(BatchActuateStreamRequest(_)) => {
                                     panic!("Should not happen")
@@ -2539,8 +2536,8 @@ mod tests {
                                     panic!("Should not happen")
                                 }
                             },
-                            Err(_) => {
-                                panic!("Should not happen")
+                            Err(err) => {
+                                assert_eq!(err.code(), tonic::Code::Aborted);
                             }
                         }
                     }
