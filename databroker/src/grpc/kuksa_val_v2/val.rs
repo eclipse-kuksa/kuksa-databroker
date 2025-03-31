@@ -894,7 +894,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                                             debug!("Failed to send error response: {}", err);
                                                         }
                                                     }
-                                                } else if let Err(err) = response_stream_sender.send(Err(tonic::Status::aborted("Provider has not claimed the signals, please call ProvideSignalRequest first"))).await {
+                                                } else if let Err(err) = response_stream_sender.send(Err(tonic::Status::aborted("Provider has not claimed yet the signals, please call ProvideSignalRequest first"))).await {
                                                     debug!("Failed to send error response: {}", err);
                                                 }
                                             },
@@ -941,7 +941,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
                                             }
                                             Some(UpdateFilterResponse(_update_filter_response)) => {
-                                                todo!();
+                                                debug!("Filter response received from provider {}", local_provider_uuid.unwrap());
                                             }
                                             Some(GetProviderValueResponse(get_provider_value_response)) => {
                                                 if let Err(err) = get_value_sender.send(get_provider_value_response)
@@ -950,7 +950,11 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
                                             }
                                             Some(ProviderErrorIndication(_provider_error_indication)) => {
-                                                publish_provider_error(&broker, local_provider_uuid.unwrap()).await;
+                                                if local_provider_uuid.is_some() {
+                                                    publish_provider_error(&broker, local_provider_uuid.unwrap()).await;
+                                                } else if let Err(err) = response_stream_sender.send(Err(tonic::Status::aborted("Provider has not claimed yet any signals, please call ProvideSignalRequest first"))).await {
+                                                    debug!("Failed to send error response: {}", err);
+                                                }
                                             }
                                             None => {
 
