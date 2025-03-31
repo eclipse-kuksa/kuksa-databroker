@@ -377,7 +377,13 @@ impl Viss for Server {
             });
         };
 
-        match broker.subscribe(entries, None).await {
+        let interval_ms = if let Some(Filter::Timebased(timebased)) = &request.filter {
+            Some(timebased.period)
+        } else {
+            None
+        };
+
+        match broker.subscribe(entries, None, interval_ms).await {
             Ok(stream) => {
                 let subscription_id = SubscriptionId::new();
 
@@ -443,30 +449,38 @@ impl Viss for Server {
 
 fn convert_to_viss_stream(
     subscription_id: SubscriptionId,
-    stream: impl Stream<Item = broker::EntryUpdates>,
+    stream: impl Stream<Item = Option<broker::EntryUpdates>>,
 ) -> impl Stream<Item = Result<SubscriptionEvent, SubscriptionErrorEvent>> {
-    stream.map(move |mut item| {
+    stream.map(move |item| {
         let ts = SystemTime::now().into();
         let subscription_id = subscription_id.clone();
-        match item.updates.pop() {
-            Some(item) => match (item.update.path, item.update.datapoint) {
-                (Some(path), Some(datapoint)) => Ok(SubscriptionEvent {
-                    subscription_id,
-                    data: Data::Object(DataObject {
-                        path: path.into(),
-                        dp: datapoint.into(),
+        match item {
+            Some(mut value) => match value.updates.pop() {
+                Some(item) => match (item.update.path, item.update.datapoint) {
+                    (Some(path), Some(datapoint)) => Ok(SubscriptionEvent {
+                        subscription_id,
+                        data: Data::Object(DataObject {
+                            path: path.into(),
+                            dp: datapoint.into(),
+                        }),
+                        ts,
                     }),
-                    ts,
-                }),
-                (_, _) => Err(SubscriptionErrorEvent {
+                    (_, _) => Err(SubscriptionErrorEvent {
+                        subscription_id,
+                        error: Error::InternalServerError,
+                        ts,
+                    }),
+                },
+                None => Err(SubscriptionErrorEvent {
                     subscription_id,
                     error: Error::InternalServerError,
                     ts,
                 }),
             },
+            // if None, it means the provider(is not available), meaning we should return the VISS error service_unavailable
             None => Err(SubscriptionErrorEvent {
                 subscription_id,
-                error: Error::InternalServerError,
+                error: Error::ServiceUnavailable,
                 ts,
             }),
         }
