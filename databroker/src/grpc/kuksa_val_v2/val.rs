@@ -11,15 +11,18 @@
 * SPDX-License-Identifier: Apache-2.0
 ********************************************************************************/
 
+use indexmap::IndexMap;
 use std::{collections::HashMap, pin::Pin};
+use uuid::Uuid;
 
 use crate::{
     broker::{
-        self, ActuationChange, ActuationProvider, AuthorizedAccess, ReadError, SubscriptionError,
+        self, ActuationChange, ActuationProvider, AuthorizedAccess, GetValuesProviderResponse,
+        ReadError, RegisterSignalError, SignalProvider, SubscriptionError,
     },
     glob::Matcher,
     permissions::Permissions,
-    types::DataValue,
+    types::{DataValue, SignalId, TimeInterval},
 };
 
 use databroker_proto::kuksa::val::v2::{
@@ -33,17 +36,25 @@ use databroker_proto::kuksa::val::v2::{
 
 use kuksa::proto::v2::{
     signal_id, ActuateRequest, ActuateResponse, BatchActuateStreamRequest, ErrorCode,
-    ListMetadataResponse, ProvideActuationResponse,
+    ListMetadataResponse, ProvideActuationResponse, ProvideSignalResponse,
 };
 use std::collections::HashSet;
-use tokio::{select, sync::mpsc};
-use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
+use tokio::{
+    select,
+    sync::{broadcast, mpsc},
+    time::timeout,
+};
+use tokio_stream::{
+    wrappers::{BroadcastStream, ReceiverStream},
+    Stream, StreamExt,
+};
 use tracing::debug;
 
 const MAX_REQUEST_PATH_LENGTH: usize = 1000;
 
 pub struct Provider {
     sender: mpsc::Sender<Result<OpenProviderStreamResponse, tonic::Status>>,
+    receiver: Option<BroadcastStream<databroker_proto::kuksa::val::v2::GetProviderValueResponse>>,
 }
 
 #[async_trait::async_trait]
@@ -89,6 +100,98 @@ impl ActuationProvider for Provider {
     }
 }
 
+#[async_trait::async_trait]
+impl SignalProvider for Provider {
+    async fn update_filter(
+        &self,
+        update_filter: HashMap<SignalId, Option<TimeInterval>>,
+    ) -> Result<(), (RegisterSignalError, String)> {
+        let mut filters_update: HashMap<i32, proto::Filter> = HashMap::new();
+        for (signal_id, time_interval) in update_filter {
+            let min_sample_interval = time_interval.map(|time_interval| proto::SampleInterval {
+                interval_ms: time_interval.interval_ms(),
+            });
+
+            let filter = proto::Filter {
+                duration_ms: 0,
+                min_sample_interval,
+            };
+            filters_update.insert(signal_id.id(), filter);
+        }
+
+        let filter_request = proto::UpdateFilterRequest {
+            request_id: 1,
+            filters_update,
+        };
+
+        let filter_stream_request =
+            open_provider_stream_response::Action::UpdateFilterRequest(filter_request);
+
+        let response = OpenProviderStreamResponse {
+            action: Some(filter_stream_request),
+        };
+
+        let result = self.sender.send(Ok(response)).await;
+        if result.is_err() {
+            return Err((
+                RegisterSignalError::TransmissionFailure,
+                "An error occured while sending the data".to_string(),
+            ));
+        }
+        return Ok(());
+    }
+
+    fn is_available(&self) -> bool {
+        !self.sender.is_closed()
+    }
+
+    async fn get_signals_values_from_provider(
+        &mut self,
+        signals_ids: Vec<SignalId>,
+    ) -> Result<GetValuesProviderResponse, ()> {
+        let request = OpenProviderStreamResponse {
+            action: Some(
+                open_provider_stream_response::Action::GetProviderValueRequest(
+                    proto::GetProviderValueRequest {
+                        request_id: 0,
+                        signal_ids: signals_ids.iter().map(|signal_id| signal_id.id()).collect(),
+                    },
+                ),
+            ),
+        };
+
+        let result = self.sender.send(Ok(request)).await;
+        match result {
+            Ok(_) => {}
+            Err(err) => {
+                debug!("{}", err.to_string());
+            }
+        }
+        match self.receiver.as_mut() {
+            // Here is assumed that provider will return a response immediately, todo -> timeout configuration
+            Some(receiver) => {
+                match timeout(tokio::time::Duration::from_secs(1), receiver.next()).await {
+                    Ok(Some(value)) => match value {
+                        Ok(value) => {
+                            let mut entries_map = IndexMap::new();
+                            for (id, datapoint) in value.entries {
+                                entries_map.insert(SignalId::new(id), (&datapoint).into());
+                            }
+                            return Ok(GetValuesProviderResponse {
+                                entries: entries_map,
+                            });
+                        }
+                        Err(_) => Err(()),
+                    },
+                    // Either the stream ended (None) or the timeout elapsed (Err).
+                    Ok(None) | Err(_) => Err(()),
+                }
+            }
+            None => Err(()),
+        }
+    }
+}
+
 #[tonic::async_trait]
 impl proto::val_server::Val for broker::DataBroker {
     // Returns (GRPC error code):
@@ -114,23 +217,25 @@ impl proto::val_server::Val for broker::DataBroker {
         let request = request.into_inner();
 
         let signal_id = match get_signal(request.signal_id, &broker).await {
-            Ok(signal_id) => signal_id,
+            Ok(signal_id) => SignalId::new(signal_id),
             Err(err) => return Err(err),
         };
 
-        let datapoint = match broker.get_datapoint(signal_id).await {
+        let datapoint = match broker.get_values_broker(Vec::from([signal_id])).await {
             Ok(datapoint) => datapoint,
-            Err(ReadError::NotFound) => return Err(tonic::Status::not_found("Path not found")),
-            Err(ReadError::PermissionDenied) => {
+            Err((ReadError::NotFound, _)) => {
+                return Err(tonic::Status::not_found("Path not found"))
+            }
+            Err((ReadError::PermissionDenied, _)) => {
                 return Err(tonic::Status::permission_denied("Permission denied"))
             }
-            Err(ReadError::PermissionExpired) => {
+            Err((ReadError::PermissionExpired, _)) => {
                 return Err(tonic::Status::unauthenticated("Permission expired"))
             }
         };
 
         Ok(tonic::Response::new(proto::GetValueResponse {
-            data_point: datapoint.into(),
+            data_point: datapoint.entries.values().next().unwrap().clone().into(),
         }))
     }
 
@@ -157,38 +262,43 @@ impl proto::val_server::Val for broker::DataBroker {
         let requested = request.into_inner().signal_ids;
         let mut response_datapoints = Vec::new();
 
+        let mut signals_requested = Vec::new();
+
         for request in requested {
-            let signal_id = match get_signal(Some(request), &broker).await {
-                Ok(signal_id) => signal_id,
+            match get_signal(Some(request), &broker).await {
+                Ok(signal_id) => {
+                    signals_requested.push(SignalId::new(signal_id));
+                }
                 Err(err) => return Err(err),
             };
+        }
 
-            match broker.get_datapoint(signal_id).await {
-                Ok(datapoint) => {
+        match broker.get_values_broker(signals_requested).await {
+            Ok(response) => {
+                for (_, datapoint) in response.entries {
                     let proto_datapoint_opt: Option<proto::Datapoint> = datapoint.into();
-                    //let proto_datapoint: proto::Datapoint = proto_datapoint_opt.into();
                     response_datapoints.push(proto_datapoint_opt.unwrap());
                 }
-                Err(ReadError::NotFound) => {
-                    return Err(tonic::Status::not_found(format!(
-                        "Path not found (id: {})",
-                        signal_id
-                    )));
-                }
-                Err(ReadError::PermissionDenied) => {
-                    return Err(tonic::Status::permission_denied(format!(
-                        "Permission denied(id: {})",
-                        signal_id
-                    )))
-                }
-                Err(ReadError::PermissionExpired) => {
-                    return Err(tonic::Status::unauthenticated(format!(
-                        "Permission expired (id: {})",
-                        signal_id
-                    )))
-                }
-            };
-        }
+            }
+            Err((ReadError::NotFound, signal_id)) => {
+                return Err(tonic::Status::not_found(format!(
+                    "Path not found (id: {})",
+                    signal_id
+                )));
+            }
+            Err((ReadError::PermissionDenied, signal_id)) => {
+                return Err(tonic::Status::permission_denied(format!(
+                    "Permission denied(id: {})",
+                    signal_id
+                )))
+            }
+            Err((ReadError::PermissionExpired, signal_id)) => {
+                return Err(tonic::Status::unauthenticated(format!(
+                    "Permission expired (id: {})",
+                    signal_id
+                )))
+            }
+        };
 
         Ok(tonic::Response::new(proto::GetValuesResponse {
             data_points: response_datapoints,
@@ -248,8 +358,20 @@ impl proto::val_server::Val for broker::DataBroker {
             );
         }
 
+        let interval_ms = if let Some(filter) = request.filter {
+            filter
+                .min_sample_interval
+                .map(|min_sample_interval| min_sample_interval.interval_ms)
+        } else {
+            None
+        };
+
         match broker
-            .subscribe(valid_requests, Some(request.buffer_size as usize))
+            .subscribe(
+                valid_requests,
+                Some(request.buffer_size as usize),
+                interval_ms,
+            )
             .await
         {
             Ok(stream) => {
@@ -321,8 +443,20 @@ impl proto::val_server::Val for broker::DataBroker {
             );
         }
 
+        let interval_ms = if let Some(filter) = request.filter {
+            filter
+                .min_sample_interval
+                .map(|min_sample_interval| min_sample_interval.interval_ms)
+        } else {
+            None
+        };
+
         match broker
-            .subscribe(valid_requests, Some(request.buffer_size as usize))
+            .subscribe(
+                valid_requests,
+                Some(request.buffer_size as usize),
+                interval_ms,
+            )
             .await
         {
             Ok(stream) => {
@@ -730,11 +864,13 @@ impl proto::val_server::Val for broker::DataBroker {
         let broker = self.clone();
         // Create stream (to be returned)
         let (response_stream_sender, response_stream_receiver) = mpsc::channel(10);
+        let (get_value_sender, _) = broadcast::channel(10);
 
         // Listening on stream
         tokio::spawn(async move {
             let permissions = permissions;
             let broker = broker.authorized_access(&permissions);
+            let mut local_provider_uuid: Option<Uuid> = None;
             loop {
                 select! {
                     message = stream.message() => {
@@ -751,15 +887,18 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
                                             },
                                             Some(PublishValuesRequest(publish_values_request)) => {
-                                                let response = publish_values(&broker, &publish_values_request).await;
-                                                if let Some(value) = response {
-                                                    if let Err(err) = response_stream_sender.send(Ok(value)).await {
-                                                        debug!("Failed to send error response: {}", err);
+                                                if local_provider_uuid.is_some() {
+                                                    let response = publish_values(&broker, local_provider_uuid.unwrap(), &publish_values_request).await;
+                                                    if let Some(value) = response {
+                                                        if let Err(err) = response_stream_sender.send(value).await {
+                                                            debug!("Failed to send error response: {}", err);
+                                                        }
                                                     }
+                                                } else if let Err(err) = response_stream_sender.send(Err(tonic::Status::aborted("Provider has not claimed yet the signals, please call ProvideSignalRequest first"))).await {
+                                                    debug!("Failed to send error response: {}", err);
                                                 }
                                             },
                                             Some(BatchActuateStreamResponse(batch_actuate_stream_response)) => {
-
                                                 if let Some(error) = batch_actuate_stream_response.error {
                                                     match error.code() {
                                                         ErrorCode::Ok  => {},
@@ -783,17 +922,39 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
 
                                             },
-                                            Some(ProvideSignalRequest(_provide_signal_request)) => {
-                                                todo!();
+                                            Some(ProvideSignalRequest(provide_signal_request)) => {
+                                                let response = register_provided_signals(&broker, &provide_signal_request, response_stream_sender.clone(), get_value_sender.subscribe()).await;
+                                                match response {
+                                                    Ok(value) => {
+                                                        local_provider_uuid = Some(value.0);
+                                                        if let Err(err) = response_stream_sender.send(Ok(value.1)).await
+                                                        {
+                                                            debug!("Failed to send response: {}", err)
+                                                        }
+                                                    },
+                                                    Err(tonic_error) => {
+                                                        if let Err(err) = response_stream_sender.send(Err(tonic_error)).await
+                                                        {
+                                                            debug!("Failed to send tonic error: {}", err)
+                                                        }
+                                                    }
+                                                }
                                             }
                                             Some(UpdateFilterResponse(_update_filter_response)) => {
-                                                todo!();
+                                                debug!("Filter response received from provider {}", local_provider_uuid.unwrap());
                                             }
-                                            Some(GetProviderValueResponse(_get_provider_value_response)) => {
-                                                todo!();
+                                            Some(GetProviderValueResponse(get_provider_value_response)) => {
+                                                if let Err(err) = get_value_sender.send(get_provider_value_response)
+                                                {
+                                                    debug!("Failed to send tonic error: {}", err)
+                                                }
                                             }
-                                            Some(ProviderErrorIndication(_provide_error_indication)) => {
-                                                todo!();
+                                            Some(ProviderErrorIndication(_provider_error_indication)) => {
+                                                if local_provider_uuid.is_some() {
+                                                    publish_provider_error(&broker, local_provider_uuid.unwrap()).await;
+                                                } else if let Err(err) = response_stream_sender.send(Err(tonic::Status::aborted("Provider has not claimed yet any signals, please call ProvideSignalRequest first"))).await {
+                                                    debug!("Failed to send error response: {}", err);
+                                                }
                                             }
                                             None => {
 
@@ -882,7 +1043,10 @@ async fn provide_actuation(
     all_vss_ids.extend(vss_ids);
     all_vss_ids.extend(resolved_vss_ids);
 
-    let provider = Provider { sender };
+    let provider = Provider {
+        sender,
+        receiver: None,
+    };
 
     match broker
         .provide_actuation(all_vss_ids, Box::new(provider))
@@ -906,14 +1070,73 @@ async fn provide_actuation(
     }
 }
 
+async fn register_provided_signals(
+    broker: &AuthorizedAccess<'_, '_>,
+    request: &databroker_proto::kuksa::val::v2::ProvideSignalRequest,
+    sender: mpsc::Sender<Result<OpenProviderStreamResponse, tonic::Status>>,
+    receiver: broadcast::Receiver<databroker_proto::kuksa::val::v2::GetProviderValueResponse>,
+) -> Result<(Uuid, OpenProviderStreamResponse), tonic::Status> {
+    let provider = Provider {
+        sender,
+        receiver: Some(BroadcastStream::new(receiver)),
+    };
+
+    let all_vss_ids = request
+        .signals_sample_intervals
+        .clone()
+        .into_iter()
+        .map(|(signal, sample_interval)| {
+            (
+                SignalId::new(signal),
+                TimeInterval::new(sample_interval.interval_ms),
+            )
+        })
+        .collect();
+
+    match broker
+        .register_signals(all_vss_ids, Box::new(provider))
+        .await
+    {
+        Ok(provider_uuid) => {
+            let provide_signal_response = ProvideSignalResponse {};
+            let response = OpenProviderStreamResponse {
+                action: Some(
+                    open_provider_stream_response::Action::ProvideSignalResponse(
+                        provide_signal_response,
+                    ),
+                ),
+            };
+            Ok((provider_uuid, response))
+        }
+        Err(error) => Err(error.0.to_tonic_status(error.1)),
+    }
+}
+
+async fn publish_provider_error(broker: &AuthorizedAccess<'_, '_>, provide_uuid: Uuid) {
+    match broker.publish_provider_error(provide_uuid).await {
+        Ok(_) => {}
+        Err(entries) => {
+            let keys: HashSet<String> = entries.iter().map(|(key, _)| key.to_string()).collect();
+            let unique_string = keys.into_iter().collect::<Vec<String>>().join(", ");
+            debug!(
+                "The provider {} error could not invalidate the entries {}",
+                provide_uuid, unique_string
+            );
+        }
+    }
+}
+
 async fn publish_values(
     broker: &AuthorizedAccess<'_, '_>,
+    provider_uuid: Uuid,
     request: &databroker_proto::kuksa::val::v2::PublishValuesRequest,
-) -> Option<OpenProviderStreamResponse> {
+) -> Option<Result<OpenProviderStreamResponse, tonic::Status>> {
+    let mut request_signal_set: HashSet<SignalId> = HashSet::new();
     let ids: Vec<(i32, broker::EntryUpdate)> = request
         .data_points
         .iter()
         .map(|(id, datapoint)| {
+            request_signal_set.insert(SignalId::new(*id));
             (
                 *id,
                 broker::EntryUpdate {
@@ -932,22 +1155,30 @@ async fn publish_values(
         })
         .collect();
 
-    // TODO check if provider is allowed to update the entries for the provided signals?
-    match broker.update_entries(ids).await {
-        Ok(_) => None,
-        Err(err) => Some(OpenProviderStreamResponse {
-            action: Some(
-                open_provider_stream_response::Action::PublishValuesResponse(
-                    PublishValuesResponse {
-                        request_id: request.request_id,
-                        status: err
-                            .iter()
-                            .map(|(id, error)| (*id, proto::Error::from(error)))
-                            .collect(),
-                    },
+    if broker
+        .valid_provider_publish_signals(provider_uuid, &request_signal_set)
+        .await
+    {
+        match broker.update_entries(ids).await {
+            Ok(_) => None,
+            Err(err) => Some(Ok(OpenProviderStreamResponse {
+                action: Some(
+                    open_provider_stream_response::Action::PublishValuesResponse(
+                        PublishValuesResponse {
+                            request_id: request.request_id,
+                            status: err
+                                .iter()
+                                .map(|(id, error)| (*id, proto::Error::from(error)))
+                                .collect(),
+                        },
+                    ),
                 ),
-            ),
-        }),
+            })),
+        }
+    } else {
+        Some(Err(tonic::Status::already_exists(
+            "Signals already registered by another provider",
+        )))
     }
 }
 
@@ -983,48 +1214,54 @@ async fn get_signal(
 }
 
 fn convert_to_proto_stream(
-    input: impl Stream<Item = broker::EntryUpdates>,
+    input: impl Stream<Item = Option<broker::EntryUpdates>>,
     size: usize,
 ) -> impl Stream<Item = Result<proto::SubscribeResponse, tonic::Status>> {
-    input.map(move |item| {
-        let mut entries: HashMap<String, proto::Datapoint> = HashMap::with_capacity(size);
-        for update in item.updates {
-            let update_datapoint: Option<proto::Datapoint> = match update.update.datapoint {
-                Some(datapoint) => datapoint.into(),
-                None => None,
-            };
-            if let Some(dp) = update_datapoint {
-                entries.insert(
-                    update
-                        .update
-                        .path
-                        .expect("Something wrong with update path of subscriptions!"),
-                    dp,
-                );
+    input.filter_map(move |item| match item {
+        Some(entry) => {
+            let mut entries: HashMap<String, proto::Datapoint> = HashMap::with_capacity(size);
+            for update in entry.updates {
+                let update_datapoint: Option<proto::Datapoint> = match update.update.datapoint {
+                    Some(datapoint) => datapoint.into(),
+                    None => None,
+                };
+                if let Some(dp) = update_datapoint {
+                    entries.insert(
+                        update
+                            .update
+                            .path
+                            .expect("Something wrong with update path of subscriptions!"),
+                        dp,
+                    );
+                }
             }
+            let response = proto::SubscribeResponse { entries };
+            Some(Ok(response))
         }
-        let response = proto::SubscribeResponse { entries };
-        Ok(response)
+        None => None,
     })
 }
 
 fn convert_to_proto_stream_id(
-    input: impl Stream<Item = broker::EntryUpdates>,
+    input: impl Stream<Item = Option<broker::EntryUpdates>>,
     size: usize,
 ) -> impl Stream<Item = Result<proto::SubscribeByIdResponse, tonic::Status>> {
-    input.map(move |item| {
-        let mut entries: HashMap<i32, proto::Datapoint> = HashMap::with_capacity(size);
-        for update in item.updates {
-            let update_datapoint: Option<proto::Datapoint> = match update.update.datapoint {
-                Some(datapoint) => datapoint.into(),
-                None => None,
-            };
-            if let Some(dp) = update_datapoint {
-                entries.insert(update.id, dp);
+    input.filter_map(move |item| match item {
+        Some(entry) => {
+            let mut entries: HashMap<i32, proto::Datapoint> = HashMap::with_capacity(size);
+            for update in entry.updates {
+                let update_datapoint: Option<proto::Datapoint> = match update.update.datapoint {
+                    Some(datapoint) => datapoint.into(),
+                    None => None,
+                };
+                if let Some(dp) = update_datapoint {
+                    entries.insert(update.id, dp);
+                }
             }
+            let response = proto::SubscribeByIdResponse { entries };
+            Some(Ok(response))
         }
-        let response = proto::SubscribeByIdResponse { entries };
-        Ok(response)
+        None => None,
     })
 }
 
@@ -1413,7 +1650,7 @@ mod tests {
         static SIGNAL1: &str = "test.datapoint1";
         static SIGNAL2: &str = "test.datapoint2";
 
-        let broker = DataBroker::default();
+        let broker: DataBroker = DataBroker::default();
 
         let timestamp = std::time::SystemTime::now();
 
@@ -2239,7 +2476,7 @@ mod tests {
         Test open_provider_stream service method
     */
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_open_provider_stream() {
+    async fn test_publish_value_request_without_first_claiming_it() {
         let broker = DataBroker::default();
         let authorized_access = broker.authorized_access(&permissions::ALLOW_ALL);
         let request_id = 1;
@@ -2304,18 +2541,8 @@ mod tests {
                                 Some(ProvideActuationResponse(_)) => {
                                     panic!("Should not happen")
                                 }
-                                Some(PublishValuesResponse(publish_values_response)) => {
-                                    assert_eq!(publish_values_response.request_id, request_id);
-                                    assert_eq!(publish_values_response.status.len(), 1);
-                                    match publish_values_response.status.get(&entry_id) {
-                                        Some(value) => {
-                                            assert_eq!(value.code, 1);
-                                            assert_eq!(value.message, "Wrong Type");
-                                        }
-                                        None => {
-                                            panic!("Should not happen")
-                                        }
-                                    }
+                                Some(PublishValuesResponse(_)) => {
+                                    panic!("Should not happen")
                                 }
                                 Some(BatchActuateStreamRequest(_)) => {
                                     panic!("Should not happen")
@@ -2333,8 +2560,8 @@ mod tests {
                                     panic!("Should not happen")
                                 }
                             },
-                            Err(_) => {
-                                panic!("Should not happen")
+                            Err(err) => {
+                                assert_eq!(err.code(), tonic::Code::Aborted);
                             }
                         }
                     }
@@ -2647,7 +2874,10 @@ mod tests {
         let vss_ids = vec![vss_id];
 
         let (sender, _) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -2770,7 +3000,10 @@ mod tests {
         let vss_ids = vec![vss_id];
 
         let (sender, mut receiver) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -2868,7 +3101,10 @@ mod tests {
         let vss_ids = vec![vss_id_abs, vss_id_cruise_control, vss_id_navigation_volume];
 
         let (sender, _receiver) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -3018,7 +3254,10 @@ mod tests {
         let vss_ids = vec![vss_id_abs];
 
         let (sender, _receiver) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -3108,7 +3347,10 @@ mod tests {
         let vss_ids = vec![vss_id_abs, vss_id_cruise_control];
 
         let (sender, mut receiver) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -3275,7 +3517,10 @@ mod tests {
         let vss_ids = vec![vss_id];
 
         let (sender, _) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await
@@ -3410,7 +3655,10 @@ mod tests {
         let vss_ids = vec![vss_id];
 
         let (sender, mut _receiver) = mpsc::channel(10);
-        let actuation_provider = Provider { sender };
+        let actuation_provider = Provider {
+            sender,
+            receiver: None,
+        };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
             .await

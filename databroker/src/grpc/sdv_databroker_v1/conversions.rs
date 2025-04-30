@@ -27,10 +27,8 @@ impl From<&proto::Datapoint> for broker::Datapoint {
 
         match &datapoint.timestamp {
             Some(source_timestamp) => {
-                let source: Option<SystemTime> = match source_timestamp.clone().try_into() {
-                    Ok(source) => Some(source),
-                    Err(_) => None,
-                };
+                let source: Option<SystemTime> = source_timestamp.clone().try_into().ok();
+
                 broker::Datapoint {
                     ts,
                     source_ts: source,

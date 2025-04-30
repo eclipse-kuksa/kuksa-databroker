@@ -305,10 +305,7 @@ impl From<proto::Datapoint> for broker::Datapoint {
         Self {
             ts: SystemTime::now(),
             source_ts: match from.timestamp {
-                Some(ts) => match std::convert::TryInto::try_into(ts) {
-                    Ok(ts) => Some(ts),
-                    Err(_) => None,
-                },
+                Some(ts) => std::convert::TryInto::try_into(ts).ok(),
                 None => None,
             },
             value: broker::DataValue::from(from.value),

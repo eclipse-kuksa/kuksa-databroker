@@ -32,6 +32,10 @@ The client will connect to the VISS server using the WebSocket channel.
 
 The client will connect to the VISS server using the MQTT channel.
 
+> Given the Provider connected via gRPC
+
+The provider kuksa val v2 will connect to the Databroker using gRPC.
+
 > Given I have a subscription to "_VSS Path_"
 
   _VSS Path_: A VSS path, such as "Vehicle.Speed"
@@ -97,6 +101,14 @@ Only receive updates to a VSS data point when the delta change of a value reache
 > When I send a bulk set request with the following values: _datatable on new line_
 
   _datatable_: A table, rows are signals. First column is VSS Path, Second column is new data point value to set.
+
+> When Provider claims the signal "_VSS Path_"
+
+  Provider will provide the values for the claimed signal
+
+> When Provider disconnects
+
+  Provider disconnects
 
 ## Then
 

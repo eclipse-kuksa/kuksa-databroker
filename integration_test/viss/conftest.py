@@ -37,5 +37,6 @@ def pytest_addoption(parser):
     parser.addini('viss_ws_base_url', 'URL to Databroker VISS WebSocket endpoint (ws://hostname:port)', type="string", default="ws://localhost:8090")
     parser.addini('viss_http_base_url', 'URL to Databroker VISS HTTP endpoint (http://hostname:port)', type="string", default="http://localhost:8090")
     parser.addini('viss_mqtt_base_url', 'URL to Databroker VISS MQTT endpoint (mqtt://hostname:port)', type="string", default="mqtt://localhost:1883")
+    parser.addini('viss_grpc_base_url', 'URL to Databroker VISS gRPC endpoint (http://hostname:port)', type="string", default="localhost:55555")
     parser.addini('viss_connect_timeout', 'Connect timeout for VISS clients (float in seconds)', type="string", default="1.0")
     parser.addini('viss_message_timeout', 'Connect timeout for VISS clients (float in seconds)', type="string", default="0.5")

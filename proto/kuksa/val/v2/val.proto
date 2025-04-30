@@ -177,24 +177,30 @@ service VAL {
   //
   // Errors:
   //    - Provider sends ProvideActuationRequest -> Databroker returns ProvideActuationResponse
-  //        Returns (GRPC error code) and closes the stream call (strict case).
-  //          NOT_FOUND if any of the signals are non-existant.
-  //          PERMISSION_DENIED if access is denied for any of the signals.
-  //          UNAUTHENTICATED if no credentials provided or credentials has expired
-  //          ALREADY_EXISTS if a provider already claimed the ownership of an actuator
+  //        - strict case
+  //            Returns (GRPC error code) and closes the stream call
+  //              NOT_FOUND if any of the signals are non-existant.
+  //              PERMISSION_DENIED if access is denied for any of the signals.
+  //              UNAUTHENTICATED if no credentials provided or credentials has expired
+  //              ALREADY_EXISTS if a provider already claimed the ownership of an actuator
   //
   //    - Provider sends PublishValuesRequest -> Databroker returns PublishValuesResponse upon error, and nothing upon success
-  //        GRPC errors are returned as messages in the stream
-  //        response with the signal id `map<int32, Error> status = 2;` (permissive case)
-  //          NOT_FOUND if a signal is non-existant.
-  //          PERMISSION_DENIED
-  //              - if access is denied for a signal.
-  //          INVALID_ARGUMENT
-  //              - if the data type used in the request does not match
-  //                   the data type of the addressed signal
-  //              - if the published value is not accepted,
-  //                   e.g. if sending an unsupported enum value
-  //              - if the published value is out of the min/max range specified
+  //        - permissive case
+  //            GRPC errors are returned as messages in the stream
+  //            response with the signal id `map<int32, Error> status = 2;`
+  //              NOT_FOUND if a signal is non-existant.
+  //              PERMISSION_DENIED
+  //                  - if access is denied for a signal.
+  //              INVALID_ARGUMENT
+  //                  - if the data type used in the request does not match
+  //                       the data type of the addressed signal
+  //                  - if the published value is not accepted,
+  //                       e.g. if sending an unsupported enum value
+  //                  - if the published value is out of the min/max range specified
+  //        - strict case
+  //            Returns (GRPC error code) and closes the stream call.
+  //              ALREADY_EXISTS if a provider already claimed the ownership of the signals
+  //              ABORTED if provider has not claimed yet the signals
   //
   //    - Databroker sends BatchActuateStreamRequest -> Provider shall return a BatchActuateStreamResponse,
   //        for every signal requested to indicate if the request was accepted or not.
@@ -202,11 +208,17 @@ service VAL {
   //        as of today Databroker will not react on the received error message.
   //
   //    - Provider sends ProvideSignalRequest -> Databroker returns ProvideSignalResponse
-  //        Returns (GRPC error code) and closes the stream call (strict case).
-  //          NOT_FOUND if any of the signals are non-existant.
-  //          PERMISSION_DENIED if access is denied for any of the signals.
-  //          UNAUTHENTICATED if no credentials provided or credentials has expired
-  //          ALREADY_EXISTS if a provider already claimed the ownership of any signal.
+  //        - strict case
+  //            Returns (GRPC error code) and closes the stream call.
+  //              NOT_FOUND if any of the signals are non-existant.
+  //              PERMISSION_DENIED if access is denied for any of the signals.
+  //              UNAUTHENTICATED if no credentials provided or credentials has expired
+  //              ALREADY_EXISTS if a provider already claimed the ownership of any signal.
+  //
+  //    - Provider sends ProviderErrorIndication
+  //        - strict case
+  //            Returns (GRPC error code) and closes the stream call.
+  //              ABORTED if provider has not claimed yet the signals
   //
   rpc OpenProviderStream(stream OpenProviderStreamRequest) returns (stream OpenProviderStreamResponse);
 
@@ -337,6 +349,7 @@ message UpdateFilterRequest {
   // Databroker sends filters to provider.
   // In case provider restarts, databroker will send local filters stored
   // to continue the provider sending same signals with same filter.
+  // Filter value could be None, meaning all subscriptions were removed for that SignalId
   map<int32, Filter> filters_update = 2;
 }
 
@@ -352,13 +365,13 @@ message ProviderErrorIndication {
 }
 
 message GetProviderValueRequest {
-  uint32 request_id       = 1; /// Unique request id for the stream that can be used to match the corresponding response.
-  GetValueRequest request = 2;
+  uint32 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding response.
+  repeated int32 signal_ids = 2;
 }
 
 message GetProviderValueResponse {
-  uint32 request_id         = 1; /// Unique request id for the stream that can be used to match the corresponding request.
-  GetValueResponse response = 2;
+  uint32 request_id             = 1; /// Unique request id for the stream that can be used to match the corresponding request.
+  map<int32, Datapoint> entries = 2;
 }
 
 message OpenProviderStreamRequest {
@@ -377,7 +390,7 @@ message OpenProviderStreamRequest {
     // GetValue response
     GetProviderValueResponse get_provider_value_response     = 6;
     // Indication of error on provider side
-    ProviderErrorIndication provider_error_indication      = 7;
+    ProviderErrorIndication provider_error_indication        = 7;
   }
 }
 

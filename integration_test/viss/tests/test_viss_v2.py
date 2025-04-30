@@ -14,6 +14,7 @@
 
 from pytest_bdd import scenarios
 from test_steps.viss_v2_steps import *  # Import step definitions
+from provider import *  # Import provider definition
 import os
 
 # Unset proxy settings, to make sure we're connecting to localhost

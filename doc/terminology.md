@@ -108,10 +108,10 @@ kuksa.val.v1 supports the _current_value_ for sensors, actuators and attributes 
 There is not _current value_ or _target value_ concepts, there are just simply _data value_ for sensors, actuators and attributes.
 
 ## Metadata
-Metadata of a VSS signal is data belonging to a signal, that is not the value. Standard VSS metadata are [unit](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_units/) and [datatype](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_types/) as well as some human readable description or comments. Custom metadata entries may be defined in [VSS overlays](https://covesa.github.io/vehicle_signal_specification/rule_set/overlay/). Currently KUKSA.val does not support custom metadata.
+Metadata of a VSS signal is data belonging to a signal, that is not the value. Standard VSS metadata are [unit](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_units/) and [datatype](https://covesa.github.io/vehicle_signal_specification/rule_set/data_entry/data_types/) as well as some human readable description or comments. Custom metadata entries may be defined in [VSS overlays](https://covesa.github.io/vehicle_signal_specification/extensions/overlay/index.html). Currently KUKSA.val does not support custom metadata.
 
 ## Overlay
-VSS has the concept of layering different signal trees on top of each other. This is called [overlay](https://covesa.github.io/vehicle_signal_specification/rule_set/overlay/). A layer may add signals to an existing VSS tree or extending and overriding existing signal entries.
+VSS has the concept of layering different signal trees on top of each other. This is called [overlay](https://covesa.github.io/vehicle_signal_specification/extensions/overlay/index.html). A layer may add signals to an existing VSS tree or extending and overriding existing signal entries.
 Currently, KUKSA.val supports loading a stack of VSS models enabling applying overlays during startup.
 
 ## Datapoint

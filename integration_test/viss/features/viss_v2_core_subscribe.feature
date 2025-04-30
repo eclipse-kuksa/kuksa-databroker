@@ -7,6 +7,17 @@ Feature: VISS v2 Compliance Testing - Core: Subscribe
   Background:
     Given the VISS server is running
     Given the VISS client is connected via WebSocket
+    Given the Provider connected via gRPC
+
+  # 5.1.3 Subscribe request
+  # The VISS server must support errors when service not available
+  @MustHave
+  Scenario: Subscribe when service unavailable
+    When Provider claims the signal "Vehicle.Speed"
+    When I send a subscription request for "Vehicle.Speed"
+    Then I should receive a valid subscribe response
+    When Provider disconnects
+    Then I should receive a service unavailable subscribe error event
 
   # 5.1.3 Subscribe request
   # The VISS server must support subscriptions to receive data updates.
