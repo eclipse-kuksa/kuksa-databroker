@@ -2323,7 +2323,7 @@ impl AuthorizedAccess<'_, '_> {
             .as_ref()
             .unwrap()
             .vss_ids;
-        key_set.is_subset(signal_request)
+        signal_request.is_subset(key_set)
     }
 
     pub async fn get_values_broker(
@@ -2454,9 +2454,11 @@ impl DataBroker {
                         // check which subscription contains a signal of the closed providers:
                         for (_, provider_signals_set) in closed_signal_providers {
                             for (_, subscription) in remaining_subscriptions.iter_mut() {
-                                let key_set: HashSet<_> =
+                                let subscription_key_set: HashSet<_> =
                                     subscription.entries.keys().cloned().collect();
-                                if key_set.is_subset(
+
+                                // if they do have common elements
+                                if !subscription_key_set.is_disjoint(
                                     &provider_signals_set
                                         .iter()
                                         .map(|signal| signal.id())
