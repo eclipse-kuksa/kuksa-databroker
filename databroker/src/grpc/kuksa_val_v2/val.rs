@@ -923,19 +923,40 @@ impl proto::val_server::Val for broker::DataBroker {
 
                                             },
                                             Some(ProvideSignalRequest(provide_signal_request)) => {
-                                                let response = register_provided_signals(&broker, &provide_signal_request, response_stream_sender.clone(), get_value_sender.subscribe()).await;
-                                                match response {
-                                                    Ok(value) => {
-                                                        local_provider_uuid = Some(value.0);
-                                                        if let Err(err) = response_stream_sender.send(Ok(value.1)).await
-                                                        {
-                                                            debug!("Failed to send response: {}", err)
+                                                match local_provider_uuid {
+                                                    Some(provider_uuid) => {
+                                                        let response = extend_provided_signals(&broker, provider_uuid, &provide_signal_request).await;
+                                                        match response {
+                                                            Ok(value) => {
+                                                                if let Err(err) = response_stream_sender.send(Ok(value)).await
+                                                                {
+                                                                    debug!("Failed to send response: {}", err)
+                                                                }
+                                                            },
+                                                            Err(tonic_error) => {
+                                                                if let Err(err) = response_stream_sender.send(Err(tonic_error)).await
+                                                                {
+                                                                    debug!("Failed to send tonic error: {}", err)
+                                                                }
+                                                            }
                                                         }
-                                                    },
-                                                    Err(tonic_error) => {
-                                                        if let Err(err) = response_stream_sender.send(Err(tonic_error)).await
-                                                        {
-                                                            debug!("Failed to send tonic error: {}", err)
+                                                    }
+                                                    None => {
+                                                        let response = register_provided_signals(&broker, &provide_signal_request, response_stream_sender.clone(), get_value_sender.subscribe()).await;
+                                                        match response {
+                                                            Ok(value) => {
+                                                                local_provider_uuid = Some(value.0);
+                                                                if let Err(err) = response_stream_sender.send(Ok(value.1)).await
+                                                                {
+                                                                    debug!("Failed to send response: {}", err)
+                                                                }
+                                                            },
+                                                            Err(tonic_error) => {
+                                                                if let Err(err) = response_stream_sender.send(Err(tonic_error)).await
+                                                                {
+                                                                    debug!("Failed to send tonic error: {}", err)
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -1107,6 +1128,39 @@ async fn register_provided_signals(
                 ),
             };
             Ok((provider_uuid, response))
+        }
+        Err(error) => Err(error.0.to_tonic_status(error.1)),
+    }
+}
+
+async fn extend_provided_signals(
+    broker: &AuthorizedAccess<'_, '_>,
+    provider_uuid: Uuid,
+    request: &databroker_proto::kuksa::val::v2::ProvideSignalRequest,
+) -> Result<OpenProviderStreamResponse, tonic::Status> {
+    let all_vss_ids = request
+        .signals_sample_intervals
+        .clone()
+        .into_iter()
+        .map(|(signal, sample_interval)| {
+            (
+                SignalId::new(signal),
+                TimeInterval::new(sample_interval.interval_ms),
+            )
+        })
+        .collect();
+
+    match broker.extend_signals(all_vss_ids, provider_uuid).await {
+        Ok(_) => {
+            let provide_signal_response = ProvideSignalResponse {};
+            let response = OpenProviderStreamResponse {
+                action: Some(
+                    open_provider_stream_response::Action::ProvideSignalResponse(
+                        provide_signal_response,
+                    ),
+                ),
+            };
+            Ok(response)
         }
         Err(error) => Err(error.0.to_tonic_status(error.1)),
     }
