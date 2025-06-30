@@ -813,6 +813,16 @@ impl Subscriptions {
         uuid
     }
 
+    pub fn extend_signals(
+        &mut self,
+        porvider_uuid: Uuid,
+        vss_ids_intervals: HashMap<SignalId, TimeInterval>,
+    ) {
+        if let Some(val) = self.signal_provider_subscriptions.get_mut(&porvider_uuid) {
+            val.extend_provider_signals(vss_ids_intervals);
+        };
+    }
+
     #[cfg_attr(
         feature = "otel",
         tracing::instrument(name = "subscriptions_notify", skip(self, changed, db))
@@ -924,6 +934,13 @@ impl Subscriptions {
             }
         });
         closed_subscriptions_uuids
+    }
+}
+
+impl SignalProviderSubscription {
+    fn extend_provider_signals(&mut self, vss_ids_intervals: HashMap<SignalId, TimeInterval>) {
+        self.vss_ids.extend(vss_ids_intervals.keys().cloned());
+        self.signals_intervals.extend(vss_ids_intervals);
     }
 }
 
@@ -2274,6 +2291,41 @@ impl AuthorizedAccess<'_, '_> {
             .add_signal_provider_subscription(signal_subscription);
 
         Ok(provider_uuid)
+    }
+
+    pub async fn extend_signals(
+        &self,
+        vss_ids_intervals: HashMap<SignalId, TimeInterval>,
+        provider_uuid: Uuid,
+    ) -> Result<(), (RegisterSignalError, String)> {
+        let registered_vss_ids: HashSet<SignalId> = self
+            .broker
+            .subscriptions
+            .read()
+            .await
+            .signal_provider_subscriptions
+            .iter()
+            .flat_map(|provider_entry| provider_entry.1.vss_ids.clone())
+            .collect();
+
+        let intersection: HashSet<&SignalId> = vss_ids_intervals
+            .keys()
+            .filter(|signal_id| registered_vss_ids.contains(*signal_id))
+            .collect();
+
+        if !intersection.is_empty() {
+            let message = format!(
+                "Providers for the following vss_ids already registered: {:?}",
+                intersection
+            );
+            return Err((RegisterSignalError::SignalAlreadyRegistered, message));
+        }
+        self.broker
+            .subscriptions
+            .write()
+            .await
+            .extend_signals(provider_uuid, vss_ids_intervals);
+        Ok(())
     }
 
     pub async fn publish_provider_error(
