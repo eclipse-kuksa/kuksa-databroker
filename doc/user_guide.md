@@ -188,7 +188,8 @@ that's available in the [vss-tools](https://github.com/COVESA/vss-tools) reposit
 The Databroker can be configured to load the resulting `vss.json` file at startup:
 
 ```shell
-docker run --rm -it -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure --vss vss.json
+# Need to mount the directory into the container and then passing the container relative path
+docker run --rm -it -v $(pwd):/vss -p 55555:55555 ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure --vss /vss/vss.json
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
