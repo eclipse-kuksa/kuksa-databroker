@@ -357,35 +357,35 @@ impl broker::UpdateError {
         match self {
             broker::UpdateError::NotFound => tonic::Status::new(
                 tonic::Code::NotFound,
-                format!("Signal not found (id: {})", id),
+                format!("Signal not found (id: {id})"),
             ),
             broker::UpdateError::WrongType => tonic::Status::new(
                 tonic::Code::InvalidArgument,
-                format!("Wrong type provided (id: {})", id),
+                format!("Wrong type provided (id: {id})"),
             ),
             broker::UpdateError::OutOfBoundsAllowed => tonic::Status::new(
                 tonic::Code::InvalidArgument,
-                format!("Value out of allowed bounds (id: {})", id),
+                format!("Value out of allowed bounds (id: {id})"),
             ),
             broker::UpdateError::OutOfBoundsMinMax => tonic::Status::new(
                 tonic::Code::InvalidArgument,
-                format!("Value out of min/max bounds (id: {})", id),
+                format!("Value out of min/max bounds (id: {id})"),
             ),
             broker::UpdateError::OutOfBoundsType => tonic::Status::new(
                 tonic::Code::InvalidArgument,
-                format!("Value out of type bounds (id: {})", id),
+                format!("Value out of type bounds (id: {id})"),
             ),
             broker::UpdateError::UnsupportedType => tonic::Status::new(
                 tonic::Code::InvalidArgument,
-                format!("Unsupported type (id: {})", id),
+                format!("Unsupported type (id: {id})"),
             ),
             broker::UpdateError::PermissionDenied => tonic::Status::new(
                 tonic::Code::PermissionDenied,
-                format!("Permission denied (id: {})", id),
+                format!("Permission denied (id: {id})"),
             ),
             broker::UpdateError::PermissionExpired => tonic::Status::new(
                 tonic::Code::Unauthenticated,
-                format!("Permission expired (id: {})", id),
+                format!("Permission expired (id: {id})"),
             ),
         }
     }

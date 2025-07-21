@@ -350,11 +350,7 @@ impl DataBrokerWorld {
                 ClientError::Status(_) => panic!("response contains channel error"),
             }
 
-            assert!(
-                !code.is_empty(),
-                "response contains no error code {:?}",
-                code
-            );
+            assert!(!code.is_empty(), "response contains no error code {code:?}");
             assert_eq!(code, error_codes, "response contains unexpected error code");
         } else {
             panic!("response contains no error code");
@@ -365,13 +361,13 @@ impl DataBrokerWorld {
         if let Some(error) = self.current_client_error.clone() {
             match error {
                 ClientError::Connection(e) => {
-                    panic!("No connection error {:?} should occcur", e)
+                    panic!("No connection error {e:?} should occcur")
                 }
                 ClientError::Function(e) => {
-                    panic!("No function error {:?} should occur", e)
+                    panic!("No function error {e:?} should occur")
                 }
                 ClientError::Status(status) => {
-                    panic!("No status error {:?} should occur", status)
+                    panic!("No status error {status:?} should occur")
                 }
             }
         }

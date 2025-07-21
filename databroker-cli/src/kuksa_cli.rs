@@ -125,7 +125,7 @@ async fn handle_actuate_command(
                 }
 
                 if metadata.entry_type != proto::v1::EntryType::Actuator as i32 {
-                    cli::print_error("actuate", format!("{} is not an actuator.", path))?;
+                    cli::print_error("actuate", format!("{path} is not an actuator."))?;
                     continue;
                 }
 

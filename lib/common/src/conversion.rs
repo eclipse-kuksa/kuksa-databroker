@@ -1713,8 +1713,7 @@ mod tests {
             let result = input.clone().convert_to_v1();
             assert_eq!(
                 result, *expected,
-                "Test failed for input: {:?}\nExpected: {:?}\nGot: {:?}",
-                input, expected, result
+                "Test failed for input: {input:?}\nExpected: {expected:?}\nGot: {result:?}"
             );
         }
     }

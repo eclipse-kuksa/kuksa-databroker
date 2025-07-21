@@ -699,6 +699,6 @@ fn test_parse_vss() {
                 None => panic!("Vehicle.ADAS.SupportedAutonomyLevel expected"),
             }
         }
-        Err(err) => panic!("Expected parsing to work: {:?}", err),
+        Err(err) => panic!("Expected parsing to work: {err:?}"),
     }
 }

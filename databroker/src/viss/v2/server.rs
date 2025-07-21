@@ -124,7 +124,7 @@ impl Viss for Server {
             let mut signal_errors = Vec::new();
 
             for path in &paths_filter.parameter {
-                let new_path = format!("{}.{}", request_path, path);
+                let new_path = format!("{request_path}.{path}");
                 if let Ok(matcher) = Matcher::new(&new_path) {
                     request_matcher.push((matcher, false));
                 }

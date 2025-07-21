@@ -168,7 +168,7 @@ AEiqOjPq0D6X45wCzIwjILUCAwEAAQ==
             Ok(claims) => {
                 assert_eq!(claims.scope, "read:Vehicle.Speed");
             }
-            Err(err) => panic!("decode should succeed but failed with:{}", err),
+            Err(err) => panic!("decode should succeed but failed with:{err}"),
         }
     }
 }

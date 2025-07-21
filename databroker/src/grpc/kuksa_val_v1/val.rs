@@ -599,12 +599,12 @@ impl proto::val_server::Val for broker::DataBroker {
                         }
                     }
                     if !requested_path_found {
-                        let message = format!("No entries found for the provided. Path: {}", path);
+                        let message = format!("No entries found for the provided. Path: {path}");
                         return Err(tonic::Status::new(tonic::Code::NotFound, message));
                     }
                 }
                 if permission_error {
-                    let message = format!("Permission denied for some entries. Path: {}", path);
+                    let message = format!("Permission denied for some entries. Path: {path}");
                     return Err(tonic::Status::new(tonic::Code::PermissionDenied, message));
                 }
             }
