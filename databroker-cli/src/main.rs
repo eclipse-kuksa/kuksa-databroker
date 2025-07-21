@@ -25,13 +25,13 @@ async fn main() {
         let err = sdv_cli::sdv_main(cli.clone()).await;
         match err {
             Ok(_) => (),
-            Err(e) => eprintln!("Error: {}", e),
+            Err(e) => eprintln!("Error: {e}"),
         }
     } else if cli.get_protocol() == Protocol::KuksaValV1 {
         let err = kuksa_cli::kuksa_main(cli.clone()).await;
         match err {
             Ok(_) => (),
-            Err(e) => eprintln!("Error: {}", e),
+            Err(e) => eprintln!("Error: {e}"),
         }
     } else {
         println!("Choose one protocol of either kuksa.val.v1 or sdv.databroker.v1")

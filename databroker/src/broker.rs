@@ -1918,10 +1918,8 @@ impl AuthorizedAccess<'_, '_> {
             .filter(|&x| provided_vss_ids.contains(x))
             .collect();
         if !intersection.is_empty() {
-            let message = format!(
-                "Providers for the following vss_ids already registered: {:?}",
-                intersection
-            );
+            let message =
+                format!("Providers for the following vss_ids already registered: {intersection:?}");
             return Err((ActuationError::ProviderAlreadyExists, message));
         }
 
@@ -1998,7 +1996,7 @@ impl AuthorizedAccess<'_, '_> {
                     }
 
                     if !actuation_subscription.actuation_provider.is_available() {
-                        let message = format!("Provider for vss_id {} does not exist", vss_id);
+                        let message = format!("Provider for vss_id {vss_id} does not exist");
                         return Err((ActuationError::ProviderNotAvailable, message));
                     }
 
@@ -2008,7 +2006,7 @@ impl AuthorizedAccess<'_, '_> {
                         .await?
                 }
                 None => {
-                    let message = format!("Provider for vss_id {} not available", vss_id);
+                    let message = format!("Provider for vss_id {vss_id} not available");
                     return Err((ActuationError::ProviderNotAvailable, message));
                 }
             }
@@ -2044,7 +2042,7 @@ impl AuthorizedAccess<'_, '_> {
                 }
 
                 if !actuation_subscription.actuation_provider.is_available() {
-                    let message = format!("Provider for vss_id {} does not exist", vss_id);
+                    let message = format!("Provider for vss_id {vss_id} does not exist");
                     return Err((ActuationError::ProviderNotAvailable, message));
                 }
 
@@ -2057,7 +2055,7 @@ impl AuthorizedAccess<'_, '_> {
                     .await
             }
             None => {
-                let message = format!("Provider for vss_id {} does not exist", vss_id);
+                let message = format!("Provider for vss_id {vss_id} does not exist");
                 Err((ActuationError::ProviderNotAvailable, message))
             }
         }
@@ -2076,7 +2074,7 @@ impl AuthorizedAccess<'_, '_> {
                 match result_can_write_actuator {
                     Ok(_) => Ok(()),
                     Err(PermissionError::Denied) => {
-                        let message = format!("Permission denied for vss_path {}", vss_path);
+                        let message = format!("Permission denied for vss_path {vss_path}");
                         Err((ActuationError::PermissionDenied, message))
                     }
                     Err(PermissionError::Expired) => Err((
@@ -2086,11 +2084,11 @@ impl AuthorizedAccess<'_, '_> {
                 }
             }
             Err(ReadError::NotFound) => {
-                let message = format!("Could not resolve vss_path of vss_id {}", vss_id);
+                let message = format!("Could not resolve vss_path of vss_id {vss_id}");
                 Err((ActuationError::NotFound, message))
             }
             Err(ReadError::PermissionDenied) => {
-                let message = format!("Permission denied for vss_id {}", vss_id);
+                let message = format!("Permission denied for vss_id {vss_id}");
                 Err((ActuationError::PermissionDenied, message))
             }
             Err(ReadError::PermissionExpired) => Err((
@@ -2111,7 +2109,7 @@ impl AuthorizedAccess<'_, '_> {
                 let metadata = entry.metadata.clone();
                 let vss_path = metadata.path;
                 if metadata.entry_type != EntryType::Actuator {
-                    let message = format!("Tried to set a value for a non-actuator: {}", vss_path);
+                    let message = format!("Tried to set a value for a non-actuator: {vss_path}");
                     return Err((ActuationError::WrongType, message));
                 }
                 let validation = entry.validate_actuator_value(data_value);
@@ -2159,11 +2157,11 @@ impl AuthorizedAccess<'_, '_> {
                     }
                     // Redundant errors in case UpdateError includes new errors in the future
                     Err(UpdateError::NotFound) => {
-                        let message = format!("Could not resolve vss_path {}", vss_path);
+                        let message = format!("Could not resolve vss_path {vss_path}");
                         Err((ActuationError::NotFound, message))
                     }
                     Err(UpdateError::PermissionDenied) => {
-                        let message = format!("Permission denied for vss_path {}", vss_path);
+                        let message = format!("Permission denied for vss_path {vss_path}");
                         Err((ActuationError::PermissionDenied, message))
                     }
                     Err(UpdateError::PermissionExpired) => Err((
@@ -2173,11 +2171,11 @@ impl AuthorizedAccess<'_, '_> {
                 }
             }
             Err(ReadError::NotFound) => {
-                let message = format!("Could not resolve vss_path of vss_id {}", vss_id);
+                let message = format!("Could not resolve vss_path of vss_id {vss_id}");
                 Err((ActuationError::NotFound, message))
             }
             Err(ReadError::PermissionDenied) => {
-                let message = format!("Permission denied for vss_id {}", vss_id);
+                let message = format!("Permission denied for vss_id {vss_id}");
                 Err((ActuationError::PermissionDenied, message))
             }
             Err(ReadError::PermissionExpired) => Err((
@@ -2270,10 +2268,8 @@ impl AuthorizedAccess<'_, '_> {
             .collect();
 
         if !intersection.is_empty() {
-            let message = format!(
-                "Providers for the following vss_ids already registered: {:?}",
-                intersection
-            );
+            let message =
+                format!("Providers for the following vss_ids already registered: {intersection:?}");
             return Err((RegisterSignalError::SignalAlreadyRegistered, message));
         }
 
@@ -2314,10 +2310,8 @@ impl AuthorizedAccess<'_, '_> {
             .collect();
 
         if !intersection.is_empty() {
-            let message = format!(
-                "Providers for the following vss_ids already registered: {:?}",
-                intersection
-            );
+            let message =
+                format!("Providers for the following vss_ids already registered: {intersection:?}");
             return Err((RegisterSignalError::SignalAlreadyRegistered, message));
         }
         self.broker
@@ -2833,10 +2827,7 @@ pub mod tests {
             }
             Err(e) => match e[0] {
                 (id, UpdateError::WrongType) => assert_eq!(id, id1),
-                _ => panic!(
-                    "should have reported wrong type but got error of type {:?}",
-                    e
-                ),
+                _ => panic!("should have reported wrong type but got error of type {e:?}"),
             },
         }
 
@@ -4249,8 +4240,7 @@ pub mod tests {
             Ok(()) => {}
             Err(e) => {
                 panic!(
-                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({:?})",
-                    e
+                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({e:?})"
                 )
             }
         }
@@ -4323,8 +4313,7 @@ pub mod tests {
             Ok(_) => {}
             Err(e) => {
                 panic!(
-                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({:?})",
-                    e
+                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({e:?})"
                 )
             }
         }
@@ -4407,8 +4396,7 @@ pub mod tests {
             Ok(_) => {}
             Err(e) => {
                 panic!(
-                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({:?})",
-                    e
+                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({e:?})"
                 )
             }
         }
@@ -4466,8 +4454,7 @@ pub mod tests {
             Ok(_) => {}
             Err(e) => {
                 panic!(
-                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({:?})",
-                    e
+                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({e:?})"
                 )
             }
         }
@@ -4573,8 +4560,7 @@ pub mod tests {
             Ok(()) => {}
             Err(e) => {
                 panic!(
-                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({:?})",
-                    e
+                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({e:?})"
                 )
             }
         }
@@ -4665,8 +4651,7 @@ pub mod tests {
             Ok(()) => {}
             Err(e) => {
                 panic!(
-                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({:?})",
-                    e
+                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({e:?})"
                 )
             }
         }
@@ -4760,8 +4745,7 @@ pub mod tests {
             Ok(()) => {}
             Err(e) => {
                 panic!(
-                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({:?})",
-                    e
+                    "Expected set_datapoints to succeed ( with Ok(()) ), instead got: Err({e:?})"
                 )
             }
         }

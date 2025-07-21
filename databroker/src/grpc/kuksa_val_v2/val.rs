@@ -282,20 +282,17 @@ impl proto::val_server::Val for broker::DataBroker {
             }
             Err((ReadError::NotFound, signal_id)) => {
                 return Err(tonic::Status::not_found(format!(
-                    "Path not found (id: {})",
-                    signal_id
+                    "Path not found (id: {signal_id})"
                 )));
             }
             Err((ReadError::PermissionDenied, signal_id)) => {
                 return Err(tonic::Status::permission_denied(format!(
-                    "Permission denied(id: {})",
-                    signal_id
+                    "Permission denied(id: {signal_id})"
                 )))
             }
             Err((ReadError::PermissionExpired, signal_id)) => {
                 return Err(tonic::Status::unauthenticated(format!(
-                    "Permission expired (id: {})",
-                    signal_id
+                    "Permission expired (id: {signal_id})"
                 )))
             }
         };
@@ -522,7 +519,7 @@ impl proto::val_server::Val for broker::DataBroker {
                                         match &signal {
                                             Some(proto::signal_id::Signal::Path(ref path)) => {
                                                 let id = broker.get_id_by_path(path).await
-                                                    .ok_or_else(|| tonic::Status::not_found(format!("Invalid path: {}", path)))?;
+                                                    .ok_or_else(|| tonic::Status::not_found(format!("Invalid path: {path}")))?;
                                                 // Propagate error from actuate.
                                                 broker.actuate(&id, &DataValue::from(value))
                                                     .await
@@ -563,8 +560,7 @@ impl proto::val_server::Val for broker::DataBroker {
             Ok(Ok(())) => Ok(tonic::Response::new(proto::ActuateResponse {})),
             Ok(Err(status)) => Err(status),
             Err(join_error) => Err(tonic::Status::internal(format!(
-                "Actuate stream error: {:?}",
-                join_error
+                "Actuate stream error: {join_error:?}"
             ))),
         }
     }
@@ -611,8 +607,7 @@ impl proto::val_server::Val for broker::DataBroker {
                     .get_id_by_path(path)
                     .await
                     .ok_or(tonic::Status::not_found(format!(
-                        "Invalid path in signal_id provided {}",
-                        path
+                        "Invalid path in signal_id provided {path}"
                     )))?;
 
                 match broker.actuate(&id, &DataValue::from(value)).await {
@@ -675,7 +670,7 @@ impl proto::val_server::Val for broker::DataBroker {
                             Some(vss_id) => vss_id,
                             None => {
                                 let message =
-                                    format!("Could not resolve vss_id for path: {}", vss_path);
+                                    format!("Could not resolve vss_id for path: {vss_path}");
                                 return Err(tonic::Status::not_found(message));
                             }
                         }
@@ -1376,7 +1371,7 @@ mod tests {
                 );
             }
             Err(status) => {
-                panic!("Get failed with status: {:?}", status);
+                panic!("Get failed with status: {status:?}");
             }
         }
     }
@@ -1426,7 +1421,7 @@ mod tests {
                 );
             }
             Err(status) => {
-                panic!("Get failed with status: {:?}", status);
+                panic!("Get failed with status: {status:?}");
             }
         }
     }
@@ -1508,7 +1503,7 @@ mod tests {
             }
             Err(status) => {
                 // Handle the error from the publish_value function
-                panic!("Get failed with status: {:?}", status);
+                panic!("Get failed with status: {status:?}");
             }
         }
     }
@@ -1833,7 +1828,7 @@ mod tests {
                 } else if config.request_second & !config.auth_second {
                     assert_eq!(status.code(), tonic::Code::PermissionDenied)
                 } else {
-                    panic!("GetValues failed with status: {:?}", status);
+                    panic!("GetValues failed with status: {status:?}");
                 }
             }
         }
@@ -2046,7 +2041,7 @@ mod tests {
             }
             Err(status) => {
                 // Handle the error from the publish_value function
-                panic!("Publish failed with status: {:?}", status);
+                panic!("Publish failed with status: {status:?}");
             }
         }
     }
@@ -2208,7 +2203,7 @@ mod tests {
             }
             Err(status) => {
                 // Handle the error from the publish_value function
-                panic!("Publish failed with status: {:?}", status);
+                panic!("Publish failed with status: {status:?}");
             }
         }
     }
@@ -2255,17 +2250,17 @@ mod tests {
                                 assert_eq!(entry1.value, entry2.value);
                             }
                             (Some(entry1), None) => {
-                                panic!("Key '{}' is only in response: {:?}", key, entry1)
+                                panic!("Key '{key}' is only in response: {entry1:?}")
                             }
                             (None, Some(entry2)) => {
-                                panic!("Key '{}' is only in expected_response: {:?}", key, entry2)
+                                panic!("Key '{key}' is only in expected_response: {entry2:?}")
                             }
                             (None, None) => unreachable!(),
                         }
                     }
                 }
                 Err(err) => {
-                    panic!("Error {:?}", err)
+                    panic!("Error {err:?}")
                 }
             }
         }
@@ -2404,17 +2399,17 @@ mod tests {
                                 assert_eq!(entry1.value, entry2.value);
                             }
                             (Some(entry1), None) => {
-                                panic!("Key '{}' is only in response: {:?}", key, entry1)
+                                panic!("Key '{key}' is only in response: {entry1:?}")
                             }
                             (None, Some(entry2)) => {
-                                panic!("Key '{}' is only in expected_response: {:?}", key, entry2)
+                                panic!("Key '{key}' is only in expected_response: {entry2:?}")
                             }
                             (None, None) => unreachable!(),
                         }
                     }
                 }
                 Err(err) => {
-                    panic!("Error {:?}", err)
+                    panic!("Error {err:?}")
                 }
             }
         }
