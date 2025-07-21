@@ -750,7 +750,7 @@ fn convert_to_data_entry_error(path: &String, error: &broker::UpdateError) -> Da
 fn convert_to_proto_stream(
     input: impl Stream<Item = Option<broker::EntryUpdates>>,
 ) -> impl Stream<Item = Result<proto::SubscribeResponse, tonic::Status>> {
-    input.map(move |item| match item {
+    input.filter_map(move |item| match item {
         Some(entry) => {
             let mut updates = Vec::new();
             for update in entry.updates {
@@ -764,11 +764,9 @@ fn convert_to_proto_stream(
                 });
             }
             let response = proto::SubscribeResponse { updates };
-            Ok(response)
+            Some(Ok(response))
         }
-        None => {
-            todo!()
-        }
+        None => None,
     })
 }
 
