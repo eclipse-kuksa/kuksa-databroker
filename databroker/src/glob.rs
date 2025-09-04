@@ -1194,7 +1194,7 @@ mod tests {
             }
         }
 
-        fn with_signals(&self, signals: &'a [&str]) -> TestSignals {
+        fn with_signals(&self, signals: &'a [&str]) -> TestSignals<'_> {
             TestSignals::new(self, signals)
         }
 
@@ -1217,7 +1217,7 @@ mod tests {
         }
     }
 
-    fn using_glob(glob: &str) -> TestGlob {
+    fn using_glob(glob: &str) -> TestGlob<'_> {
         TestGlob::new(glob)
     }
 
@@ -2616,7 +2616,7 @@ mod tests_glob_matching {
             }
         }
 
-        fn with_signals(&self, signals: &'a [&str]) -> TestSignalsGlobMatching {
+        fn with_signals(&self, signals: &'a [&str]) -> TestSignalsGlobMatching<'_> {
             TestSignalsGlobMatching::new(self, signals)
         }
 
@@ -2639,7 +2639,7 @@ mod tests_glob_matching {
         }
     }
 
-    fn using_glob_matching(glob: &str) -> TestGlobMatching {
+    fn using_glob_matching(glob: &str) -> TestGlobMatching<'_> {
         TestGlobMatching::new(glob)
     }
 

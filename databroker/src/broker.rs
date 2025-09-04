@@ -1338,7 +1338,7 @@ impl DatabaseReadAccess<'_, '_> {
     }
 
     #[cfg_attr(feature="otel", tracing::instrument(name="database_read_access_iter_entries", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
-    pub fn iter_entries(&self) -> EntryReadIterator {
+    pub fn iter_entries(&self) -> EntryReadIterator<'_, '_> {
         EntryReadIterator {
             inner: self.db.entries.values(),
             permissions: self.permissions,
@@ -2191,48 +2191,50 @@ impl AuthorizedAccess<'_, '_> {
         signal_ids: Vec<SignalId>,
         uuid_subscription: Uuid,
     ) {
-        let update_filter: HashMap<SignalId, Option<TimeInterval>> = if time_interval.is_none() {
-            let subscriptions = self.broker.subscriptions.read().await;
-            let lowest_time_interval: BTreeSet<_> = signal_ids
-                .iter()
-                .flat_map(|&signal_id| {
-                    subscriptions
-                        .signal_provider_subscriptions
-                        .iter()
-                        .filter_map(move |(_, provider)| {
-                            provider.signals_intervals.get(&signal_id).copied()
-                        })
-                })
-                .collect();
+        let update_filter: HashMap<SignalId, Option<TimeInterval>> = match time_interval {
+            None => {
+                let subscriptions = self.broker.subscriptions.read().await;
+                let lowest_time_interval: BTreeSet<_> = signal_ids
+                    .iter()
+                    .flat_map(|&signal_id| {
+                        subscriptions
+                            .signal_provider_subscriptions
+                            .iter()
+                            .filter_map(move |(_, provider)| {
+                                provider.signals_intervals.get(&signal_id).copied()
+                            })
+                    })
+                    .collect();
 
-            if lowest_time_interval.first().is_some() {
-                self.broker
-                    .filter_manager
-                    .write()
-                    .await
-                    .add_new_update_filter(
-                        signal_ids,
-                        *lowest_time_interval.first().unwrap(),
-                        uuid_subscription,
-                    )
-                    .into_iter()
-                    .map(|(key, value)| (key, Some(value)))
-                    .collect()
-            } else {
-                signal_ids
-                    .into_iter()
-                    .map(|signal_id| (signal_id, None))
-                    .collect()
+                if lowest_time_interval.first().is_some() {
+                    self.broker
+                        .filter_manager
+                        .write()
+                        .await
+                        .add_new_update_filter(
+                            signal_ids,
+                            *lowest_time_interval.first().unwrap(),
+                            uuid_subscription,
+                        )
+                        .into_iter()
+                        .map(|(key, value)| (key, Some(value)))
+                        .collect()
+                } else {
+                    signal_ids
+                        .into_iter()
+                        .map(|signal_id| (signal_id, None))
+                        .collect()
+                }
             }
-        } else {
-            self.broker
+            Some(time_interval) => self
+                .broker
                 .filter_manager
                 .write()
                 .await
-                .add_new_update_filter(signal_ids, time_interval.unwrap(), uuid_subscription)
+                .add_new_update_filter(signal_ids, time_interval, uuid_subscription)
                 .into_iter()
                 .map(|(key, value)| (key, Some(value)))
-                .collect()
+                .collect(),
         };
 
         DataBroker::update_filter_to_providers(

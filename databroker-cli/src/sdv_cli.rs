@@ -951,8 +951,6 @@ impl<Term: Terminal> Completer<Term> for CliCompleter {
 
 struct DisplayDataType(Option<proto::v1::DataType>);
 struct DisplayEntryType(Option<proto::v1::EntryType>);
-// !!! ChangeType currently just exists in old API needs to be removed or added later !!!
-struct DisplayChangeType(Option<proto::v1::ChangeType>);
 struct DisplayDatapoint(proto::v1::Datapoint);
 
 fn display_array<T>(f: &mut fmt::Formatter<'_>, array: &[T]) -> fmt::Result
@@ -1022,20 +1020,6 @@ impl From<Option<proto::v1::DataType>> for DisplayDataType {
 }
 
 impl fmt::Display for DisplayDataType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            Some(data_type) => f.pad(&format!("{data_type:?}")),
-            None => f.pad("Unknown"),
-        }
-    }
-}
-
-impl From<Option<databroker_proto::sdv::databroker::v1::ChangeType>> for DisplayChangeType {
-    fn from(input: Option<databroker_proto::sdv::databroker::v1::ChangeType>) -> Self {
-        DisplayChangeType(input)
-    }
-}
-impl fmt::Display for DisplayChangeType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
             Some(data_type) => f.pad(&format!("{data_type:?}")),
