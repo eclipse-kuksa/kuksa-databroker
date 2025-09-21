@@ -15,6 +15,7 @@ use tonic::{Code, Request, Response, Status};
 
 use databroker_proto::sdv::databroker::v1 as proto;
 
+use async_stream::stream;
 use tokio_stream::{Stream, StreamExt};
 
 use std::collections::HashMap;
@@ -185,8 +186,36 @@ impl proto::broker_server::Broker for broker::DataBroker {
         match broker.subscribe_query(&query).await {
             Ok(stream) => {
                 let stream = convert_to_proto_stream(stream);
+
+                // get_shutdown_trigger() is available via the databroker object (same struct)
+                let mut shutdown_rx = self.get_shutdown_trigger();
+
+                let wrapped = stream! {
+                    let mut s = Box::pin(stream);
+
+                    loop {
+                        tokio::select! {
+                            item = s.next() => {
+                                match item {
+                                    Some(res) => {
+                                        // res: Result<proto::SubscribeReply, Status>
+                                        yield res;
+                                    }
+                                    None => {
+                                        break;
+                                    }
+                                }
+                            }
+                            _ = shutdown_rx.recv() => {
+                                yield Err(Status::unavailable("Databroker shutting down"));
+                                break;
+                            }
+                        }
+                    }
+                };
+
                 debug!("Subscribed to new query");
-                Ok(Response::new(Box::pin(stream)))
+                Ok(Response::new(Box::pin(wrapped) as Self::SubscribeStream))
             }
             Err(e) => Err(Status::new(Code::InvalidArgument, format!("{e:?}"))),
         }

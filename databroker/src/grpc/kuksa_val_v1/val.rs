@@ -18,6 +18,7 @@ use std::pin::Pin;
 use tokio::select;
 use tokio::sync::mpsc;
 
+use async_stream::stream;
 use databroker_proto::kuksa::val::v1 as proto;
 use databroker_proto::kuksa::val::v1::{DataEntryError, EntryUpdate};
 use tokio_stream::wrappers::ReceiverStream;
@@ -612,8 +613,41 @@ impl proto::val_server::Val for broker::DataBroker {
 
         match broker.subscribe(entries, None, None).await {
             Ok(stream) => {
+                // Convert the internal stream (EntryUpdates) → protocol replies
                 let stream = convert_to_proto_stream(stream);
-                Ok(tonic::Response::new(Box::pin(stream)))
+
+                // Listen for broker shutdown, and on receipt terminate with UNAVAILABLE
+                let mut shutdown_rx = self.get_shutdown_trigger();
+
+                let wrapped = stream! {
+                    let mut s = Box::pin(stream);
+
+                    loop {
+                        tokio::select! {
+                            item = s.next() => {
+                                match item {
+                                    Some(res) => {
+                                        // res: Result<SubscribeResponse, Status>
+                                        yield res;
+                                    }
+                                    None => {
+                                        // Upstream finished by itself (not a broker shutdown)
+                                        break;
+                                    }
+                                }
+                            }
+                            _ = shutdown_rx.recv() => {
+                                // Broker is going away -> signal UNAVAILABLE to client
+                                yield Err(Status::unavailable("Databroker shutting down"));
+                                break;
+                            }
+                        }
+                    }
+                };
+
+                Ok(tonic::Response::new(
+                    Box::pin(wrapped) as Self::SubscribeStream
+                ))
             }
             Err(SubscriptionError::NotFound) => {
                 Err(tonic::Status::new(tonic::Code::NotFound, "Path not found"))
