@@ -629,6 +629,7 @@ name = "databroker"
 version = "0.6.0-dev.0"
 dependencies = [
  "anyhow",
+ "async-stream",
  "async-trait",
  "axum",
  "chrono",
