@@ -50,7 +50,7 @@ Enable the `otel` feature and start databroker binary with an increased buffer s
 ```
 # in $workspace
 cargo build --features=otel
-OTEL_BSP_MAX_QUEUE_SIZE=8192 target/debug/databroker --vss data/vss-core/vss_release_4.0.json --enable-databroker-v1 --insecure
+OTEL_BSP_MAX_QUEUE_SIZE=8192 target/debug/databroker --vss data/vss-core/vss_release_5.1.json --enable-databroker-v1 --insecure
 ```
 
 Open the Jaeger UI at http://localhost:16686

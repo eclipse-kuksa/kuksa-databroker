@@ -50,12 +50,13 @@ COPY ./dist/$TARGETARCH/sbom.json /app/sbom.json
 COPY ./dist/$TARGETARCH/thirdparty-licenses/ /app/thirdparty-licenses
 
 
-COPY ./data/vss-core/vss_release_3.1.1.json vss_release_3.1.1.json
 COPY ./data/vss-core/vss_release_4.0.json vss_release_4.0.json
+COPY ./data/vss-core/vss_release_5.1.json vss_release_5.1.json
+
 
 ENV KUKSA_DATABROKER_ADDR=0.0.0.0
 ENV KUKSA_DATABROKER_PORT=55555
-ENV KUKSA_DATABROKER_METADATA_FILE=vss_release_4.0.json
+ENV KUKSA_DATABROKER_METADATA_FILE=vss_release_5.1.json
 
 EXPOSE $KUKSA_DATABROKER_PORT
 

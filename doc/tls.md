@@ -35,20 +35,20 @@ KUKSA Databroker supports TLS, but not mutual authentication.
 As of today, if TLS is not configured, KUKSA Databroker will accept insecure connections.
 
 ```
-~/kuksa-databroker$ cargo run --bin databroker -- --metadata ../data/vss-core/vss_release_4.0.json
+~/kuksa-databroker$ cargo run --bin databroker -- --metadata ../data/vss-core/vss_release_5.1.json
 ```
 
 The default behavior may change in the future. By that reason, it is recommended to use the `--insecure` argument
 if you want to use insecure connections.
 
 ```
-~/kuksa-databroker$ cargo run --bin databroker -- --metadata ../data/vss-core/vss_release_4.0.json --insecure
+~/kuksa-databroker$ cargo run --bin databroker -- --metadata ../data/vss-core/vss_release_5.1.json --insecure
 ```
 
 To use a secure connection specify both `--tls-cert`and `--tls-private-key`
 
 ```
-~/kuksa-databroker$ cargo run --bin databroker -- --metadata ../data/vss-core/vss_release_4.0.json --tls-cert ../certificates/Server.pem --tls-private-key ../certificates/Server.key
+~/kuksa-databroker$ cargo run --bin databroker -- --metadata ../data/vss-core/vss_release_5.1.json --tls-cert ../certificates/Server.pem --tls-private-key ../certificates/Server.key
 ```
 
 Default certificates and keys are not included in the default KUKSA Databroker container,
