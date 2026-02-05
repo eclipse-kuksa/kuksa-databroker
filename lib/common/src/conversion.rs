@@ -1475,7 +1475,7 @@ mod tests {
 
     #[test]
     fn test_convert_to_v1_metadata_sdv() {
-        let metadata_cases = vec![
+        let metadata_cases = [
             (
                 SDVprotoV1::Metadata {
                     data_type: SDVprotoV1::DataType::Int32.into(),

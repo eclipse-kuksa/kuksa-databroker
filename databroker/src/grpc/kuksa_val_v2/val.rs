@@ -882,8 +882,8 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
                                             },
                                             Some(PublishValuesRequest(publish_values_request)) => {
-                                                if local_provider_uuid.is_some() {
-                                                    let response = publish_values(&broker, local_provider_uuid.unwrap(), &publish_values_request).await;
+                                                if let Some(provide_uuid) = local_provider_uuid {
+                                                    let response = publish_values(&broker, provide_uuid, &publish_values_request).await;
                                                     if let Some(value) = response {
                                                         if let Err(err) = response_stream_sender.send(value).await {
                                                             debug!("Failed to send error response: {}", err);
@@ -966,8 +966,8 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
                                             }
                                             Some(ProviderErrorIndication(_provider_error_indication)) => {
-                                                if local_provider_uuid.is_some() {
-                                                    publish_provider_error(&broker, local_provider_uuid.unwrap()).await;
+                                                if let Some(provide_uuid) = local_provider_uuid {
+                                                    publish_provider_error(&broker, provide_uuid).await;
                                                 } else if let Err(err) = response_stream_sender.send(Err(tonic::Status::aborted("Provider has not claimed yet any signals, please call ProvideSignalRequest first"))).await {
                                                     debug!("Failed to send error response: {}", err);
                                                 }

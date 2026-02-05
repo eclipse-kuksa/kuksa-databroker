@@ -534,19 +534,13 @@ pub fn parse_vss_from_reader<R>(reader: R) -> Result<BTreeMap<String, DataEntry>
 where
     R: std::io::Read,
 {
-    let root_entry = match serde_json::from_reader::<R, RootEntry>(reader) {
-        Ok(root_entry) => root_entry,
-        Err(err) => return Err(err.into()),
-    };
+    let root_entry = serde_json::from_reader::<R, RootEntry>(reader)?;
 
     flatten_vss_tree(root_entry)
 }
 
 pub fn parse_vss_from_str(data: &str) -> Result<BTreeMap<String, DataEntry>, Error> {
-    let root_entry = match serde_json::from_str::<RootEntry>(data) {
-        Ok(root_entry) => root_entry,
-        Err(err) => return Err(err.into()),
-    };
+    let root_entry = serde_json::from_str::<RootEntry>(data)?;
 
     flatten_vss_tree(root_entry)
 }
