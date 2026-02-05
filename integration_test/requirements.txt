@@ -1,6 +1,6 @@
 asyncio
 grpcio
 protobuf
-pytest
+pytest<9
 pytest-ordering
 pytest-asyncio
