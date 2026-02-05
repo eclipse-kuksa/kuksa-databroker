@@ -4,7 +4,7 @@
   "aud": [
     "kuksa.val"
   ],
-  "iat": 1516239022,
-  "exp": 1767225599,
+  "iat": 1768564800,
+  "exp": 1861919999,
   "scope": "read:Vehicle.Speed"
 }
