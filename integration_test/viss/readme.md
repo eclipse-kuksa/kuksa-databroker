@@ -93,7 +93,7 @@ Re-run tests:
 
 We use Allure Report to produce test results reports: https://allurereport.org/docs/pytest/
 
-- Install Allure Report, see https://allurereport.org/docs/install-for-linux/
+- Install Allure Report, see https://allurereport.org/docs/v2/install-for-linux/
 - Requires Java Runtime
 
 ```
