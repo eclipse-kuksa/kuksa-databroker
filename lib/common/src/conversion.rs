@@ -104,7 +104,7 @@ impl ConvertToSDV<GetResponseSDVTypeV1> for GetResponseTypeV1 {
                     let value = entry.clone().convert_to_sdv();
                     let dp = SDVprotoV1::Datapoint {
                         value,
-                        timestamp: entry.timestamp.clone(),
+                        timestamp: entry.timestamp,
                     };
 
                     Some((data_entry.path, dp))

@@ -25,13 +25,13 @@ tokio = { workspace = true, features = [
     "macros",
 ] }
 tokio-stream = { workspace = true, features = ["sync"] }
-http = "0.2.8"
+http = "1.4"
 log = "0.4"
 env_logger = "0.11"
 
 [dev-dependencies]
-prost = "0.12"
-prost-types = "0.12"
+prost = "0.14"
+prost-types = "0.14"
 
 [lib]
 name = "kuksa_common"
@@ -39,4 +39,4 @@ crate-type = ["lib"]
 path = "src/lib.rs"
 
 [features]
-tls = ["tonic/tls"]
+tls = ["tonic/tls-ring"]

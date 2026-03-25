@@ -225,25 +225,35 @@ where
         info!("Authorization is not enabled.");
     }
 
-    let kuksa_val_v1 = {
-        if apis.contains(&Api::KuksaValV1) {
-            Some(kuksa::val::v1::val_server::ValServer::with_interceptor(
-                broker.clone(),
-                authorization.clone(),
-            ))
-        } else {
-            None
-        }
-    };
-
+    // Phase 1: register all file descriptors needed for reflection, then build
+    // the reflection service first so we can get a Router via add_service.
     let mut reflection_builder = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(kuksa::val::v1::FILE_DESCRIPTOR_SET);
-    let mut router = server.add_optional_service(kuksa_val_v1);
 
     if apis.contains(&Api::KuksaValV2) {
         reflection_builder = reflection_builder
             .register_encoded_file_descriptor_set(kuksa::val::v2::FILE_DESCRIPTOR_SET);
+    }
+    if apis.contains(&Api::SdvDatabrokerV1) {
+        reflection_builder = reflection_builder
+            .register_encoded_file_descriptor_set(sdv::databroker::v1::FILE_DESCRIPTOR_SET);
+    }
 
+    let reflection_service = reflection_builder.build_v1().unwrap();
+    let mut router = server.add_service(reflection_service);
+
+    // Phase 2: add the optional gRPC services to the router.
+    let kuksa_val_v1 = if apis.contains(&Api::KuksaValV1) {
+        Some(kuksa::val::v1::val_server::ValServer::with_interceptor(
+            broker.clone(),
+            authorization.clone(),
+        ))
+    } else {
+        None
+    };
+    router = router.add_optional_service(kuksa_val_v1);
+
+    if apis.contains(&Api::KuksaValV2) {
         router = router.add_optional_service(Some(
             kuksa::val::v2::val_server::ValServer::with_interceptor(
                 broker.clone(),
@@ -253,9 +263,6 @@ where
     }
 
     if apis.contains(&Api::SdvDatabrokerV1) {
-        reflection_builder = reflection_builder
-            .register_encoded_file_descriptor_set(sdv::databroker::v1::FILE_DESCRIPTOR_SET);
-
         router = router.add_optional_service(Some(
             sdv::databroker::v1::broker_server::BrokerServer::with_interceptor(
                 broker.clone(),
@@ -269,9 +276,6 @@ where
             ),
         ));
     }
-
-    let reflection_service = reflection_builder.build().unwrap();
-    router = router.add_service(reflection_service);
 
     router
         .serve_with_incoming_shutdown(incoming, shutdown(broker, signal))

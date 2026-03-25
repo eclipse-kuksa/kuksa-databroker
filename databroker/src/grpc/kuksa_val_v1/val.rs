@@ -1158,6 +1158,29 @@ mod tests {
     use crate::{broker::DataBroker, permissions};
     use databroker_proto::kuksa::val::v1::val_server::Val;
 
+    /// Create a `tonic::Request<Streaming<T>>` from a vec of protobuf messages,
+    /// for use in tests that call streaming gRPC methods directly.
+    fn streaming_request<T>(messages: Vec<T>) -> tonic::Request<tonic::Streaming<T>>
+    where
+        T: prost::Message + Default + Send + 'static,
+    {
+        use prost::bytes::{BufMut, BytesMut};
+
+        let mut buf = BytesMut::new();
+        for msg in &messages {
+            let encoded = msg.encode_to_vec();
+            buf.reserve(5 + encoded.len());
+            buf.put_u8(0); // no compression
+            buf.put_u32(encoded.len() as u32);
+            buf.extend_from_slice(&encoded);
+        }
+
+        let body = http_body_util::Full::new(buf.freeze());
+        let decoder = tonic_prost::ProstDecoder::<T>::default();
+        let stream = tonic::Streaming::new_request(decoder, body, None, None);
+        tonic::Request::new(stream)
+    }
+
     #[tokio::test]
     async fn test_update_datapoint_using_wrong_type() {
         let broker = DataBroker::default();
@@ -1250,7 +1273,7 @@ mod tests {
             }],
         };
 
-        let mut streaming_request = tonic_mock::streaming_request(vec![streamed_update_request]);
+        let mut streaming_request = streaming_request(vec![streamed_update_request]);
         streaming_request
             .extensions_mut()
             .insert(permissions::ALLOW_ALL.clone());
@@ -1288,7 +1311,7 @@ mod tests {
             }],
         };
 
-        let mut streaming_request = tonic_mock::streaming_request(vec![streamed_update_request]);
+        let mut streaming_request = streaming_request(vec![streamed_update_request]);
         streaming_request
             .extensions_mut()
             .insert(permissions::ALLOW_ALL.clone());

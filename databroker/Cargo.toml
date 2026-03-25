@@ -26,8 +26,9 @@ path = "src/lib.rs"
 kuksa-common = { path = "../lib/common"}
 kuksa = { path = "../lib/kuksa"}
 databroker-proto = { workspace = true }
-tonic = { workspace = true, features = ["transport", "channel", "prost"] }
-tonic-reflection = "0.11.0"
+tonic = { workspace = true, features = ["transport", "channel", "router", "server"] }
+tonic-prost = { version = "0.14" }
+tonic-reflection = "0.14"
 prost = { workspace = true }
 prost-types = { workspace = true }
 tokio = { workspace = true, features = [
@@ -83,7 +84,7 @@ sd-notify = "0.4.1"
 
 [features]
 default = ["tls"]
-tls = ["tonic/tls", "kuksa-common/tls", "kuksa/tls"]
+tls = ["tonic/tls-ring", "kuksa-common/tls", "kuksa/tls"]
 jemalloc = ["dep:jemallocator"]
 viss = ["dep:axum", "dep:chrono"]
 libtest = []
@@ -101,7 +102,7 @@ vergen = { version = "8", features = [
 anyhow = "1.0"
 chrono = "^0.4"
 cucumber = { version = "0.20", default-features = false, features = ["libtest", "macros"] }
-tonic-mock = "0.3.0"
+http-body-util = "0.1"
 
 [[test]]
 name = "read_write_values"
