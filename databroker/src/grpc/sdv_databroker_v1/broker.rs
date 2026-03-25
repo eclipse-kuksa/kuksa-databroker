@@ -259,8 +259,6 @@ impl proto::broker_server::Broker for broker::DataBroker {
     }
 }
 
-// Silence clippy warnung as this API is deprecated anyway
-#[allow(clippy::result_large_err)]
 fn convert_to_proto_stream(
     input: impl Stream<Item = broker::QueryResponse>,
 ) -> impl Stream<Item = Result<proto::SubscribeReply, Status>> {

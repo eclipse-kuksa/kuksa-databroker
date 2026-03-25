@@ -434,9 +434,6 @@ impl Client {
         }
     }
 
-    //Silence clippy warning, as the size difference is not too large here
-    //(104 vs 174 bytes for Ok() vs Err(), so not boxing it
-    #[allow(clippy::result_large_err)]
     pub fn get_auth_interceptor(
         &mut self,
     ) -> impl FnMut(tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status> + '_ {
