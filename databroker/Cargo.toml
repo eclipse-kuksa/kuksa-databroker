@@ -27,7 +27,6 @@ kuksa-common = { path = "../lib/common"}
 kuksa = { path = "../lib/kuksa"}
 databroker-proto = { workspace = true }
 tonic = { workspace = true, features = ["transport", "channel", "router", "server"] }
-tonic-prost = { version = "0.14" }
 tonic-reflection = "0.14"
 prost = { workspace = true }
 prost-types = { workspace = true }
@@ -103,6 +102,7 @@ anyhow = "1.0"
 chrono = "^0.4"
 cucumber = { version = "0.20", default-features = false, features = ["libtest", "macros"] }
 http-body-util = "0.1"
+tonic-prost = { version = "0.14" }
 
 [[test]]
 name = "read_write_values"
