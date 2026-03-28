@@ -239,7 +239,7 @@ where
             .register_encoded_file_descriptor_set(sdv::databroker::v1::FILE_DESCRIPTOR_SET);
     }
 
-    let reflection_service = reflection_builder.build_v1().unwrap();
+    let reflection_service = reflection_builder.build_v1()?;
     let mut router = server.add_service(reflection_service);
 
     // Phase 2: add the optional gRPC services to the router.
