@@ -247,15 +247,14 @@ where
     let mut router = server.add_service(reflection_service);
 
     // Phase 2: add the optional gRPC services to the router.
-    let kuksa_val_v1 = if apis.contains(&Api::KuksaValV1) {
-        Some(kuksa::val::v1::val_server::ValServer::with_interceptor(
-            broker.clone(),
-            authorization.clone(),
-        ))
-    } else {
-        None
-    };
-    router = router.add_optional_service(kuksa_val_v1);
+    if apis.contains(&Api::KuksaValV1) {
+        router = router.add_optional_service(Some(
+            kuksa::val::v1::val_server::ValServer::with_interceptor(
+                broker.clone(),
+                authorization.clone(),
+            ),
+        ));
+    }
 
     if apis.contains(&Api::KuksaValV2) {
         router = router.add_optional_service(Some(
