@@ -116,7 +116,7 @@ async def test_events(setup_helper: Databroker) -> None:
     set_name2 = asyncio.create_task(
         helper.set_float_datapoint(datapoint_engine_load, 10.0)
     )
-    
+
     await set_name1
     await set_name2
     await subscription
