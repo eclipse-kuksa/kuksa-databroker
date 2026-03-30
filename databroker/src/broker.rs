@@ -5007,6 +5007,119 @@ pub mod tests {
         }
     }
 
+    // Regression test for GH#190: extend_signals must deny a read-only token
+    //
+    // RED test: before the fix, extend_signals had no can_write_datapoint() check
+    // and this test would have passed with Ok(()).
+    #[tokio::test]
+    async fn test_extend_signals_with_read_scope_only_is_denied() {
+        struct DummySignalProvider;
+        #[async_trait::async_trait]
+        impl SignalProvider for DummySignalProvider {
+            async fn update_filter(
+                &self,
+                _update_filters: HashMap<SignalId, Option<TimeInterval>>,
+            ) -> Result<(), (RegisterSignalError, String)> {
+                Ok(())
+            }
+            fn is_available(&self) -> bool {
+                true
+            }
+            async fn get_signals_values_from_provider(
+                &mut self,
+                _signals_ids: Vec<SignalId>,
+            ) -> Result<GetValuesProviderResponse, ()> {
+                use indexmap::IndexMap;
+                Ok(GetValuesProviderResponse {
+                    entries: IndexMap::new(),
+                })
+            }
+        }
+
+        let broker = DataBroker::default();
+        let full_access = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        // Register two signals so we have IDs to work with
+        let signal_id_1 = full_access
+            .add_entry(
+                "test.extend.signal1".to_owned(),
+                DataType::Int32,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Sensor 1".to_owned(),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("Adding signal 1 should succeed");
+
+        let signal_id_2 = full_access
+            .add_entry(
+                "test.extend.signal2".to_owned(),
+                DataType::Int32,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Sensor 2".to_owned(),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("Adding signal 2 should succeed");
+
+        // Register signal 1 with full permissions to obtain a provider_uuid
+        let provide_permissions = permissions::Permissions::builder()
+            .add_read_permission(permissions::Permission::All)
+            .add_provide_permission(permissions::Permission::All)
+            .build()
+            .expect("Building provide permissions should succeed");
+        let provide_access = broker.authorized_access(&provide_permissions);
+
+        let provider_uuid = provide_access
+            .register_signals(
+                [(
+                    SignalId::new(signal_id_1),
+                    TimeInterval::new(0),
+                )]
+                .into_iter()
+                .collect(),
+                Box::new(DummySignalProvider),
+            )
+            .await
+            .expect("Registering signal 1 should succeed");
+
+        // Now attempt to extend with a read-only token — must be denied
+        let read_only_permissions = permissions::Permissions::builder()
+            .add_read_permission(permissions::Permission::All)
+            .build()
+            .expect("Building read-only permissions should succeed");
+        let read_only_access = broker.authorized_access(&read_only_permissions);
+
+        let result = read_only_access
+            .extend_signals(
+                [(
+                    SignalId::new(signal_id_2),
+                    TimeInterval::new(0),
+                )]
+                .into_iter()
+                .collect(),
+                provider_uuid,
+            )
+            .await;
+
+        assert!(
+            result.is_err(),
+            "extend_signals must deny a read-only token"
+        );
+        assert!(
+            matches!(result.unwrap_err().0, RegisterSignalError::PermissionDenied),
+            "Expected PermissionDenied when provide scope is missing"
+        );
+    }
+
     #[tokio::test]
     async fn test_register_invalid_and_valid_path() {
         let broker = DataBroker::default();
