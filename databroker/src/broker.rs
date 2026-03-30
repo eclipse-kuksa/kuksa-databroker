@@ -5080,12 +5080,9 @@ pub mod tests {
 
         let provider_uuid = provide_access
             .register_signals(
-                [(
-                    SignalId::new(signal_id_1),
-                    TimeInterval::new(0),
-                )]
-                .into_iter()
-                .collect(),
+                [(SignalId::new(signal_id_1), TimeInterval::new(0))]
+                    .into_iter()
+                    .collect(),
                 Box::new(DummySignalProvider),
             )
             .await
@@ -5100,12 +5097,9 @@ pub mod tests {
 
         let result = read_only_access
             .extend_signals(
-                [(
-                    SignalId::new(signal_id_2),
-                    TimeInterval::new(0),
-                )]
-                .into_iter()
-                .collect(),
+                [(SignalId::new(signal_id_2), TimeInterval::new(0))]
+                    .into_iter()
+                    .collect(),
                 provider_uuid,
             )
             .await;
