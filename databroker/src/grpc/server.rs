@@ -227,8 +227,12 @@ where
 
     // Phase 1: register all file descriptors needed for reflection, then build
     // the reflection service first so we can get a Router via add_service.
-    let mut reflection_builder = tonic_reflection::server::Builder::configure()
-        .register_encoded_file_descriptor_set(kuksa::val::v1::FILE_DESCRIPTOR_SET);
+    let mut reflection_builder = tonic_reflection::server::Builder::configure();
+
+    if apis.contains(&Api::KuksaValV1) {
+        reflection_builder = reflection_builder
+            .register_encoded_file_descriptor_set(kuksa::val::v1::FILE_DESCRIPTOR_SET);
+    }
 
     if apis.contains(&Api::KuksaValV2) {
         reflection_builder = reflection_builder
