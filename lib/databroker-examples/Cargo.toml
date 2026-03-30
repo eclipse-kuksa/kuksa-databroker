@@ -12,4 +12,4 @@ kuksa-sdv = { path = "../sdv" }
 tokio = { version = "1.17.0", features = ["full"] }
 tokio-stream = "0.1.8"
 tonic = { workspace = true, features = ["transport", "channel"] }
-prost-types = "0.12.6"
+prost-types = "0.14"

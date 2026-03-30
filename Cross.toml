@@ -1,5 +1,5 @@
 #********************************************************************************
-# Copyright (c) 2022 Contributors to the Eclipse Foundation
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
 #
 # See the NOTICE file(s) distributed with this work for additional
 # information regarding copyright ownership.
@@ -13,3 +13,15 @@
 
 [build.env]
 passthrough = ["RUSTFLAGS"]
+
+# In cross 0.25 the riscv image does not contain cmake making the Rust protobuf build fail.
+# (in amd and arm64 image no action needed, as cmake is already there)
+# we can not use the version from apt, as this image is based Ubuntu 18 where
+# cmake is too old
+# This assumes x64 build machine, adapt cmake download link for arm64
+[target.riscv64gc-unknown-linux-gnu]
+pre-build = [
+    "apt-get update && apt-get install --assume-yes wget",
+    "wget -q https://cmake.org/files/v3.16/cmake-3.16.7-Linux-x86_64.tar.gz && echo 'f403724afa170ff54af3c6ea1afa335101f2970a12215a72630fba0166cd8b61  cmake-3.16.7-Linux-x86_64.tar.gz' | sha256sum -c - && tar -C / -xvzf cmake-3.16.7-Linux-x86_64.tar.gz",
+    "ln -sf /cmake-3.16.7-Linux-x86_64/bin/cmake /usr/bin/"
+]
