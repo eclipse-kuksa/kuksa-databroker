@@ -3787,6 +3787,7 @@ mod tests {
     // Authorization bypass: read-scope token must not be allowed to register as provider
     //
     // Verifies that register_signals() checks provide permission and rejects read-only tokens.
+    // Regression test for GH#190
     #[tokio::test]
     async fn test_provide_signal_with_read_scope_only_is_denied() {
         let broker = DataBroker::default();
@@ -3855,8 +3856,7 @@ mod tests {
     }
 
     // A token with provide scope must still be able to register as provider (regression guard)
-    //
-    // GREEN test: must pass both before and after the fix.
+    // Regression test for GH#190
     #[tokio::test]
     async fn test_provide_signal_with_provide_scope_succeeds() {
         let broker = DataBroker::default();
