@@ -3825,7 +3825,7 @@ mod tests {
             )),
         };
 
-        let mut streaming_request = tonic_mock::streaming_request(vec![request]);
+        let mut streaming_request = streaming_request(vec![request]);
         streaming_request
             .extensions_mut()
             .insert(read_only_permissions);
@@ -3896,7 +3896,7 @@ mod tests {
             )),
         };
 
-        let mut streaming_request = tonic_mock::streaming_request(vec![request]);
+        let mut streaming_request = streaming_request(vec![request]);
         streaming_request
             .extensions_mut()
             .insert(provide_permissions);
