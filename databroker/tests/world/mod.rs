@@ -23,7 +23,19 @@ use chrono::Utc;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 
 use databroker_proto::kuksa::val::v1::{datapoint::Value, DataEntry};
+use databroker_proto::kuksa::val::v2::{OpenProviderStreamRequest, OpenProviderStreamResponse};
 use kuksa_common::ClientError;
+
+pub struct ProviderStream {
+    pub sender: tokio::sync::mpsc::Sender<OpenProviderStreamRequest>,
+    pub receiver: tonic::Streaming<OpenProviderStreamResponse>,
+}
+
+impl std::fmt::Debug for ProviderStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderStream").finish_non_exhaustive()
+    }
+}
 
 use databroker::{
     broker,
@@ -142,6 +154,8 @@ pub struct DataBrokerWorld {
     pub current_data_entries: Option<Vec<DataEntry>>,
     pub current_client_error: Option<ClientError>,
     pub broker_client: Option<kuksa::KuksaClient>,
+    pub v2_token: Option<String>,
+    pub current_provider_stream: Option<ProviderStream>,
     data_broker_state: Arc<Mutex<DataBrokerState>>,
 }
 
@@ -156,6 +170,8 @@ impl DataBrokerWorld {
                 waker: None,
             })),
             broker_client: None,
+            v2_token: None,
+            current_provider_stream: None,
         }
     }
 
@@ -236,7 +252,7 @@ impl DataBrokerWorld {
                 data_broker,
                 #[cfg(feature = "tls")]
                 CERTS.server_tls_config(),
-                &[grpc::server::Api::KuksaValV1],
+                &[grpc::server::Api::KuksaValV1, grpc::server::Api::KuksaValV2],
                 _authorization,
                 poll_fn(|cx| {
                     let mut state = owned_state
@@ -287,6 +303,7 @@ impl DataBrokerWorld {
                 .basic_client
                 .set_tls_config(CERTS.client_tls_config());
         }
+
     }
 
     pub fn stop_databroker(&mut self) {
@@ -299,7 +316,9 @@ impl DataBrokerWorld {
         if let Some(waker) = state.waker.take() {
             waker.wake()
         };
-        self.broker_client = None
+        self.broker_client = None;
+        self.v2_token = None;
+        self.current_provider_stream = None;
     }
 
     pub fn get_current_data_entry(&self, path: String) -> Option<DataEntry> {

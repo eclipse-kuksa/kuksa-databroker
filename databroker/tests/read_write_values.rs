@@ -17,9 +17,14 @@ use std::{collections::HashMap, future, time::SystemTime, vec};
 use cucumber::{cli, gherkin::Step, given, then, when, writer, World as _};
 use databroker::broker;
 use databroker_proto::kuksa::val::v1::{datapoint::Value, DataType, Datapoint};
+use databroker_proto::kuksa::val::v2::{
+    open_provider_stream_request, val_client::ValClient as ValClientV2, ListMetadataRequest,
+    OpenProviderStreamRequest, ProvideSignalRequest, SampleInterval,
+};
 use kuksa_common::ClientTraitV1;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::debug;
-use world::{DataBrokerWorld, ValueType};
+use world::{DataBrokerWorld, ProviderStream, ValueType};
 
 mod world;
 
@@ -106,7 +111,7 @@ async fn authorize_client(w: &mut DataBrokerWorld, scope: String) {
     let token = w.create_token(scope);
     w.broker_client
         .as_mut()
-        .and_then(|client| match client.basic_client.set_access_token(token) {
+        .and_then(|client| match client.basic_client.set_access_token(token.clone()) {
             Ok(()) => Some(client),
             Err(e) => {
                 println!("Error: {e}");
@@ -114,6 +119,7 @@ async fn authorize_client(w: &mut DataBrokerWorld, scope: String) {
             }
         })
         .expect("no Databroker client available, broker not started?");
+    w.v2_token = Some(token);
 }
 
 #[when(expr = "a client sets the {word} value of {word} of type {word} to {word}")]
@@ -255,6 +261,185 @@ fn assert_request_failure(w: &mut DataBrokerWorld, expected_status_code: i32) {
 #[then(expr = "the set operation succeeds")]
 fn assert_set_succeeds(w: &mut DataBrokerWorld) {
     w.assert_set_succeeded()
+}
+
+#[when(expr = "a client registers as a provider for {word}")]
+async fn register_as_provider(w: &mut DataBrokerWorld, path: String) {
+    let channel = match w
+        .broker_client
+        .as_mut()
+        .expect("broker not started")
+        .basic_client
+        .get_channel()
+        .await
+    {
+        Ok(ch) => ch.clone(),
+        Err(e) => {
+            w.current_client_error = Some(e);
+            return;
+        }
+    };
+
+    // Resolve path → signal ID
+    let mut list_req = tonic::Request::new(ListMetadataRequest {
+        root: path.clone(),
+        filter: "*".to_string(),
+    });
+    if let Some(token) = &w.v2_token {
+        list_req.metadata_mut().insert(
+            "authorization",
+            format!("Bearer {token}").parse().unwrap(),
+        );
+    }
+    let signal_id = match ValClientV2::new(channel.clone())
+        .list_metadata(list_req)
+        .await
+    {
+        Ok(resp) => match resp.into_inner().metadata.first() {
+            Some(m) => m.id,
+            None => {
+                debug!("no metadata found for {path}");
+                return;
+            }
+        },
+        Err(status) => {
+            w.current_client_error = Some(kuksa_common::ClientError::Status(status));
+            return;
+        }
+    };
+
+    // Open provider stream with auth header
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    let mut stream_req = tonic::Request::new(ReceiverStream::new(rx));
+    if let Some(token) = &w.v2_token {
+        stream_req.metadata_mut().insert(
+            "authorization",
+            format!("Bearer {token}").parse().unwrap(),
+        );
+    }
+    let mut streaming = match ValClientV2::new(channel)
+        .open_provider_stream(stream_req)
+        .await
+    {
+        Ok(resp) => resp.into_inner(),
+        Err(status) => {
+            w.current_client_error = Some(kuksa_common::ClientError::Status(status));
+            return;
+        }
+    };
+
+    let request = OpenProviderStreamRequest {
+        action: Some(open_provider_stream_request::Action::ProvideSignalRequest(
+            ProvideSignalRequest {
+                signals_sample_intervals: [(signal_id, SampleInterval { interval_ms: 0 })]
+                    .into_iter()
+                    .collect(),
+            },
+        )),
+    };
+    if tx.send(request).await.is_err() {
+        debug!("failed to send ProvideSignalRequest");
+        return;
+    }
+
+    match streaming.message().await {
+        Ok(Some(_)) => {
+            w.current_client_error = None;
+            w.current_provider_stream = Some(ProviderStream {
+                sender: tx,
+                receiver: streaming,
+            });
+        }
+        Ok(None) => debug!("provider stream closed without response"),
+        Err(status) => {
+            w.current_client_error = Some(kuksa_common::ClientError::Status(status));
+        }
+    }
+}
+
+#[when(expr = "a client extends provider registration for {word}")]
+async fn extend_provider_registration(w: &mut DataBrokerWorld, path: String) {
+    let channel = match w
+        .broker_client
+        .as_mut()
+        .expect("broker not started")
+        .basic_client
+        .get_channel()
+        .await
+    {
+        Ok(ch) => ch.clone(),
+        Err(e) => {
+            w.current_client_error = Some(e);
+            return;
+        }
+    };
+
+    // Resolve path → signal ID
+    let mut list_req = tonic::Request::new(ListMetadataRequest {
+        root: path.clone(),
+        filter: "*".to_string(),
+    });
+    if let Some(token) = &w.v2_token {
+        list_req.metadata_mut().insert(
+            "authorization",
+            format!("Bearer {token}").parse().unwrap(),
+        );
+    }
+    let signal_id = match ValClientV2::new(channel)
+        .list_metadata(list_req)
+        .await
+    {
+        Ok(resp) => match resp.into_inner().metadata.first() {
+            Some(m) => m.id,
+            None => {
+                debug!("no metadata found for {path}");
+                return;
+            }
+        },
+        Err(status) => {
+            w.current_client_error = Some(kuksa_common::ClientError::Status(status));
+            return;
+        }
+    };
+
+    let stream = match w.current_provider_stream.as_mut() {
+        Some(s) => s,
+        None => {
+            debug!("no open provider stream");
+            return;
+        }
+    };
+
+    let request = OpenProviderStreamRequest {
+        action: Some(open_provider_stream_request::Action::ProvideSignalRequest(
+            ProvideSignalRequest {
+                signals_sample_intervals: [(signal_id, SampleInterval { interval_ms: 0 })]
+                    .into_iter()
+                    .collect(),
+            },
+        )),
+    };
+    if stream.sender.send(request).await.is_err() {
+        debug!("failed to send extend ProvideSignalRequest");
+        return;
+    }
+
+    match stream.receiver.message().await {
+        Ok(Some(_)) => {
+            w.current_client_error = None;
+        }
+        Ok(None) => debug!("provider stream closed without response"),
+        Err(status) => {
+            w.current_client_error = Some(kuksa_common::ClientError::Status(status));
+        }
+    }
+}
+
+#[then(expr = "the provider registration succeeds")]
+fn assert_provider_registration_succeeds(w: &mut DataBrokerWorld) {
+    if let Some(error) = w.current_client_error.clone() {
+        panic!("Expected provider registration to succeed but got error: {error:?}");
+    }
 }
 
 #[tokio::main]

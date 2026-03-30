@@ -178,3 +178,27 @@ Feature: Reading and writing values of a VSS Data Entry
         | int16  |             -7295 |
         | int32  |          -2552565 |
         | int64  |  -255256525864925 |
+
+  Rule: Signal providers must have provide scope
+
+    Background:
+      Given a running Databroker server with authorization enabled with the following Data Entries registered
+        | path                       | data type | change type | type     |
+        | Vehicle.Speed              | float     | Static      | Sensor   |
+        | Vehicle.ADAS.ABS.IsEnabled | bool      | Static      | Actuator |
+
+    Scenario: Registering as a signal provider with read-only scope fails
+      When a client uses a token with scope read
+      And a client registers as a provider for Vehicle.Speed
+      Then the operation fails with status code 7
+
+    Scenario: Registering as a signal provider with provide scope succeeds
+      When a client uses a token with scope provide
+      And a client registers as a provider for Vehicle.Speed
+      Then the provider registration succeeds
+
+    Scenario: Extending provider registration beyond granted scope fails
+      When a client uses a token with scope provide:Vehicle.Speed
+      And a client registers as a provider for Vehicle.Speed
+      And a client extends provider registration for Vehicle.ADAS.ABS.IsEnabled
+      Then the operation fails with status code 7
