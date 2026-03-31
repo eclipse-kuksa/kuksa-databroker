@@ -91,11 +91,7 @@ otel = ["dep:chrono", "dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opente
 
 [build-dependencies]
 anyhow = "1.0"
-vergen = { version = "8", features = [
-    "cargo",
-    "git",
-    "gitoxide",
-] }
+vergen-gix = { version = "9", features = ["cargo", "build"] }
 
 [dev-dependencies]
 anyhow = "1.0"

@@ -51,10 +51,11 @@ async fn shutdown_handler() {
     };
 }
 
-async fn add_kuksa_attribute(
+async fn add_kuksa_entry(
     database: &broker::AuthorizedAccess<'_, '_>,
     attribute: String,
-    value: String,
+    data_type: databroker::broker::DataType,
+    value: broker::types::DataValue,
     description: String,
 ) {
     debug!("Adding attribute {}", attribute);
@@ -62,7 +63,7 @@ async fn add_kuksa_attribute(
     match database
         .add_entry(
             attribute.clone(),
-            databroker::broker::DataType::String,
+            data_type,
             databroker::broker::ChangeType::OnChange,
             databroker::broker::EntryType::Attribute,
             description,
@@ -80,7 +81,7 @@ async fn add_kuksa_attribute(
                     datapoint: Some(broker::Datapoint {
                         ts: std::time::SystemTime::now(),
                         source_ts: None,
-                        value: broker::types::DataValue::String(value),
+                        value,
                     }),
                     path: None,
                     actuator_target: None,
@@ -110,6 +111,43 @@ async fn add_kuksa_attribute(
             error!("Failed to add entry {attribute}: Validation failed")
         }
     }
+}
+
+async fn add_kuksa_bool_attribute(
+    database: &broker::AuthorizedAccess<'_, '_>,
+    attribute: String,
+    value: String,
+    description: String,
+) {
+    match value.parse::<bool>() {
+        Ok(bool_value) => {
+            add_kuksa_entry(
+                database,
+                attribute,
+                databroker::broker::DataType::Bool,
+                broker::types::DataValue::Bool(bool_value),
+                description,
+            )
+            .await;
+        }
+        Err(_) => warn!("Could not parse '{}' as bool for {}", value, attribute),
+    }
+}
+
+async fn add_kuksa_string_attribute(
+    database: &broker::AuthorizedAccess<'_, '_>,
+    attribute: String,
+    value: String,
+    description: String,
+) {
+    add_kuksa_entry(
+        database,
+        attribute,
+        databroker::broker::DataType::String,
+        broker::types::DataValue::String(value),
+        description,
+    )
+    .await;
 }
 
 async fn read_metadata_file(
@@ -193,7 +231,15 @@ fn unlink_unix_domain_socket(path: impl AsRef<Path>) -> Result<(), io::Error> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let version = option_env!("CARGO_PKG_VERSION").unwrap_or_default();
-    let commit_sha = option_env!("VERGEN_GIT_SHA").unwrap_or_default();
+    let commit_sha = {
+        let sha = option_env!("VERGEN_GIT_SHA").unwrap_or("");
+        let dirty = option_env!("VERGEN_GIT_DIRTY").unwrap_or("");
+        if dirty == "true" {
+            format!("{}-dirty", sha)
+        } else {
+            sha.to_string()
+        }
+    };
 
     let about = format!(
         concat!(
@@ -202,12 +248,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "\n  Commit Branch:    {}",
             "\n",
             "\n  Package version:  {}",
+            "\n  Build timestamp:  {}",
             "\n  Debug build:      {}"
         ),
         option_env!("VERGEN_GIT_COMMIT_TIMESTAMP").unwrap_or(""),
-        option_env!("VERGEN_GIT_SHA").unwrap_or(""),
+        commit_sha,
         option_env!("VERGEN_GIT_BRANCH").unwrap_or(""),
-        option_env!("CARGO_PKG_VERSION").unwrap_or(""),
+        version,
+        option_env!("VERGEN_BUILD_TIMESTAMP").unwrap_or(""),
         option_env!("VERGEN_CARGO_DEBUG").unwrap_or(""),
     );
 
@@ -398,29 +446,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let broker = broker::DataBroker::new(version, commit_sha);
         let database = broker.authorized_access(&permissions::ALLOW_ALL);
 
-        add_kuksa_attribute(
+        add_kuksa_string_attribute(
             &database,
-            "Kuksa.Databroker.GitVersion".to_owned(),
-            option_env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
+            "Kuksa.Databroker.Build.Timestamp".to_owned(),
+            option_env!("VERGEN_BUILD_TIMESTAMP")
                 .unwrap_or("N/A")
                 .to_owned(),
-            "Databroker version as reported by GIT".to_owned(),
+            "Time of build".to_owned(),
         )
         .await;
 
-        add_kuksa_attribute(
+        add_kuksa_string_attribute(
             &database,
             "Kuksa.Databroker.CargoVersion".to_owned(),
             option_env!("CARGO_PKG_VERSION").unwrap_or("N/A").to_owned(),
-            "Databroker version as reported by GIT".to_owned(),
+            "Databroker cargo version".to_owned(),
         )
         .await;
 
-        add_kuksa_attribute(
+        add_kuksa_string_attribute(
             &database,
-            "Kuksa.Databroker.CommitSha".to_owned(),
+            "Kuksa.Databroker.Build.CommitSha".to_owned(),
             option_env!("VERGEN_GIT_SHA").unwrap_or("N/A").to_owned(),
             "Commit SHA of current version".to_owned(),
+        )
+        .await;
+
+        add_kuksa_bool_attribute(
+            &database,
+            "Kuksa.Databroker.Build.IsDebug".to_owned(),
+            option_env!("VERGEN_CARGO_DEBUG")
+                .unwrap_or("N/A")
+                .to_owned(),
+            "Indicates if the build is a debug build".to_owned(),
+        )
+        .await;
+
+        add_kuksa_bool_attribute(
+            &database,
+            "Kuksa.Databroker.Build.IsDirty".to_owned(),
+            option_env!("VERGEN_GIT_DIRTY").unwrap_or("N/A").to_owned(),
+            "Indicates whether the build is dirty".to_owned(),
         )
         .await;
 
