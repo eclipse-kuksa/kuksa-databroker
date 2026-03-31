@@ -303,7 +303,6 @@ impl DataBrokerWorld {
                 .basic_client
                 .set_tls_config(CERTS.client_tls_config());
         }
-
     }
 
     pub fn stop_databroker(&mut self) {

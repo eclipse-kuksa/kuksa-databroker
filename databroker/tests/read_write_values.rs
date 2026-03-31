@@ -111,13 +111,15 @@ async fn authorize_client(w: &mut DataBrokerWorld, scope: String) {
     let token = w.create_token(scope);
     w.broker_client
         .as_mut()
-        .and_then(|client| match client.basic_client.set_access_token(token.clone()) {
-            Ok(()) => Some(client),
-            Err(e) => {
-                println!("Error: {e}");
-                None
-            }
-        })
+        .and_then(
+            |client| match client.basic_client.set_access_token(token.clone()) {
+                Ok(()) => Some(client),
+                Err(e) => {
+                    println!("Error: {e}");
+                    None
+                }
+            },
+        )
         .expect("no Databroker client available, broker not started?");
     w.v2_token = Some(token);
 }
@@ -286,10 +288,9 @@ async fn register_as_provider(w: &mut DataBrokerWorld, path: String) {
         filter: "*".to_string(),
     });
     if let Some(token) = &w.v2_token {
-        list_req.metadata_mut().insert(
-            "authorization",
-            format!("Bearer {token}").parse().unwrap(),
-        );
+        list_req
+            .metadata_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
     }
     let signal_id = match ValClientV2::new(channel.clone())
         .list_metadata(list_req)
@@ -312,10 +313,9 @@ async fn register_as_provider(w: &mut DataBrokerWorld, path: String) {
     let (tx, rx) = tokio::sync::mpsc::channel(1);
     let mut stream_req = tonic::Request::new(ReceiverStream::new(rx));
     if let Some(token) = &w.v2_token {
-        stream_req.metadata_mut().insert(
-            "authorization",
-            format!("Bearer {token}").parse().unwrap(),
-        );
+        stream_req
+            .metadata_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
     }
     let mut streaming = match ValClientV2::new(channel)
         .open_provider_stream(stream_req)
@@ -380,15 +380,11 @@ async fn extend_provider_registration(w: &mut DataBrokerWorld, path: String) {
         filter: "*".to_string(),
     });
     if let Some(token) = &w.v2_token {
-        list_req.metadata_mut().insert(
-            "authorization",
-            format!("Bearer {token}").parse().unwrap(),
-        );
+        list_req
+            .metadata_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
     }
-    let signal_id = match ValClientV2::new(channel)
-        .list_metadata(list_req)
-        .await
-    {
+    let signal_id = match ValClientV2::new(channel).list_metadata(list_req).await {
         Ok(resp) => match resp.into_inner().metadata.first() {
             Some(m) => m.id,
             None => {
