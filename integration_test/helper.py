@@ -93,7 +93,7 @@ class Databroker:
             GetDatapointsRequest(datapoints=datapoints)
         )
         return response
- 
+
     async def await_connectivity(self):
         # We need to "manually" wait in a loop, as wait_for_state_change can not wait for a
         # specific target state
