@@ -1,6 +1,6 @@
 [package]
 name = "kuksa_val_v2"
-version = "0.6.0-dev.0"
+version = "0.7.0-dev.0"
 authors = ["Eclipse KUKSA Project"]
 edition = "2021"
 license = "Apache-2.0"
