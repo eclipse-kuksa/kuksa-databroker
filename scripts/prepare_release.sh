@@ -50,6 +50,7 @@ $SED_COMMAND -i -E "s/^version = \"${VERSION_REGEX}\"$/version = \"${VERSION}\"/
 	"$DATA_BROKER_ROOT/databroker-cli/Cargo.toml" \
 	"$DATA_BROKER_ROOT/databroker-proto/Cargo.toml" \
 	"$DATA_BROKER_ROOT/lib/sdv/Cargo.toml" \
+	"$DATA_BROKER_ROOT/lib/kuksa_val_v2/Cargo.toml" \
 	"$DATA_BROKER_ROOT/lib/kuksa/Cargo.toml" \
 	"$DATA_BROKER_ROOT/lib/common/Cargo.toml"
 
