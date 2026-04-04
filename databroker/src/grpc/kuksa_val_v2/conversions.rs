@@ -530,7 +530,9 @@ impl broker::ActuationError {
             broker::ActuationError::UnsupportedType => tonic::Status::invalid_argument(message),
             broker::ActuationError::PermissionDenied => tonic::Status::permission_denied(message),
             broker::ActuationError::PermissionExpired => tonic::Status::unauthenticated(message),
-            broker::ActuationError::ProviderNotAvailable => tonic::Status::unavailable(message),
+            broker::ActuationError::ProviderNotAvailable => {
+                tonic::Status::failed_precondition(message)
+            }
             broker::ActuationError::ProviderAlreadyExists => tonic::Status::already_exists(message),
             broker::ActuationError::TransmissionFailure => tonic::Status::data_loss(message),
         }

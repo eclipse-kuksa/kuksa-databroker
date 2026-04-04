@@ -569,7 +569,7 @@ impl proto::val_server::Val for broker::DataBroker {
     //   NOT_FOUND if the actuator does not exist.
     //   PERMISSION_DENIED if access is denied for the actuator.
     //   UNAUTHENTICATED if no credentials provided or credentials has expired
-    //   UNAVAILABLE if there is no provider currently providing the actuator
+    //   FAILED_PRECONDITION if there is no provider currently providing the actuator
     //   DATA_LOSS is there is a internal TransmissionFailure
     //   INVALID_ARGUMENT
     //       - if the provided path is not an actuator.
@@ -635,7 +635,7 @@ impl proto::val_server::Val for broker::DataBroker {
     //   NOT_FOUND if any of the actuators are non-existant.
     //   PERMISSION_DENIED if access is denied for any of the actuators.
     //   UNAUTHENTICATED if no credentials provided or credentials has expired
-    //   UNAVAILABLE if there is no provider currently providing an actuator
+    //   FAILED_PRECONDITION if there is no provider currently providing an actuator
     //   DATA_LOSS is there is a internal TransmissionFailure
     //   INVALID_ARGUMENT
     //       - if the data type used in the request does not match
@@ -3041,7 +3041,7 @@ mod tests {
         assert!(result_response.is_err());
         assert_eq!(
             result_response.unwrap_err().code(),
-            tonic::Code::Unavailable
+            tonic::Code::FailedPrecondition
         )
     }
 
@@ -3368,7 +3368,7 @@ mod tests {
         assert!(result_response.is_err());
         assert_eq!(
             result_response.unwrap_err().code(),
-            tonic::Code::Unavailable
+            tonic::Code::FailedPrecondition
         )
     }
 
@@ -3695,7 +3695,7 @@ mod tests {
                 panic!("Should not happen")
             }
             Err(err) => {
-                assert_eq!(err.code(), tonic::Code::Unavailable)
+                assert_eq!(err.code(), tonic::Code::FailedPrecondition)
             }
         }
     }
