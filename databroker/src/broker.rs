@@ -5058,4 +5058,67 @@ pub mod tests {
             }
         }
     }
+
+    /// Regression test for issue #186 (<https://github.com/eclipse-kuksa/kuksa-databroker/issues/186>).
+    ///
+    /// With `min_sample_interval` set, the initial value notification
+    /// (`changed == None`) must always be delivered immediately on subscribe,
+    /// regardless of `last_emitted`.  Before the fix, `last_emitted` was
+    /// initialised to `Instant::now()` at subscription creation, so
+    /// `elapsed() ≈ 0 < interval_duration` caused the throttle guard — which
+    /// was placed *before* `match changed` — to suppress the initial
+    /// notification.  The fix moves the guard inside the `Some(changed)` arm
+    /// so it never affects the `None` (initial) notification path.
+    #[tokio::test]
+    async fn test_subscribe_initial_notification_delivered_with_min_sample_interval() {
+        let broker = DataBroker::default();
+        let broker = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let id1 = broker
+            .add_entry(
+                "test.datapoint1".to_owned(),
+                DataType::Int32,
+                ChangeType::OnChange,
+                EntryType::Sensor,
+                "Test datapoint".to_owned(),
+                None, // min
+                None, // max
+                None,
+                None,
+            )
+            .await
+            .expect("Register datapoint should succeed");
+
+        // Subscribe with a large min_sample_interval (5 s).
+        // The initial notification (changed == None) must arrive immediately
+        // even though last_emitted was just set to Instant::now().
+        let mut stream = broker
+            .subscribe(
+                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
+                None,
+                Some(5000), // 5 000 ms min_sample_interval
+            )
+            .await
+            .expect("subscription should succeed");
+
+        match tokio::time::timeout(std::time::Duration::from_secs(1), stream.next()).await {
+            Ok(Some(Some(value))) => {
+                assert_eq!(value.updates.len(), 1);
+                assert_eq!(
+                    value.updates[0].update.path,
+                    Some("test.datapoint1".to_string())
+                );
+                assert_eq!(
+                    value.updates[0].update.datapoint.as_ref().unwrap().value,
+                    DataValue::NotAvailable
+                );
+            }
+            Ok(Some(None)) => panic!("stream closed unexpectedly"),
+            Ok(None) => panic!("stream ended without initial notification"),
+            Err(_) => panic!(
+                "timed out: initial notification was not delivered with min_sample_interval \
+                 — regression of issue #186 (throttle guard must not block changed == None)"
+            ),
+        }
+    }
 }
