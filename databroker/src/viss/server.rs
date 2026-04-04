@@ -138,71 +138,87 @@ async fn handle_viss_v2<W, R>(
                 Message::Text(msg) => {
                     debug!("Received request: {msg}");
 
-                    // Handle it
+                    // Use StreamDeserializer to handle multiple JSON objects that may arrive
+                    // concatenated in a single WebSocket message (issue #187). When a client
+                    // sends two set/get commands in rapid succession, TCP may coalesce them
+                    // into one frame. parse_v2_msg (serde_json::from_str) would silently drop
+                    // everything after the first object. StreamDeserializer processes each
+                    // JSON object in order, sending a response for each one.
                     let sender = sender.clone();
-                    let serialized_response = match parse_v2_msg(&msg) {
-                        Ok(request) => {
-                            match request {
-                                v2::Request::Get(request) => match server.get(request).await {
-                                    Ok(response) => serialize(response),
-                                    Err(error_response) => serialize(error_response),
-                                },
-                                v2::Request::Set(request) => match server.set(request).await {
-                                    Ok(response) => serialize(response),
-                                    Err(error_response) => serialize(error_response),
-                                },
-                                v2::Request::Subscribe(request) => {
-                                    match server.subscribe(request).await {
-                                        Ok((response, stream)) => {
-                                            // Setup background stream
-                                            let mut background_sender = sender.clone();
-
-                                            tokio::spawn(async move {
-                                                let mut stream = stream;
-                                                while let Some(event) = stream.next().await {
-                                                    let serialized_event = match event {
-                                                        Ok(event) => serialize(event),
-                                                        Err(error_event) => serialize(error_event),
-                                                    };
-
-                                                    if let Ok(text) = serialized_event {
-                                                        debug!("Sending notification: {}", text);
-                                                        if let Err(err) = background_sender
-                                                            .try_send(Message::Text(text))
-                                                        {
-                                                            debug!("Failed to send notification: {err}");
-                                                            if err.is_disconnected() {
-                                                                break;
-                                                            }
-                                                        };
-                                                    }
-                                                }
-                                            });
-
-                                            // Return response
-                                            serialize(response)
-                                        }
-                                        Err(error_response) => serialize(error_response),
-                                    }
-                                }
-                                v2::Request::Unsubscribe(request) => {
-                                    match server.unsubscribe(request).await {
+                    let mut stream_de =
+                        serde_json::Deserializer::from_str(&msg).into_iter::<v2::Request>();
+                    while let Some(parse_result) = stream_de.next() {
+                        let serialized_response = match parse_result {
+                            Ok(request) => {
+                                match request {
+                                    v2::Request::Get(request) => match server.get(request).await {
                                         Ok(response) => serialize(response),
                                         Err(error_response) => serialize(error_response),
+                                    },
+                                    v2::Request::Set(request) => match server.set(request).await {
+                                        Ok(response) => serialize(response),
+                                        Err(error_response) => serialize(error_response),
+                                    },
+                                    v2::Request::Subscribe(request) => {
+                                        match server.subscribe(request).await {
+                                            Ok((response, stream)) => {
+                                                // Setup background stream
+                                                let mut background_sender = sender.clone();
+
+                                                tokio::spawn(async move {
+                                                    let mut stream = stream;
+                                                    while let Some(event) = stream.next().await {
+                                                        let serialized_event = match event {
+                                                            Ok(event) => serialize(event),
+                                                            Err(error_event) => {
+                                                                serialize(error_event)
+                                                            }
+                                                        };
+
+                                                        if let Ok(text) = serialized_event {
+                                                            debug!(
+                                                                "Sending notification: {}",
+                                                                text
+                                                            );
+                                                            if let Err(err) = background_sender
+                                                                .try_send(Message::Text(text))
+                                                            {
+                                                                debug!(
+                                                                    "Failed to send notification: {err}"
+                                                                );
+                                                                if err.is_disconnected() {
+                                                                    break;
+                                                                }
+                                                            };
+                                                        }
+                                                    }
+                                                });
+
+                                                // Return response
+                                                serialize(response)
+                                            }
+                                            Err(error_response) => serialize(error_response),
+                                        }
+                                    }
+                                    v2::Request::Unsubscribe(request) => {
+                                        match server.unsubscribe(request).await {
+                                            Ok(response) => serialize(response),
+                                            Err(error_response) => serialize(error_response),
+                                        }
                                     }
                                 }
                             }
-                        }
-                        Err(error_response) => serialize(error_response),
-                    };
-
-                    // Send it
-                    if let Ok(text) = serialized_response {
-                        debug!("Sending response: {}", text);
-                        let mut sender = sender;
-                        if let Err(err) = sender.try_send(Message::Text(text)) {
-                            debug!("Failed to send response: {err}")
+                            Err(_) => serialize(parse_v2_error(&msg)),
                         };
+
+                        // Send response for this request
+                        if let Ok(text) = serialized_response {
+                            debug!("Sending response: {}", text);
+                            let mut sender = sender.clone();
+                            if let Err(err) = sender.try_send(Message::Text(text)) {
+                                debug!("Failed to send response: {err}")
+                            };
+                        }
                     }
                 }
                 Message::Binary(msg) => {
@@ -269,6 +285,23 @@ fn parse_v2_msg(msg: &str) -> Result<v2::Request, v2::GenericErrorResponse> {
             }
         })?;
     Ok(request)
+}
+
+/// Build a best-effort error response when a single JSON object in a multi-request
+/// message cannot be deserialized. Mirrors the error path in `parse_v2_msg`.
+fn parse_v2_error(msg: &str) -> v2::GenericErrorResponse {
+    match serde_json::from_str::<v2::GenericRequest>(msg) {
+        Ok(request) => v2::GenericErrorResponse {
+            action: request.action,
+            request_id: request.request_id,
+            error: v2::Error::BadRequest { msg: None },
+        },
+        Err(_) => v2::GenericErrorResponse {
+            action: None,
+            request_id: None,
+            error: v2::Error::BadRequest { msg: None },
+        },
+    }
 }
 
 fn serialize(response: impl v2::Response) -> Result<String, serde_json::Error> {
