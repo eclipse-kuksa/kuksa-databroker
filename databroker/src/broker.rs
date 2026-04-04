@@ -954,16 +954,14 @@ impl ChangeSubscription {
         changed: Option<&HashMap<i32, HashSet<Field>>>,
         db: &Database,
     ) -> Result<(), NotificationError> {
-        if self.interval_duration.is_some()
-            && self.last_emitted.read().await.elapsed().as_millis()
-                < self.interval_duration.unwrap().as_millis()
-        {
-            return Ok(());
-        }
-
         let db_read = db.authorized_read_access(&self.permissions);
         match changed {
             Some(changed) => {
+                if let Some(duration) = self.interval_duration {
+                    if self.last_emitted.read().await.elapsed() < duration {
+                        return Ok(());
+                    }
+                }
                 let mut matches = false;
                 for (id, changed_fields) in changed {
                     if let Some(fields) = self.entries.get(id) {
