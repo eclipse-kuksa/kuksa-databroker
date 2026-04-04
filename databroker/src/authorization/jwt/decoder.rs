@@ -13,7 +13,7 @@
 
 use std::convert::TryFrom;
 
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
 
 use crate::permissions::{Permission, Permissions, PermissionsBuildError};
@@ -34,10 +34,13 @@ impl std::fmt::Display for Error {
     }
 }
 
+#[derive(Clone, Debug)]
+enum KeyKind { Rsa, Ec, Ed }
+
 #[derive(Clone)]
 pub struct Decoder {
     decoding_key: DecodingKey,
-    validator: Validation,
+    key_kind: KeyKind,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,29 +61,64 @@ pub struct Claims {
 }
 
 impl Decoder {
+    /// Create a Decoder from a PEM-encoded public key.
+    /// Supports RSA (RS256/RS384/RS512), EC/P-256 (ES256/ES384), and Ed25519 (EdDSA).
+    /// For PKCS#8 BEGIN PUBLIC KEY the constructor tries RSA, EC, then Ed in order.
     pub fn new(public_key: impl Into<String>) -> Result<Decoder, Error> {
-        let decoding_key = match DecodingKey::from_rsa_pem(public_key.into().as_bytes()) {
-            Ok(decoding_key) => decoding_key,
-            Err(err) => {
-                return Err(Error::PublicKeyError(format!(
-                    "Error processing public key: {err}"
-                )))
+        let pem = public_key.into();
+        let pem_bytes = pem.as_bytes();
+        let (decoding_key, key_kind) = if pem.contains("BEGIN EC PUBLIC KEY") {
+            let dk = DecodingKey::from_ec_pem(pem_bytes)
+                .map_err(|e| Error::PublicKeyError(format!("EC public key error: {e}")))?;
+            (dk, KeyKind::Ec)
+        } else if pem.contains("BEGIN RSA PUBLIC KEY") {
+            let dk = DecodingKey::from_rsa_pem(pem_bytes)
+                .map_err(|e| Error::PublicKeyError(format!("RSA public key error: {e}")))?;
+            (dk, KeyKind::Rsa)
+        } else {
+            if let Ok(dk) = DecodingKey::from_rsa_pem(pem_bytes) {
+                (dk, KeyKind::Rsa)
+            } else if let Ok(dk) = DecodingKey::from_ec_pem(pem_bytes) {
+                (dk, KeyKind::Ec)
+            } else if let Ok(dk) = DecodingKey::from_ed_pem(pem_bytes) {
+                (dk, KeyKind::Ed)
+            } else {
+                return Err(Error::PublicKeyError(
+                    "Could not parse public key as RSA, EC, or Ed25519 PEM".into(),
+                ));
             }
         };
+        Ok(Decoder { decoding_key, key_kind })
+    }
 
-        // TODO: Make algorithm configurable.
-        let mut validator = Validation::new(Algorithm::RS256);
+    /// Build Validation for the token's declared alg, constrained to the loaded key family.
+    fn make_validator(&self, token: &str) -> Validation {
+        let header_alg = decode_header(token).ok().map(|h| h.alg);
+        let algorithm = match header_alg {
+            Some(alg) => match (&self.key_kind, alg) {
+                (KeyKind::Rsa, a @ (Algorithm::RS256 | Algorithm::RS384 | Algorithm::RS512)) => a,
+                (KeyKind::Ec,  a @ (Algorithm::ES256 | Algorithm::ES384)) => a,
+                (KeyKind::Ed,  a @ Algorithm::EdDSA) => a,
+                (KeyKind::Rsa, _) => Algorithm::RS256,
+                (KeyKind::Ec,  _) => Algorithm::ES256,
+                (KeyKind::Ed,  _) => Algorithm::EdDSA,
+            },
+            None => match self.key_kind {
+                KeyKind::Rsa => Algorithm::RS256,
+                KeyKind::Ec  => Algorithm::ES256,
+                KeyKind::Ed  => Algorithm::EdDSA,
+            },
+        };
+        let mut validator = Validation::new(algorithm);
         // TODO: Make "aud" configurable.
         validator.set_audience(&["kuksa.val"]);
-
-        Ok(Decoder {
-            decoding_key,
-            validator,
-        })
+        validator
     }
 
     pub fn decode(&self, token: impl AsRef<str>) -> Result<Claims, Error> {
-        match decode::<Claims>(token.as_ref(), &self.decoding_key, &self.validator) {
+        let token = token.as_ref();
+        let validator = self.make_validator(token);
+        match decode::<Claims>(token, &self.decoding_key, &validator) {
             Ok(token) => Ok(token.claims),
             Err(err) => Err(Error::DecodeError(err.to_string())),
         }
