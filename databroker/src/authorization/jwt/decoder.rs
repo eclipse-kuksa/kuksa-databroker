@@ -186,6 +186,66 @@ impl TryFrom<Claims> for Permissions {
 mod test {
     use super::*;
 
+    // EC P-256 key pair generated with openssl ecparam -name prime256v1
+    const EC_PRIVATE_KEY: &str = "-----BEGIN EC PRIVATE KEY-----\n\
+        MHcCAQEEILoiIkXQPnaJiaWmiKDvofduRReIEQ2Xp/1QT4pS+iptoAoGCCqGSM49\n\
+        AwEHoUQDQgAEu25UcRd2d2I7ADSPvHKqDOXOz3r6MGG7aTQlnJuVDLwBEOCTxHld\n\
+        f0xvpHeJIXB3ijQCNT8biPI6yTHgJU7kRw==\n\
+        -----END EC PRIVATE KEY-----\n";
+
+    const EC_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----\n\
+        MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEu25UcRd2d2I7ADSPvHKqDOXOz3r6\n\
+        MGG7aTQlnJuVDLwBEOCTxHldf0xvpHeJIXB3ijQCNT8biPI6yTHgJU7kRw==\n\
+        -----END PUBLIC KEY-----\n";
+
+    // Ed25519 key pair generated with openssl genpkey -algorithm ed25519
+    const ED_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----\n\
+        MCowBQYDK2VwAyEAJsQjain09Q5eK6QMjzQ1iyTJhXTdcP+xPQCMWT9XS9Q=\n\
+        -----END PUBLIC KEY-----\n";
+
+    // ES256 token signed with EC_PRIVATE_KEY above (exp: 9999999999)
+    const EC_TOKEN: &str = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.\
+        eyJzdWIiOiJ0ZXN0LWVjIiwiaXNzIjoidGVzdCIsImF1ZCI6WyJrdWtzYS52YWwiXSwi\
+        aWF0IjoxMDAwMDAwMDAwLCJleHAiOjk5OTk5OTk5OTksInNjb3BlIjoicmVhZDpWZWhp\
+        Y2xlLlNwZWVkIn0._x8jJjYR3V5c8jvK2T18AeRpDjl_-c64RFgXe_1wjtr-rwRKM6Zm\
+        OMZddboSFqcSZWw-Ecs2NZn8pqsKxGuAYQ";
+
+    // EdDSA token signed with the Ed25519 private key above (exp: 9999999999)
+    const ED_TOKEN: &str = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.\
+        eyJzdWIiOiJ0ZXN0LWVkIiwiaXNzIjoidGVzdCIsImF1ZCI6WyJrdWtzYS52YWwiXSwi\
+        aWF0IjoxMDAwMDAwMDAwLCJleHAiOjk5OTk5OTk5OTksInNjb3BlIjoicmVhZDpWZWhp\
+        Y2xlLlNwZWVkIn0.rc5TAOzQGd4cYFMY1YkzUtPs8ThEk7lR3n0ZfEAEi6nDdgDmS3DM\
+        nc-5ANY5BlZ5aQJ7h_jH5WtcN35G3NorDQ";
+
+    #[test]
+    fn test_ec_key_decode() {
+        let decoder =
+            Decoder::new(EC_PUBLIC_KEY).expect("EC P-256 decoder creation should succeed");
+        match decoder.decode(EC_TOKEN) {
+            Ok(claims) => assert_eq!(claims.scope, "read:Vehicle.Speed"),
+            Err(err) => panic!("EC token decode should succeed but failed with: {err}"),
+        }
+    }
+
+    #[test]
+    fn test_ed_key_decode() {
+        let decoder =
+            Decoder::new(ED_PUBLIC_KEY).expect("Ed25519 decoder creation should succeed");
+        match decoder.decode(ED_TOKEN) {
+            Ok(claims) => assert_eq!(claims.scope, "read:Vehicle.Speed"),
+            Err(err) => panic!("EdDSA token decode should succeed but failed with: {err}"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_key_rejected() {
+        let result = Decoder::new("not a valid PEM key");
+        assert!(
+            result.is_err(),
+            "Invalid PEM should return PublicKeyError, got Ok"
+        );
+    }
+
     #[test]
     fn test_parse_token() {
         let pub_key = "-----BEGIN PUBLIC KEY-----
