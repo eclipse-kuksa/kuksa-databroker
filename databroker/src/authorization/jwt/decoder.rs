@@ -213,8 +213,8 @@ mod test {
 
     #[test]
     fn test_ec_key_decode() {
-        let decoder = Decoder::new(EC_PUBLIC_KEY)
-            .expect("EC P-256 decoder creation should succeed");
+        let decoder =
+            Decoder::new(EC_PUBLIC_KEY).expect("EC P-256 decoder creation should succeed");
         match decoder.decode(EC_TOKEN) {
             Ok(claims) => assert_eq!(claims.scope, "read:Vehicle.Speed"),
             Err(err) => panic!("EC token decode should succeed but failed with: {err}"),
@@ -233,7 +233,10 @@ mod test {
     #[test]
     fn test_invalid_key_rejected() {
         let result = Decoder::new("not a valid PEM key");
-        assert!(result.is_err(), "Invalid PEM should return PublicKeyError, got Ok");
+        assert!(
+            result.is_err(),
+            "Invalid PEM should return PublicKeyError, got Ok"
+        );
     }
 
     #[test]
