@@ -186,13 +186,7 @@ impl TryFrom<Claims> for Permissions {
 mod test {
     use super::*;
 
-    // EC P-256 key pair generated with openssl ecparam -name prime256v1
-    const EC_PRIVATE_KEY: &str = "-----BEGIN EC PRIVATE KEY-----\n\
-        MHcCAQEEILoiIkXQPnaJiaWmiKDvofduRReIEQ2Xp/1QT4pS+iptoAoGCCqGSM49\n\
-        AwEHoUQDQgAEu25UcRd2d2I7ADSPvHKqDOXOz3r6MGG7aTQlnJuVDLwBEOCTxHld\n\
-        f0xvpHeJIXB3ijQCNT8biPI6yTHgJU7kRw==\n\
-        -----END EC PRIVATE KEY-----\n";
-
+    // EC P-256 public key (SPKI, from openssl ecparam -name prime256v1)
     const EC_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----\n\
         MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEu25UcRd2d2I7ADSPvHKqDOXOz3r6\n\
         MGG7aTQlnJuVDLwBEOCTxHldf0xvpHeJIXB3ijQCNT8biPI6yTHgJU7kRw==\n\
