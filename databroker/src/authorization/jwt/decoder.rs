@@ -35,7 +35,11 @@ impl std::fmt::Display for Error {
 }
 
 #[derive(Clone, Debug)]
-enum KeyKind { Rsa, Ec, Ed }
+enum KeyKind {
+    Rsa,
+    Ec,
+    Ed,
+}
 
 #[derive(Clone)]
 pub struct Decoder {
@@ -75,20 +79,21 @@ impl Decoder {
             let dk = DecodingKey::from_rsa_pem(pem_bytes)
                 .map_err(|e| Error::PublicKeyError(format!("RSA public key error: {e}")))?;
             (dk, KeyKind::Rsa)
+        } else if let Ok(dk) = DecodingKey::from_rsa_pem(pem_bytes) {
+            (dk, KeyKind::Rsa)
+        } else if let Ok(dk) = DecodingKey::from_ec_pem(pem_bytes) {
+            (dk, KeyKind::Ec)
+        } else if let Ok(dk) = DecodingKey::from_ed_pem(pem_bytes) {
+            (dk, KeyKind::Ed)
         } else {
-            if let Ok(dk) = DecodingKey::from_rsa_pem(pem_bytes) {
-                (dk, KeyKind::Rsa)
-            } else if let Ok(dk) = DecodingKey::from_ec_pem(pem_bytes) {
-                (dk, KeyKind::Ec)
-            } else if let Ok(dk) = DecodingKey::from_ed_pem(pem_bytes) {
-                (dk, KeyKind::Ed)
-            } else {
-                return Err(Error::PublicKeyError(
-                    "Could not parse public key as RSA, EC, or Ed25519 PEM".into(),
-                ));
-            }
+            return Err(Error::PublicKeyError(
+                "Could not parse public key as RSA, EC, or Ed25519 PEM".into(),
+            ));
         };
-        Ok(Decoder { decoding_key, key_kind })
+        Ok(Decoder {
+            decoding_key,
+            key_kind,
+        })
     }
 
     /// Build Validation for the token's declared alg, constrained to the loaded key family.
@@ -97,16 +102,16 @@ impl Decoder {
         let algorithm = match header_alg {
             Some(alg) => match (&self.key_kind, alg) {
                 (KeyKind::Rsa, a @ (Algorithm::RS256 | Algorithm::RS384 | Algorithm::RS512)) => a,
-                (KeyKind::Ec,  a @ (Algorithm::ES256 | Algorithm::ES384)) => a,
-                (KeyKind::Ed,  a @ Algorithm::EdDSA) => a,
+                (KeyKind::Ec, a @ (Algorithm::ES256 | Algorithm::ES384)) => a,
+                (KeyKind::Ed, a @ Algorithm::EdDSA) => a,
                 (KeyKind::Rsa, _) => Algorithm::RS256,
-                (KeyKind::Ec,  _) => Algorithm::ES256,
-                (KeyKind::Ed,  _) => Algorithm::EdDSA,
+                (KeyKind::Ec, _) => Algorithm::ES256,
+                (KeyKind::Ed, _) => Algorithm::EdDSA,
             },
             None => match self.key_kind {
                 KeyKind::Rsa => Algorithm::RS256,
-                KeyKind::Ec  => Algorithm::ES256,
-                KeyKind::Ed  => Algorithm::EdDSA,
+                KeyKind::Ec => Algorithm::ES256,
+                KeyKind::Ed => Algorithm::EdDSA,
             },
         };
         let mut validator = Validation::new(algorithm);
