@@ -145,7 +145,7 @@ async fn handle_viss_v2<W, R>(
                     // everything after the first object. StreamDeserializer processes each
                     // JSON object in order, sending a response for each one.
                     let sender = sender.clone();
-                    let mut stream_de =
+                    let stream_de =
                         serde_json::Deserializer::from_str(&msg).into_iter::<v2::Request>();
                     for parse_result in stream_de {
                         let serialized_response = match parse_result {
