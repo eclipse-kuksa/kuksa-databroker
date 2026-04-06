@@ -147,7 +147,7 @@ async fn handle_viss_v2<W, R>(
                     let sender = sender.clone();
                     let mut stream_de =
                         serde_json::Deserializer::from_str(&msg).into_iter::<v2::Request>();
-                    while let Some(parse_result) = stream_de.next() {
+                    for parse_result in stream_de {
                         let serialized_response = match parse_result {
                             Ok(request) => {
                                 match request {
@@ -266,25 +266,6 @@ async fn handle_viss_v2<W, R>(
         },
     }
     info!("Websocket connection closed ({})", client_addr);
-}
-
-fn parse_v2_msg(msg: &str) -> Result<v2::Request, v2::GenericErrorResponse> {
-    let request: v2::Request =
-        serde_json::from_str(msg).map_err(|_| {
-            match serde_json::from_str::<v2::GenericRequest>(msg) {
-                Ok(request) => v2::GenericErrorResponse {
-                    action: request.action,
-                    request_id: request.request_id,
-                    error: v2::Error::BadRequest { msg: None },
-                },
-                Err(_) => v2::GenericErrorResponse {
-                    action: None,
-                    request_id: None,
-                    error: v2::Error::BadRequest { msg: None },
-                },
-            }
-        })?;
-    Ok(request)
 }
 
 /// Build a best-effort error response when a single JSON object in a multi-request
