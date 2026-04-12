@@ -66,20 +66,23 @@ pub struct Claims {
 
 impl Decoder {
     /// Create a Decoder from a PEM-encoded public key.
-    /// Supports RSA (RS256/RS384/RS512), EC/P-256 (ES256/ES384), and Ed25519 (EdDSA).
-    /// For PKCS#8 BEGIN PUBLIC KEY the constructor tries RSA, EC, then Ed in order.
+    ///
+    /// Supported formats:
+    /// - RSA: SPKI (`BEGIN PUBLIC KEY`) or PKCS#1 (`BEGIN RSA PUBLIC KEY`) — RS256/RS384/RS512
+    /// - EC: SPKI (`BEGIN PUBLIC KEY`) — ES256 (P-256) / ES384 (P-384)
+    /// - Ed25519: SPKI (`BEGIN PUBLIC KEY`) — EdDSA
+    ///
+    /// The constructor tries each key family's parser in order; the OID embedded in the SPKI
+    /// DER structure disambiguates RSA from EC automatically, so no PEM-label string matching
+    /// is needed.
     pub fn new(public_key: impl Into<String>) -> Result<Decoder, Error> {
         let pem = public_key.into();
         let pem_bytes = pem.as_bytes();
-        let (decoding_key, key_kind) = if pem.contains("BEGIN EC PUBLIC KEY") {
-            let dk = DecodingKey::from_ec_pem(pem_bytes)
-                .map_err(|e| Error::PublicKeyError(format!("EC public key error: {e}")))?;
-            (dk, KeyKind::Ec)
-        } else if pem.contains("BEGIN RSA PUBLIC KEY") {
-            let dk = DecodingKey::from_rsa_pem(pem_bytes)
-                .map_err(|e| Error::PublicKeyError(format!("RSA public key error: {e}")))?;
-            (dk, KeyKind::Rsa)
-        } else if let Ok(dk) = DecodingKey::from_rsa_pem(pem_bytes) {
+        // Try each key family in order. jsonwebtoken's from_*_pem parsers accept both the
+        // algorithm-agnostic SPKI format (BEGIN PUBLIC KEY, RFC 7468 §13) and the legacy
+        // algorithm-specific formats (BEGIN RSA PUBLIC KEY / BEGIN EC PUBLIC KEY) where
+        // applicable. The OID embedded in SPKI DER disambiguates key families automatically.
+        let (decoding_key, key_kind) = if let Ok(dk) = DecodingKey::from_rsa_pem(pem_bytes) {
             (dk, KeyKind::Rsa)
         } else if let Ok(dk) = DecodingKey::from_ec_pem(pem_bytes) {
             (dk, KeyKind::Ec)
@@ -96,37 +99,35 @@ impl Decoder {
         })
     }
 
-    /// Build Validation for the token's declared alg, constrained to the loaded key family.
-    fn make_validator(&self, token: &str) -> Validation {
-        let header_alg = decode_header(token).ok().map(|h| h.alg);
-        let algorithm = match header_alg {
-            Some(alg) => match (&self.key_kind, alg) {
-                (KeyKind::Rsa, a @ (Algorithm::RS256 | Algorithm::RS384 | Algorithm::RS512)) => a,
-                (KeyKind::Ec, a @ (Algorithm::ES256 | Algorithm::ES384)) => a,
-                (KeyKind::Ed, a @ Algorithm::EdDSA) => a,
-                (KeyKind::Rsa, _) => Algorithm::RS256,
-                (KeyKind::Ec, _) => Algorithm::ES256,
-                (KeyKind::Ed, _) => Algorithm::EdDSA,
-            },
-            None => match self.key_kind {
-                KeyKind::Rsa => Algorithm::RS256,
-                KeyKind::Ec => Algorithm::ES256,
-                KeyKind::Ed => Algorithm::EdDSA,
-            },
+    /// Build a `Validation` for the token's declared algorithm, constrained to the loaded key
+    /// family. Returns an error if the token header is malformed or if the declared algorithm
+    /// is incompatible with the key type (algorithm-confusion guard).
+    fn make_validator(&self, token: &str) -> Result<Validation, Error> {
+        let alg = decode_header(token)
+            .map_err(|e| Error::DecodeError(format!("Invalid token header: {e}")))?
+            .alg;
+        let algorithm = match (&self.key_kind, alg) {
+            (KeyKind::Rsa, a @ (Algorithm::RS256 | Algorithm::RS384 | Algorithm::RS512)) => a,
+            (KeyKind::Ec, a @ (Algorithm::ES256 | Algorithm::ES384)) => a,
+            (KeyKind::Ed, a @ Algorithm::EdDSA) => a,
+            (kind, alg) => {
+                return Err(Error::DecodeError(format!(
+                    "Token algorithm {alg:?} is not compatible with the loaded {kind:?} key"
+                )));
+            }
         };
         let mut validator = Validation::new(algorithm);
         // TODO: Make "aud" configurable.
         validator.set_audience(&["kuksa.val"]);
-        validator
+        Ok(validator)
     }
 
     pub fn decode(&self, token: impl AsRef<str>) -> Result<Claims, Error> {
         let token = token.as_ref();
-        let validator = self.make_validator(token);
-        match decode::<Claims>(token, &self.decoding_key, &validator) {
-            Ok(token) => Ok(token.claims),
-            Err(err) => Err(Error::DecodeError(err.to_string())),
-        }
+        let validator = self.make_validator(token)?;
+        decode::<Claims>(token, &self.decoding_key, &validator)
+            .map(|t| t.claims)
+            .map_err(|e| Error::DecodeError(e.to_string()))
     }
 }
 
@@ -237,6 +238,36 @@ mod test {
             result.is_err(),
             "Invalid PEM should return PublicKeyError, got Ok"
         );
+    }
+
+    // RSA-4096 public key in PKCS#1 format ("BEGIN RSA PUBLIC KEY") — same key as test_parse_token
+    // but in the legacy PKCS#1 encoding (openssl rsa -pubin -RSAPublicKey_out).
+    // Verifies the try-chain handles the legacy format without PEM-label string matching.
+    const RSA_PKCS1_PUBLIC_KEY: &str = "-----BEGIN RSA PUBLIC KEY-----\n\
+        MIICCgKCAgEA6ScE9EKXEWVyYhzfhfvg+LC8NseiuEjfrdFx3HKkb31bRw/SeS0R\n\
+        ye0KDP7uzffwreKf6wWYGxVUPYmyKC7jPji5MpDBGM9r3pIZSvPUFdpTE5TiRHFB\n\
+        xWbqPSYt954BTLq4rMu/W+oq5PdfnugbvoYpLf0dclBl1g9KyszkDnItz3TYbWhG\n\
+        MbsUSfyeSPzH0IADzLoifxbc5mgiR73NCA/4yNSpfLoqWgQ2vdTM1182sMSmxfqS\n\
+        gMzIMUX/tiaXGdkoKITF1sULlLyWfTo979XRZ0hmUwvfzr3OjMZNoClpYSVbKY+v\n\
+        txHyux9KOOtv9lPMsgYIaPXvisrsneDZfCS0afOfjgR96uHIe2UPSGAXru3yGziq\n\
+        EfpRZoxsgXaOe905ordLD5bSX14xkN7NCz7rxDLlxPQyxp4Vhog7p/QeUyydBpZj\n\
+        q2bAE5GAJtiu+XGvG8RypzJFKFQwMNswg1BoZVD0mb0MtU8KQmHcZIfY0FVer/CR\n\
+        0mUjfl1rHbtoJB+RY03lQvYNAD04ibAGNI1RhlTziu35Xo6NDEgs9hVs9k3WrtF+\n\
+        ZUxhivWmP2VXhWruRakVkC1NzKGh54e5/KlluFbBNpWgvWZqzWo9Jr7/fzHtR0Q0\n\
+        IZwkxh+Vd/bUZya1uLKqP+sTcc+aTHbnAEiqOjPq0D6X45wCzIwjILUCAwEAAQ==\n\
+        -----END RSA PUBLIC KEY-----\n";
+
+    /// PKCS#1 RSA key is the same mathematical key as the SPKI RSA key in test_parse_token,
+    /// so the same RS256 token decodes correctly — proving backward compat without label matching.
+    #[test]
+    fn test_rsa_pkcs1_legacy_format() {
+        let token = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJsb2NhbCBkZXYiLCJpc3MiOiJjcmVhdGVUb2tlbi5weSIsImF1ZCI6WyJrdWtzYS52YWwiXSwiaWF0IjoxNzY4NTY0ODAwLCJleHAiOjE4NjE5MTk5OTksInNjb3BlIjoicmVhZDpWZWhpY2xlLlNwZWVkIn0.CeOLvMfINCGLii3ycsYBU3WINXTuPYK0Z5BKnHxoZwE7lKXLQQKEmqh3GO1kx8rHJZxe4YQAK543tQCZ2GZQBVM3uJmShLRnWFkMd-DB_LEDw6codw11UoxUNcgld-d5pnYfBXlVc45TvoYUMoaezEx3jsZKlDYnXxybC0W7uepwvex7Zz0H7zv2WJJ73Qz6gRn5Mm6jQthq0GBO1POsxTTLC9xwaL_8MEdYmUOXxa3pWexo0qv_50OWgAYzg0djzHp8oByh2aFwg0NhjD6IkraMRvj1xmLsOaZPpzV9dKlozRPia3efbsf5pgLhYEAb6iVpnifmEFHGn548lrjqqcGVTOS_8CIpihjh7iMsnEkpU2wKnrlDU2jg4XhPsZ7eCJLnFe0rB7Gu8WVXxRC6P0DQDjJR5rShLK4IfAWcZAFQjh9ZSat6Ii5TezdH5nXCaEpu7DPEZ3_HyyA54uW3l397v1q13saJmBVEc3egiO8mmaHWcClCVwm47_UZIh4tdMTtREWoKELXjTlGmHp4R4hFx7H5inRScs8iHYEe2fjY2-wVQUEv2aCw8zT-HQ9U7rew1Em8DiAJUJIDCbZMBT2t-USIVZUFrOiQ5BcCHW36rx5w4NcS0Y_8VGajKbnWqH_8MP66CdzrnZrBIAjRIZSUtk-4iQYRlYm3Y8z-n0A";
+        let decoder =
+            Decoder::new(RSA_PKCS1_PUBLIC_KEY).expect("PKCS#1 RSA decoder creation should succeed");
+        match decoder.decode(token) {
+            Ok(claims) => assert_eq!(claims.scope, "read:Vehicle.Speed"),
+            Err(err) => panic!("PKCS#1 RSA token decode should succeed but failed with: {err}"),
+        }
     }
 
     #[test]
