@@ -72,7 +72,7 @@ chrono = { version = "0.4.31", optional = true, features = ["std"] }
 uuid = { version = "1.4.1", features = ["v4"] }
 
 # OTEL
-opentelemetry = { version = "0.19.0", optional = true, features = ["rt-tokio", "trace"] }
+opentelemetry = { version = "0.19.0", optional = true, features = ["rt-tokio", "trace", "metrics"] }
 opentelemetry-otlp = { version="0.12.0", optional = true,  features = ["tonic", "metrics"] }
 opentelemetry-semantic-conventions = { version="0.11.0", optional = true }
 tracing-opentelemetry = { version="0.19.0", optional = true }

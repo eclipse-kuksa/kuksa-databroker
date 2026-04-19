@@ -21,6 +21,7 @@ pub use crate::types::{ChangeType, DataType, DataValue, EntryType, SignalId, Tim
 use indexmap::IndexMap;
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::time::Instant;
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tokio_stream::{Stream, StreamExt};
 
@@ -1845,11 +1846,15 @@ impl AuthorizedAccess<'_, '_> {
 
         let stream = BroadcastStream::new(receiver).map(move |result| match result {
             Ok(message) => message,
-            Err(err) => {
+            Err(BroadcastStreamRecvError::Lagged(n)) => {
                 warn!(
-                    "Slow subscriber with capacity {} lagged and missed signal updates: {}",
-                    channel_capacity, err
+                    "Slow subscriber with capacity {} lagged, missed {} signal updates",
+                    channel_capacity, n
                 );
+                #[cfg(feature = "otel")]
+                if let Some(counter) = crate::open_telemetry::broadcast_drop_counter() {
+                    counter.add(&opentelemetry::Context::current(), n, &[]);
+                }
                 None
             }
         });
@@ -5118,6 +5123,37 @@ pub mod tests {
             Err(_) => panic!(
                 "timed out: initial notification was not delivered with min_sample_interval \
                  — regression of issue #186 (throttle guard must not block changed == None)"
+            ),
+        }
+    }
+
+    /// Regression test for issue #200 (broadcast_drops_total counter).
+    ///
+    /// Asserts the API assumption that `BroadcastStreamRecvError::Lagged(n)`
+    /// destructures with a non-zero count when the broadcast channel overflows
+    /// before the first receive. This is the exact pattern used in
+    /// `subscribe_change`'s stream adapter at broker.rs.
+    #[tokio::test]
+    async fn test_broadcast_stream_lagged_variant_exposes_drop_count() {
+        use tokio::sync::broadcast;
+        use tokio_stream::wrappers::BroadcastStream;
+
+        let (tx, rx) = broadcast::channel::<u32>(2);
+        let mut stream = BroadcastStream::new(rx);
+
+        // Send more than the channel capacity before any receive. The first
+        // stream poll must surface a Lagged(n) with n >= 1.
+        for i in 0..5u32 {
+            tx.send(i).expect("send to live receiver should succeed");
+        }
+
+        match stream.next().await {
+            Some(Err(BroadcastStreamRecvError::Lagged(n))) => {
+                assert!(n >= 1, "expected at least 1 lagged message, got {n}");
+            }
+            other => panic!(
+                "expected first item to be Err(Lagged(_)), got {other:?} — \
+                 broadcast_drops_total counter depends on this variant"
             ),
         }
     }

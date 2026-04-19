@@ -32,7 +32,8 @@ use tracing_subscriber::filter::EnvFilter;
 
 #[cfg(feature = "otel")]
 use {
-    open_telemetry::init_trace, opentelemetry::global,
+    open_telemetry::{init_metrics, init_trace},
+    opentelemetry::global,
     opentelemetry::sdk::propagation::TraceContextPropagator,
     tracing_subscriber::layer::SubscriberExt,
 };
@@ -62,6 +63,11 @@ pub fn init_logging() {
 
     // Initialize OpenTelemetry tracer
     let tracer = init_trace().expect("Failed to initialize tracer");
+
+    // Initialize OpenTelemetry metrics pipeline (used for broadcast_drops_total
+    // and any future counters). Held via the global meter provider; the
+    // controller handle is dropped here and managed internally.
+    let _controller = init_metrics().expect("Failed to initialize metrics provider");
 
     // telemetry layer
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
