@@ -2236,8 +2236,8 @@ impl AuthorizedAccess<'_, '_> {
                     .flat_map(|&signal_id| {
                         subscriptions
                             .signal_provider_subscriptions
-                            .iter()
-                            .filter_map(move |(_, provider)| {
+                            .values()
+                            .filter_map(move |provider| {
                                 provider.signals_intervals.get(&signal_id).copied()
                             })
                     })
