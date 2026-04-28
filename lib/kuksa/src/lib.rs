@@ -12,8 +12,6 @@
 ********************************************************************************/
 
 use http::Uri;
-use kuksa_common::conversion::{ConvertToSDV, ConvertToV1};
-use kuksa_common::ClientTraitV1;
 use tonic::async_trait;
 
 pub use databroker_proto::kuksa::val::{self as proto, v1::DataEntry};
@@ -105,74 +103,6 @@ impl KuksaClient {
             }
             Err(err) => Err(ClientError::Status(err)),
         }
-    }
-}
-
-#[async_trait]
-impl kuksa_common::SDVClientTraitV1 for KuksaClient {
-    type SensorUpdateType = kuksa_common::types::SensorUpdateSDVTypeV1;
-    type UpdateActuationType = kuksa_common::types::UpdateActuationSDVTypeV1;
-    type PathType = kuksa_common::types::PathSDVTypeV1;
-    type SubscribeType = kuksa_common::types::SubscribeSDVTypeV1;
-    type PublishResponseType = kuksa_common::types::PublishResponseSDVTypeV1;
-    type GetResponseType = kuksa_common::types::GetResponseSDVTypeV1;
-    type SubscribeResponseType = kuksa_common::types::SubscribeResponseSDVTypeV1;
-    type ProvideResponseType = kuksa_common::types::ProvideResponseSDVTypeV1;
-    type ActuateResponseType = kuksa_common::types::ActuateResponseSDVTypeV1;
-    type MetadataResponseType = kuksa_common::types::MetadataResponseSDVTypeV1;
-
-    async fn update_datapoints(
-        &mut self,
-        datapoints: Self::SensorUpdateType,
-    ) -> Result<Self::PublishResponseType, ClientError> {
-        let result = self
-            .set_current_values(datapoints.convert_to_v1())
-            .await
-            .unwrap();
-        let converted_result = result.convert_to_sdv();
-        Ok(converted_result)
-    }
-
-    async fn get_datapoints(
-        &mut self,
-        paths: Self::PathType,
-    ) -> Result<Self::GetResponseType, ClientError> {
-        Ok(self
-            .get_current_values(paths.convert_to_v1())
-            .await
-            .unwrap()
-            .convert_to_sdv())
-    }
-
-    async fn subscribe(
-        &mut self,
-        _paths: Self::SubscribeType,
-    ) -> Result<Self::SubscribeResponseType, ClientError> {
-        unimplemented!("Subscribe mechanism has changed. SQL queries not supported anymore")
-    }
-
-    async fn set_datapoints(
-        &mut self,
-        datapoints: Self::UpdateActuationType,
-    ) -> Result<Self::ActuateResponseType, ClientError> {
-        let result = self
-            .set_target_values(datapoints.convert_to_v1())
-            .await
-            .unwrap();
-        let converted_result = result.convert_to_sdv();
-        Ok(converted_result)
-    }
-
-    async fn get_metadata(
-        &mut self,
-        paths: Self::PathType,
-    ) -> Result<Self::MetadataResponseType, ClientError> {
-        Ok(
-            kuksa_common::ClientTraitV1::get_metadata(self, paths.convert_to_v1())
-                .await
-                .unwrap()
-                .convert_to_sdv(),
-        )
     }
 }
 

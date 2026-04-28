@@ -4,7 +4,6 @@ resolver = "2"
 members = [
     "common",
     "kuksa",
-    "sdv",
     "databroker-examples",
     "kuksa_val_v2",
 ]

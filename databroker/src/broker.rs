@@ -15,14 +15,13 @@ use crate::filter::filter_manager::FilterManager;
 use crate::permissions::{PermissionError, Permissions};
 pub use crate::types;
 
-use crate::query;
 pub use crate::types::{ChangeType, DataType, DataValue, EntryType, SignalId, TimeInterval};
 
 use indexmap::IndexMap;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{broadcast, RwLock};
 use tokio::time::Instant;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
-use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
+use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
 
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -32,8 +31,6 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
-use crate::query::{CompiledQuery, ExecutionInput};
-use crate::types::ExecutionInputImplData;
 use tracing::{debug, info, warn};
 
 use crate::glob;
@@ -136,7 +133,6 @@ pub struct Database {
 #[derive(Default)]
 pub struct Subscriptions {
     actuation_subscriptions: Vec<ActuationSubscription>,
-    query_subscriptions: Vec<QuerySubscription>,
     change_subscriptions: HashMap<Uuid, ChangeSubscription>,
     signal_provider_subscriptions: HashMap<Uuid, SignalProviderSubscription>,
 }
@@ -230,12 +226,6 @@ pub struct SignalProviderSubscription {
     vss_ids: HashSet<SignalId>, // good for optimizations
     signals_intervals: HashMap<SignalId, TimeInterval>,
     signal_provider: Box<dyn SignalProvider>,
-    permissions: Permissions,
-}
-
-pub struct QuerySubscription {
-    query: query::CompiledQuery,
-    sender: mpsc::Sender<QueryResponse>,
     permissions: Permissions,
 }
 
@@ -793,10 +783,6 @@ impl Subscriptions {
         self.actuation_subscriptions.push(subscription);
     }
 
-    pub fn add_query_subscription(&mut self, subscription: QuerySubscription) {
-        self.query_subscriptions.push(subscription)
-    }
-
     #[cfg_attr(feature="otel", tracing::instrument(name="subscriptions_add_change_subscription",skip(self, subscription), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn add_change_subscription(&mut self, subscription: ChangeSubscription) -> Uuid {
         let uuid = Uuid::new_v4();
@@ -834,20 +820,7 @@ impl Subscriptions {
         db: &Database,
     ) -> Result<Option<HashMap<String, ()>>, NotificationError> {
         let mut error = None;
-        let mut lag_updates: HashMap<String, ()> = HashMap::new();
-        for sub in &self.query_subscriptions {
-            match sub.notify(changed, db).await {
-                Ok(None) => {}
-                Ok(Some(input)) => {
-                    for x in input.get_fields() {
-                        if x.1.lag_value != x.1.value && !lag_updates.contains_key(x.0) {
-                            lag_updates.insert(x.0.clone(), ());
-                        }
-                    }
-                }
-                Err(err) => error = Some(err),
-            }
-        }
+        let lag_updates: HashMap<String, ()> = HashMap::new();
 
         for sub in self.change_subscriptions.values() {
             match sub.notify(changed, db).await {
@@ -870,21 +843,11 @@ impl Subscriptions {
 
     pub fn clear(&mut self) {
         self.actuation_subscriptions.clear();
-        self.query_subscriptions.clear();
         self.change_subscriptions.clear();
     }
 
     #[cfg_attr(feature="otel", tracing::instrument(name="subscriptions_cleanup", skip(self), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn cleanup(&mut self) {
-        self.query_subscriptions.retain(|sub| {
-            if sub.sender.is_closed() {
-                info!("Subscriber gone: removing subscription");
-                false
-            } else {
-                true
-            }
-        });
-
         self.actuation_subscriptions.retain(|sub| {
             if !sub.actuation_provider.is_available() {
                 info!("Actuation Provider gone: removing provided actuation");
@@ -1086,149 +1049,6 @@ impl ChangeSubscription {
     }
     async fn send_none_to_receiver(&self) {
         let _ = self.sender.send(None);
-    }
-}
-
-impl QuerySubscription {
-    #[cfg_attr(feature="otel", tracing::instrument(name="query_subscription_find_in_db_and_add", skip(self, name, db, input), fields(timestamp=chrono::Utc::now().to_string())))]
-    fn find_in_db_and_add(
-        &self,
-        name: &String,
-        db: &DatabaseReadAccess,
-        input: &mut query::ExecutionInputImpl,
-    ) {
-        match db.get_entry_by_path(name) {
-            Ok(entry) => {
-                input.add(
-                    name.to_owned(),
-                    ExecutionInputImplData {
-                        value: entry.datapoint.value.to_owned(),
-                        lag_value: entry.lag_datapoint.value.to_owned(),
-                    },
-                );
-            }
-            Err(_) => {
-                // TODO: This should probably generate an error
-                input.add(
-                    name.to_owned(),
-                    ExecutionInputImplData {
-                        value: DataValue::NotAvailable,
-                        lag_value: DataValue::NotAvailable,
-                    },
-                )
-            }
-        }
-    }
-    #[cfg_attr(feature="otel", tracing::instrument(name="query_subscription_check_if_changes_match", skip(query, changed_origin, db), fields(timestamp=chrono::Utc::now().to_string())))]
-    fn check_if_changes_match(
-        query: &CompiledQuery,
-        changed_origin: Option<&HashMap<i32, HashSet<Field>>>,
-        db: &DatabaseReadAccess,
-    ) -> bool {
-        match changed_origin {
-            Some(changed) => {
-                for (id, fields) in changed {
-                    if let Some(metadata) = db.get_metadata_by_id(*id) {
-                        if query.input_spec.contains(&metadata.path)
-                            && fields.contains(&Field::Datapoint)
-                        {
-                            return true;
-                        }
-                        if !query.subquery.is_empty() {
-                            for sub in query.subquery.iter() {
-                                if QuerySubscription::check_if_changes_match(
-                                    sub,
-                                    changed_origin,
-                                    db,
-                                ) {
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            None => {
-                // Always generate input if `changed` is None
-                return true;
-            }
-        }
-        false
-    }
-    #[cfg_attr(feature="otel", tracing::instrument(name="query_subscription_generate_input_list", skip(self, query, db, input), fields(timestamp=chrono::Utc::now().to_string())))]
-    fn generate_input_list(
-        &self,
-        query: &CompiledQuery,
-        db: &DatabaseReadAccess,
-        input: &mut query::ExecutionInputImpl,
-    ) {
-        for name in query.input_spec.iter() {
-            self.find_in_db_and_add(name, db, input);
-        }
-        if !query.subquery.is_empty() {
-            for sub in query.subquery.iter() {
-                self.generate_input_list(sub, db, input)
-            }
-        }
-    }
-    #[cfg_attr(feature="otel", tracing::instrument(name="query_subscription_generate_input", skip(self, changed, db), fields(timestamp=chrono::Utc::now().to_string())))]
-    fn generate_input(
-        &self,
-        changed: Option<&HashMap<i32, HashSet<Field>>>,
-        db: &DatabaseReadAccess,
-    ) -> Option<impl ExecutionInput> {
-        let id_used_in_query = QuerySubscription::check_if_changes_match(&self.query, changed, db);
-
-        if id_used_in_query {
-            let mut input = query::ExecutionInputImpl::new();
-            self.generate_input_list(&self.query, db, &mut input);
-            Some(input)
-        } else {
-            None
-        }
-    }
-
-    #[cfg_attr(feature="otel", tracing::instrument(name="query_subscription_notify", skip(self, changed, db), fields(timestamp=chrono::Utc::now().to_string())))]
-    async fn notify(
-        &self,
-        changed: Option<&HashMap<i32, HashSet<Field>>>,
-        db: &Database,
-    ) -> Result<Option<impl query::ExecutionInput>, NotificationError> {
-        let db_read = db.authorized_read_access(&self.permissions);
-
-        match self.generate_input(changed, &db_read) {
-            Some(input) =>
-            // Execute query (if anything queued)
-            {
-                match self.query.execute(&input) {
-                    Ok(result) => match result {
-                        Some(fields) => match self
-                            .sender
-                            .send(QueryResponse {
-                                fields: fields
-                                    .iter()
-                                    .map(|e| QueryField {
-                                        name: e.0.to_owned(),
-                                        value: e.1.to_owned(),
-                                    })
-                                    .collect(),
-                            })
-                            .await
-                        {
-                            Ok(()) => Ok(Some(input)),
-                            Err(_) => Err(NotificationError {}),
-                        },
-                        None => Ok(None),
-                    },
-                    Err(e) => {
-                        // TODO: send error to subscriber
-                        debug!("{:?}", e);
-                        Ok(None) // no cleanup needed
-                    }
-                }
-            }
-            None => Ok(None),
-        }
     }
 }
 
@@ -1543,15 +1363,6 @@ impl Database {
     }
 }
 
-impl query::CompilationInput for DatabaseReadAccess<'_, '_> {
-    fn get_datapoint_type(&self, path: &str) -> Result<DataType, query::CompilationError> {
-        match self.get_metadata_by_path(path) {
-            Some(metadata) => Ok(metadata.data_type.to_owned()),
-            None => Err(query::CompilationError::UnknownField(path.to_owned())),
-        }
-    }
-}
-
 pub struct AuthorizedAccess<'a, 'b> {
     broker: &'a DataBroker,
     permissions: &'b Permissions,
@@ -1859,43 +1670,6 @@ impl AuthorizedAccess<'_, '_> {
             }
         });
         Ok(stream)
-    }
-
-    pub async fn subscribe_query(
-        &self,
-        query: &str,
-    ) -> Result<impl Stream<Item = QueryResponse>, QueryError> {
-        let db_read = self.broker.database.read().await;
-        let db_read_access = db_read.authorized_read_access(self.permissions);
-
-        let compiled_query = query::compile(query, &db_read_access);
-
-        match compiled_query {
-            Ok(compiled_query) => {
-                let (sender, receiver) = mpsc::channel(10);
-
-                let subscription = QuerySubscription {
-                    query: compiled_query,
-                    sender,
-                    permissions: self.permissions.clone(),
-                };
-
-                // Send the initial execution of query
-                match subscription.notify(None, &db_read).await {
-                    Ok(_) => self
-                        .broker
-                        .subscriptions
-                        .write()
-                        .await
-                        .add_query_subscription(subscription),
-                    Err(_) => return Err(QueryError::InternalError),
-                };
-
-                let stream = ReceiverStream::new(receiver);
-                Ok(stream)
-            }
-            Err(e) => Err(QueryError::CompilationError(format!("{e:?}"))),
-        }
     }
 
     pub async fn provide_actuation(
@@ -3779,93 +3553,6 @@ pub mod tests {
     }
 
     #[tokio::test]
-    async fn test_subscribe_query_and_get() {
-        let broker = DataBroker::default();
-        let broker = broker.authorized_access(&permissions::ALLOW_ALL);
-
-        let id1 = broker
-            .add_entry(
-                "test.datapoint1".to_owned(),
-                DataType::Int32,
-                ChangeType::OnChange,
-                EntryType::Sensor,
-                "Test datapoint 1".to_owned(),
-                None, // min
-                None, // max
-                None,
-                None,
-            )
-            .await
-            .expect("Register datapoint should succeed");
-
-        let mut stream = broker
-            .subscribe_query("SELECT test.datapoint1")
-            .await
-            .expect("Setup subscription");
-
-        // Expect an initial query response
-        // No value has been set yet, so value should be NotAvailable
-        match stream.next().await {
-            Some(query_resp) => {
-                assert_eq!(query_resp.fields.len(), 1);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                assert_eq!(query_resp.fields[0].value, DataValue::NotAvailable);
-            }
-            None => {
-                panic!("did not expect stream end")
-            }
-        }
-
-        broker
-            .update_entries([(
-                id1,
-                EntryUpdate {
-                    path: None,
-                    datapoint: Some(Datapoint {
-                        ts: SystemTime::now(),
-                        source_ts: None,
-                        value: DataValue::Int32(101),
-                    }),
-                    actuator_target: None,
-                    entry_type: None,
-                    data_type: None,
-                    description: None,
-                    allowed: None,
-                    min: None,
-                    max: None,
-                    unit: None,
-                },
-            )])
-            .await
-            .expect("setting datapoint #1");
-
-        // Value has been set, expect the next item in stream to match.
-        match stream.next().await {
-            Some(query_resp) => {
-                assert_eq!(query_resp.fields.len(), 1);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                assert_eq!(query_resp.fields[0].value, DataValue::Int32(101));
-            }
-            None => {
-                panic!("did not expect stream end")
-            }
-        }
-
-        // Check that the data point has been stored as well
-        match broker.get_datapoint(id1).await {
-            Ok(datapoint) => {
-                assert_eq!(datapoint.value, DataValue::Int32(101));
-            }
-            Err(ReadError::NotFound) => {
-                panic!("expected datapoint to exist");
-            }
-            Err(ReadError::PermissionDenied | ReadError::PermissionExpired) => {
-                panic!("expected to be authorized");
-            }
-        }
-    }
-
-    #[tokio::test]
     async fn test_multi_subscribe() {
         let broker = DataBroker::default();
         let broker = broker.authorized_access(&permissions::ALLOW_ALL);
@@ -3886,37 +3573,67 @@ pub mod tests {
             .expect("Register datapoint should succeed");
 
         let mut subscription1 = broker
-            .subscribe_query("SELECT test.datapoint1")
+            .subscribe(
+                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
+                None,
+                None,
+            )
             .await
             .expect("setup first subscription");
 
         let mut subscription2 = broker
-            .subscribe_query("SELECT test.datapoint1")
+            .subscribe(
+                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
+                None,
+                None,
+            )
             .await
             .expect("setup second subscription");
 
-        // Expect an initial query response
+        // Expect an initial notification
         // No value has been set yet, so value should be NotAvailable
         match subscription1.next().await {
-            Some(query_resp) => {
-                assert_eq!(query_resp.fields.len(), 1);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                assert_eq!(query_resp.fields[0].value, DataValue::NotAvailable);
+            Some(Some(entry_updates)) => {
+                assert_eq!(entry_updates.updates.len(), 1);
+                assert_eq!(
+                    entry_updates.updates[0].update.path,
+                    Some("test.datapoint1".to_string())
+                );
+                assert_eq!(
+                    entry_updates.updates[0]
+                        .update
+                        .datapoint
+                        .as_ref()
+                        .unwrap()
+                        .value,
+                    DataValue::NotAvailable
+                );
             }
-            None => {
+            _ => {
                 panic!("did not expect stream end")
             }
         }
 
-        // Expect an initial query response
+        // Expect an initial notification
         // No value has been set yet, so value should be NotAvailable
         match subscription2.next().await {
-            Some(query_resp) => {
-                assert_eq!(query_resp.fields.len(), 1);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                assert_eq!(query_resp.fields[0].value, DataValue::NotAvailable);
+            Some(Some(entry_updates)) => {
+                assert_eq!(entry_updates.updates.len(), 1);
+                assert_eq!(
+                    entry_updates.updates[0].update.path,
+                    Some("test.datapoint1".to_string())
+                );
+                assert_eq!(
+                    entry_updates.updates[0]
+                        .update
+                        .datapoint
+                        .as_ref()
+                        .unwrap()
+                        .value,
+                    DataValue::NotAvailable
+                );
             }
-            None => {
+            _ => {
                 panic!("did not expect stream end")
             }
         }
@@ -3945,10 +3662,15 @@ pub mod tests {
                 .await
                 .expect("setting datapoint #1");
 
-            if let Some(query_resp) = subscription1.next().await {
-                assert_eq!(query_resp.fields.len(), 1);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                if let DataValue::Int32(value) = query_resp.fields[0].value {
+            if let Some(Some(entry_updates)) = subscription1.next().await {
+                assert_eq!(entry_updates.updates.len(), 1);
+                if let DataValue::Int32(value) = entry_updates.updates[0]
+                    .update
+                    .datapoint
+                    .as_ref()
+                    .unwrap()
+                    .value
+                {
                     assert_eq!(value, i);
                 } else {
                     panic!("expected test.datapoint1 to contain a value");
@@ -3957,10 +3679,15 @@ pub mod tests {
                 panic!("did not expect end of stream");
             }
 
-            if let Some(query_resp) = subscription2.next().await {
-                assert_eq!(query_resp.fields.len(), 1);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                if let DataValue::Int32(value) = query_resp.fields[0].value {
+            if let Some(Some(entry_updates)) = subscription2.next().await {
+                assert_eq!(entry_updates.updates.len(), 1);
+                if let DataValue::Int32(value) = entry_updates.updates[0]
+                    .update
+                    .datapoint
+                    .as_ref()
+                    .unwrap()
+                    .value
+                {
                     assert_eq!(value, i);
                 } else {
                     panic!("expected test.datapoint1 to contain a value");
@@ -3992,19 +3719,34 @@ pub mod tests {
             .expect("Register datapoint should succeed");
 
         let mut subscription = broker
-            .subscribe_query("SELECT test.datapoint1")
+            .subscribe(
+                HashMap::from([(id1, HashSet::from([Field::Datapoint]))]),
+                None,
+                None,
+            )
             .await
             .expect("Setup subscription");
 
-        // Expect an initial query response
+        // Expect an initial notification
         // No value has been set yet, so value should be NotAvailable
         match subscription.next().await {
-            Some(query_resp) => {
-                assert_eq!(query_resp.fields.len(), 1);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                assert_eq!(query_resp.fields[0].value, DataValue::NotAvailable);
+            Some(Some(entry_updates)) => {
+                assert_eq!(entry_updates.updates.len(), 1);
+                assert_eq!(
+                    entry_updates.updates[0].update.path,
+                    Some("test.datapoint1".to_string())
+                );
+                assert_eq!(
+                    entry_updates.updates[0]
+                        .update
+                        .datapoint
+                        .as_ref()
+                        .unwrap()
+                        .value,
+                    DataValue::NotAvailable
+                );
             }
-            None => {
+            _ => {
                 panic!("did not expect stream end")
             }
         }
@@ -4033,12 +3775,19 @@ pub mod tests {
             .expect("setting datapoint #1");
 
         match subscription.next().await {
-            Some(query_resp) => {
-                assert_eq!(query_resp.fields.len(), 1);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                assert_eq!(query_resp.fields[0].value, DataValue::Int32(200));
+            Some(Some(entry_updates)) => {
+                assert_eq!(entry_updates.updates.len(), 1);
+                assert_eq!(
+                    entry_updates.updates[0]
+                        .update
+                        .datapoint
+                        .as_ref()
+                        .unwrap()
+                        .value,
+                    DataValue::Int32(200)
+                );
             }
-            None => {
+            _ => {
                 panic!("did not expect stream end")
             }
         }
@@ -4096,12 +3845,19 @@ pub mod tests {
             .expect("setting datapoint #1 (second time)");
 
         match subscription.next().await {
-            Some(query_resp) => {
-                assert_eq!(query_resp.fields.len(), 1);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                assert_eq!(query_resp.fields[0].value, DataValue::Int32(102));
+            Some(Some(entry_updates)) => {
+                assert_eq!(entry_updates.updates.len(), 1);
+                assert_eq!(
+                    entry_updates.updates[0]
+                        .update
+                        .datapoint
+                        .as_ref()
+                        .unwrap()
+                        .value,
+                    DataValue::Int32(102)
+                );
             }
-            None => {
+            _ => {
                 panic!("did not expect stream end")
             }
         }
@@ -4155,21 +3911,30 @@ pub mod tests {
             .expect("Register datapoint should succeed");
 
         let mut subscription = broker
-            .subscribe_query("SELECT test.datapoint1, test.datapoint2")
+            .subscribe(
+                HashMap::from([
+                    (id1, HashSet::from([Field::Datapoint])),
+                    (id2, HashSet::from([Field::Datapoint])),
+                ]),
+                None,
+                None,
+            )
             .await
             .expect("setup first subscription");
 
-        // Expect an initial query response
+        // Expect an initial notification
         // No value has been set yet, so value should be NotAvailable
         match subscription.next().await {
-            Some(query_resp) => {
-                assert_eq!(query_resp.fields.len(), 2);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                assert_eq!(query_resp.fields[0].value, DataValue::NotAvailable);
-                assert_eq!(query_resp.fields[1].name, "test.datapoint2");
-                assert_eq!(query_resp.fields[1].value, DataValue::NotAvailable);
+            Some(Some(entry_updates)) => {
+                assert_eq!(entry_updates.updates.len(), 2);
+                for update in &entry_updates.updates {
+                    assert_eq!(
+                        update.update.datapoint.as_ref().unwrap().value,
+                        DataValue::NotAvailable
+                    );
+                }
             }
-            None => {
+            _ => {
                 panic!("did not expect stream end")
             }
         }
@@ -4218,22 +3983,21 @@ pub mod tests {
                 ])
                 .await
                 .expect("setting datapoint #1");
-        }
 
-        for i in 0..10 {
-            if let Some(query_resp) = subscription.next().await {
-                assert_eq!(query_resp.fields.len(), 2);
-                assert_eq!(query_resp.fields[0].name, "test.datapoint1");
-                if let DataValue::Int32(value) = query_resp.fields[0].value {
-                    assert_eq!(value, -i);
-                } else {
-                    panic!("expected test.datapoint1 to contain a values");
-                }
-                assert_eq!(query_resp.fields[1].name, "test.datapoint2");
-                if let DataValue::Int32(value) = query_resp.fields[1].value {
-                    assert_eq!(value, i);
-                } else {
-                    panic!("expected test.datapoint2 to contain a values");
+            if let Some(Some(entry_updates)) = subscription.next().await {
+                assert_eq!(entry_updates.updates.len(), 2);
+                for update in &entry_updates.updates {
+                    let value = match update.update.datapoint.as_ref().unwrap().value {
+                        DataValue::Int32(v) => v,
+                        _ => panic!("expected Int32 value"),
+                    };
+                    if update.id == id1 {
+                        assert_eq!(value, -i);
+                    } else if update.id == id2 {
+                        assert_eq!(value, i);
+                    } else {
+                        panic!("unexpected entry id");
+                    }
                 }
             } else {
                 panic!("did not expect end of stream");
