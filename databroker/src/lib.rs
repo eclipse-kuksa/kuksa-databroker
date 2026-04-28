@@ -18,7 +18,6 @@ pub mod glob;
 pub mod grpc;
 pub mod open_telemetry;
 pub mod permissions;
-pub mod query;
 pub mod types;
 pub mod vss;
 

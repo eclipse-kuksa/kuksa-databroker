@@ -335,13 +335,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .action(ArgAction::SetTrue),
         )
         .arg(
-            Arg::new("enable-databroker-v1")
-                .display_order(33)
-                .long("enable-databroker-v1")
-                .help("Enable sdv.databroker.v1 (GRPC) service")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
             Arg::new("worker-threads")
                 .display_order(34)
                 .long("worker-threads")
@@ -580,11 +573,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        let mut apis = vec![grpc::server::Api::KuksaValV1, grpc::server::Api::KuksaValV2];
-
-        if args.get_flag("enable-databroker-v1") {
-            apis.push(grpc::server::Api::SdvDatabrokerV1);
-        }
+        let apis = vec![grpc::server::Api::KuksaValV1, grpc::server::Api::KuksaValV2];
 
         let unix_socket_path = args.get_one::<String>("unix-socket").cloned().or_else(|| {
             // If the --unix-socket PATH is not explicitly set, check whether it

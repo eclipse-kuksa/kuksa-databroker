@@ -15,21 +15,8 @@ use std::collections::HashMap;
 
 use databroker_proto::kuksa::val::v1 as protoV1;
 use databroker_proto::kuksa::val::v2 as protoV2;
-use databroker_proto::sdv::databroker::v1 as SDVprotoV1;
 
 use tonic::Streaming;
-
-// Type aliases SDV
-pub type SensorUpdateSDVTypeV1 = HashMap<String, SDVprotoV1::Datapoint>;
-pub type UpdateActuationSDVTypeV1 = HashMap<String, SDVprotoV1::Datapoint>;
-pub type PathSDVTypeV1 = Vec<String>;
-pub type SubscribeSDVTypeV1 = String;
-pub type PublishResponseSDVTypeV1 = SDVprotoV1::UpdateDatapointsReply;
-pub type GetResponseSDVTypeV1 = HashMap<String, SDVprotoV1::Datapoint>;
-pub type SubscribeResponseSDVTypeV1 = Streaming<SDVprotoV1::SubscribeReply>;
-pub type ProvideResponseSDVTypeV1 = Streaming<SDVprotoV1::SubscribeReply>;
-pub type ActuateResponseSDVTypeV1 = SDVprotoV1::SetDatapointsReply;
-pub type MetadataResponseSDVTypeV1 = Vec<SDVprotoV1::Metadata>;
 
 // Type aliases V1
 pub type SensorUpdateTypeV1 = HashMap<String, protoV1::Datapoint>;

@@ -21,7 +21,6 @@ license = "Apache-2.0"
 [dependencies]
 kuksa-common = { path = "../lib/common"}
 kuksa = { path = "../lib/kuksa"}
-kuksa-sdv = { path = "../lib/sdv"}
 databroker-proto = { workspace = true }
 tonic = { workspace = true, features = ["transport", "channel"] }
 tonic-prost = { version = "0.14" }

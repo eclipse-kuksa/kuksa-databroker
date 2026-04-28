@@ -156,8 +156,6 @@ Kuksa Databroker implements the following service interfaces:
 
 - Enabled on Databroker by default [kuksa.val.v2.VAL](../proto/kuksa/val/v2/val.proto) (recommended to use but still not supported by databroker-cli)
 - Enabled on Databroker by default [kuksa.val.v1.VAL](../proto/kuksa/val/v1/val.proto)
-- Disabled on Databroker by default, use `--enable-databroker-v1` to enable [sdv.databroker.v1.Broker](../proto/sdv/databroker/v1/broker.proto)
-- Disabled on Databroker by default, use `--enable-databroker-v1` to enable [sdv.databroker.v1.Collector](../proto/sdv/databroker/v1/collector.proto)
 
 Please visit [protocol documentation](protocol.md) for more information on the APIs.
 

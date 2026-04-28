@@ -40,12 +40,6 @@ For  more information see the `kuksa.val.v2` [documentation](../proto/kuksa/val/
 This is the predecessor to `kuksa.val.v2`.
 For  more information see the `kuksa.val.v1` [documentation](../proto/kuksa/val/v1/README.md).
 
-## `sdv.databroker.v1` gRPC Protocol
-
-This is the predecessor to `kuksa.val.v1`.
-For  more information see the `sdv.databroker.v1` [documentation](../proto/sdv/databroker/v1/README.md).
-
-To enable the legacy `sdv.databroker.v1` API you must start Databroker with the `--enable-databroker-v1` argument.
 
 ### VISS v2
 
