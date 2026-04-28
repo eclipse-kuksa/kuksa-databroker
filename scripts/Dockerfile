@@ -35,11 +35,11 @@ ENV BUILDTARGET="aarch64-unknown-linux-musl"
 # FROM gcr.io/distroless/base-debian12:debug as target-riscv64
 # However, distroless has no RISCV support yet,
 # (Nov 2023). Using debian unstable for now
-FROM riscv64/debian:sid-slim as target-riscv64
+FROM riscv64/debian:sid-slim AS target-riscv64
 ENV BUILDTARGET="riscv64gc-unknown-linux-gnu"
 
 # Now adding generic parts
-FROM target-$TARGETARCH as target
+FROM target-$TARGETARCH AS target
 ARG TARGETARCH
 
 
