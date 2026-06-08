@@ -8,7 +8,6 @@ Document  | Content/Comment
 [Kuksa Quickstart](quickstart.md) | Introduction on how to interact with Kuksa Databroker
 [Kuksa System Components and Deployment](system-architecture.md) | Description of the Kuksa Architecture
 [Supported Protocols](protocol.md) | Protocols supported by Kuksa Databroker
-[Databroker sdv.databroker.v1 Query Syntax](QUERY.md) | Query syntax available in `sdv.databroker.v1`
 [Kuksa TLS concept](tls.md) | Introduction to the Kuksa TLS Concept
 [Kuksa Authorization Concept](authorization.md) | Introduction to the Kuksa Token Concept
 [Runtime behavior and potential attacks](behavior.md) | Description of the runtime behavior of Kuksa Databroker
