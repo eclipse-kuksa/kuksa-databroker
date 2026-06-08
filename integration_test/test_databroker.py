@@ -20,8 +20,10 @@ import asyncio
 import pytest
 import pytest_asyncio
 
-from gen_proto.sdv.databroker.v1.types_pb2 import Datapoint
-from helper import Databroker
+from kuksa_client.grpc import Datapoint
+from kuksa_client.grpc import DataType
+from kuksa_client.grpc import EntryType
+from kuksa_client.grpc.aio import VSSClient
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.getenv("LOG_LEVEL", "WARN"))
@@ -29,132 +31,158 @@ logger.setLevel(os.getenv("LOG_LEVEL", "WARN"))
 DATABROKER_ADDRESS = os.environ.get("DATABROKER_ADDRESS", "127.0.0.1:55555")
 
 
+def _split_address(address: str):
+    host, port = address.rsplit(":", 1)
+    return host, int(port)
+
+
 @pytest_asyncio.fixture
-async def setup_helper() -> Databroker:
-    logger.info("Using DATABROKER_ADDRESS={}".format(DATABROKER_ADDRESS))
-    helper = await Databroker.ConnectedDatabroker(DATABROKER_ADDRESS)
-    return helper
+async def client() -> VSSClient:
+    host, port = _split_address(DATABROKER_ADDRESS)
+    async with VSSClient(host, port) as c:
+        yield c
 
 
 @pytest.mark.asyncio
 async def test_databroker_connection() -> None:
     logger.info("Connecting to VehicleDataBroker {}".format(DATABROKER_ADDRESS))
-    helper = await Databroker.ConnectedDatabroker(DATABROKER_ADDRESS)
-    await helper.get_metadata()
-    logger.info("Databroker._address =  {}".format(helper._address))
-    await helper.close()
+    host, port = _split_address(DATABROKER_ADDRESS)
+    async with VSSClient(host, port) as c:
+        info = await c.get_server_info()
+        logger.info("Server info: {}".format(info))
 
 
 @pytest.mark.asyncio
-async def test_feeder_metadata_registered(setup_helper: Databroker) -> None:
-    helper = setup_helper
-    feeder_names = [
-        "Vehicle.Speed",
-        "Vehicle.Powertrain.Transmission.CurrentGear",
-        "Vehicle.Chassis.ParkingBrake.IsEngaged",
-        "Vehicle.Powertrain.ElectricMotor.Torque",
-    ]
+async def test_check_vss_metadata(client: VSSClient) -> None:
+    expected_metadata = {
+        "Vehicle.Speed": {
+            "data_type": DataType.FLOAT,
+            "entry_type": EntryType.SENSOR,
+            "unit_required": True,
+        },
+        "Vehicle.Powertrain.Transmission.CurrentGear": {
+            "data_type": DataType.INT8,
+            "entry_type": EntryType.SENSOR,
+            "unit_required": False,
+        },
+        "Vehicle.Chassis.ParkingBrake.IsEngaged": {
+            "data_type": DataType.BOOLEAN,
+            "entry_type": EntryType.ACTUATOR,
+            "unit_required": False,
+        },
+        "Vehicle.Powertrain.ElectricMotor.Torque": {
+            "data_type": DataType.INT16,
+            "entry_type": EntryType.SENSOR,
+            "unit_required": True,
+        },
+    }
+    feeder_names = list(expected_metadata.keys())
 
-    meta = await helper.get_metadata(feeder_names)
-    logger.debug(
-        "# get_metadata({}) -> \n{}".format(
-            feeder_names, str(meta).replace("\n", " ")
-        )
-    )
+    meta = await client.get_metadata(feeder_names)
+    # meta is dict[str, Metadata]
 
     assert len(meta) > 0, "databroker metadata is empty"  # nosec B101
-    assert len(meta) == len(  # nosec B101
-        feeder_names
-    ), "Filtered meta with unexpected size: {}".format(meta)
-    meta_list = helper.metadata_to_json(meta)
-    logger.debug("get_metadata() --> \n{}".format(json.dumps(meta_list, indent=2)))
+    assert len(meta) == len(feeder_names), "Filtered meta with unexpected size: {}".format(meta)  # nosec B101
 
-    meta_names = [d["name"] for d in meta_list]
+    meta_list = []
+    for name, item in meta.items():
+        data_type = int(item.data_type)
+        entry_type = int(item.entry_type)
+        meta_list.append({
+            "name": name,
+            "data_type": DataType(data_type).name,
+            "description": item.description,
+            "entry_type": EntryType(entry_type).name,
+            "unit": getattr(item, "unit", None),
+        })
+    logger.debug("get_metadata() --> \n{}".format(json.dumps(meta_list, indent=2, default=str)))
 
-    for name in feeder_names:
-        assert name in meta_names, "{} not registered!".format(name)  # nosec B101
+    for name, expected in expected_metadata.items():
+        assert name in meta, "{} not registered!".format(name)  # nosec B101
+        item = meta[name]
+        data_type = int(item.data_type)
+        entry_type = int(item.entry_type)
+        description = item.description
+        unit = getattr(item, "unit", None)
 
-        name_reg = meta_list[meta_names.index(name)]
+        assert data_type == int(expected["data_type"]), (  # nosec B101
+            "{} has unexpected data_type: {}".format(name, DataType(data_type).name)
+        )
+        assert entry_type == int(expected["entry_type"]), (  # nosec B101
+            "{} has unexpected entry_type: {}".format(name, EntryType(entry_type).name)
+        )
+        assert isinstance(description, str) and description.strip(), (  # nosec B101
+            "{} has missing description".format(name)
+        )
 
-        assert len(name_reg) == 4 and name_reg["name"] == name  # nosec B101
-        logger.info("[feeder] Found metadata: {}".format(name_reg))
-        # TODO: check for expected types?
-        # assert (  # nosec B101
-        #     name_reg["data_type"] == DataType.UINT32
-        # ), "{} datatype is {}".format(name, name_reg["data_type"])
+        if expected["unit_required"]:
+            assert isinstance(unit, str) and unit.strip(), "{} should have a unit".format(name)  # nosec B101
+        else:
+            assert unit in (None, ""), "{} should not have a unit (got: {})".format(name, unit)  # nosec B101
 
-    await helper.close()
+        logger.info(
+            "[feeder] Validated metadata for {}: data_type={}, entry_type={}, has_unit={}".format(
+                name,
+                DataType(data_type).name,
+                EntryType(entry_type).name,
+                bool(isinstance(unit, str) and unit.strip()),
+            )
+        )
 
 
 @pytest.mark.asyncio
-async def test_events(setup_helper: Databroker) -> None:
-    helper: Databroker = setup_helper
-
+async def test_set_subscribe(client: VSSClient) -> None:
     timeout = 3
-    datapoint_speed = "Vehicle.Speed" # float
-    datapoint_engine_load = "Vehicle.Powertrain.ElectricMotor.Torque" # int16
-    alias_speed = "speed"
-    alias_load = "load"
+    datapoint_speed = "Vehicle.Speed"  # float
+    datapoint_engine_load = "Vehicle.Powertrain.ElectricMotor.Torque"  # int16
 
-    query = "SELECT {} as {}, {} as {}".format(datapoint_speed, alias_speed, datapoint_engine_load, alias_load)
+    events: list = []
 
-    events = []
-    # inner function for collecting subscription events
+    async def collect():
+        async for updates in client.subscribe_current_values(
+            [datapoint_speed, datapoint_engine_load]
+        ):
+            for path, dp in updates.items():
+                events.append({
+                    "name": path,
+                    "value": dp.value,
+                    "ts": dp.timestamp.timestamp() if dp.timestamp else None,
+                })
 
-    def inner_callback(name: str, dp: Datapoint):
-        dd = helper.datapoint_to_dict(name, dp)
-        events.append(dd)
+    logger.info("# subscribing to {} and {}".format(datapoint_speed, datapoint_engine_load))
+    subscription = asyncio.create_task(collect())
 
-    logger.info("# subscribing('{}', timeout={})".format(query, timeout))
-
-    subscription = asyncio.create_task(
-        helper.subscribe_datapoints(query, timeout=timeout, sub_callback=inner_callback)
-    )
-
-    # Give the subscription task a brief moment to register before publishing updates.
+    # Give the subscription a moment to register before publishing updates.
     await asyncio.sleep(0.2)
 
-    # Ensure at least one datapoint changes value during the subscription window.
-    set_speed_1 = asyncio.create_task(
-        helper.set_float_datapoint(datapoint_speed, 40.0)
-    )
-    set_load = asyncio.create_task(
-        helper.set_int16_datapoint(datapoint_engine_load, 10)
-    )
-
-    await set_speed_1
-    await set_load
+    await client.set_current_values({datapoint_speed: Datapoint(40.0)})
+    await client.set_current_values({datapoint_engine_load: Datapoint(10)})
     await asyncio.sleep(0.2)
-    await helper.set_float_datapoint(datapoint_speed, 41.0)
-    await subscription
+    await client.set_current_values({datapoint_speed: Datapoint(41.0)})
 
-    logger.debug("Received events:{}".format(events))
+    # Let the subscription collect events for the remainder of the window, then stop.
+    await asyncio.sleep(timeout)
+    subscription.cancel()
+    try:
+        await subscription
+    except asyncio.CancelledError:
+        pass
 
-    assert len(events) > 0, "No events from feeder for {} sec.".format(  # nosec B101
-        timeout
-    )
+    logger.debug("Received events: {}".format(events))
 
-    # list of received names
-    event_names = set([e["name"] for e in events])
-    # list of received values
-    alias_values1 = set([e["value"] for e in events if e["name"] == alias_speed])
-    alias_values2 = set([e["value"] for e in events if e["name"] == alias_load])
+    assert len(events) > 0, "No events received within {} sec.".format(timeout)  # nosec B101
 
-    logger.debug("  --> names  : {}".format(event_names))
-    # event_values = [e['value'] for e in events]
-    # logger.debug("  --> values : {}".format(event_values))
-    # logger.debug("  --> <{}> : {}".format(name, event_values_name))
+    event_names = {e["name"] for e in events}
+    speed_values = {e["value"] for e in events if e["name"] == datapoint_speed}
+    load_values = {e["value"] for e in events if e["name"] == datapoint_engine_load}
 
-    assert set([alias_speed, alias_load]) == set(  # nosec B101
-        event_names
-    ), "Unexpected event aliases received: {}".format(event_names)
+    assert datapoint_speed in event_names, "{} not received".format(datapoint_speed)  # nosec B101
+    assert datapoint_engine_load in event_names, "{} not received".format(datapoint_engine_load)  # nosec B101
 
-    # don't be too harsh, big capture.log file may have gaps in some of the events
+    # don't be too harsh — at least one datapoint must have changed value
     assert (  # nosec B101
-        len(alias_values1) > 1 or len(alias_values2) > 1
-    ), "{} values not changing: {}. Is feeder running?".format(alias_speed, alias_values1)
-
-    await helper.close()
+        len(speed_values) > 1 or len(load_values) > 1
+    ), "Values not changing: speed={}, load={}".format(speed_values, load_values)
 
 
 if __name__ == "__main__":
