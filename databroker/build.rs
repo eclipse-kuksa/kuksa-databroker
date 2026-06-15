@@ -13,19 +13,16 @@
 
 use anyhow::Result;
 
-use vergen_gix::BuildBuilder;
-use vergen_gix::CargoBuilder;
+use vergen_gix::Build;
+use vergen_gix::Cargo;
 use vergen_gix::Emitter;
-use vergen_gix::GixBuilder;
+use vergen_gix::Gix;
 
 // Extract build info (at build time)
 fn main() -> Result<()> {
-    let gitcl = GixBuilder::default()
-        .all()
-        .describe(true, false, None)
-        .build()?;
-    let cargocl = CargoBuilder::all_cargo()?;
-    let build = BuildBuilder::all_build()?;
+    let gitcl = Gix::all_git();
+    let cargocl = Cargo::all_cargo();
+    let build = Build::all_build();
     Emitter::default()
         .add_instructions(&cargocl)?
         .add_instructions(&gitcl)?
