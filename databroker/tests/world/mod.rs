@@ -37,20 +37,24 @@ impl std::fmt::Debug for ProviderStream {
     }
 }
 
-use databroker::{
-    broker,
-    grpc::{self, server::ServerTLS},
-    permissions,
-};
+#[cfg(feature = "tls")]
+use databroker::grpc::server::ServerTLS;
+use databroker::{broker, grpc, permissions};
 
 use tokio::net::TcpListener;
+use tokio::time::{sleep, Duration};
 use tokio_stream::wrappers::TcpListenerStream;
 use tracing::debug;
 
 use lazy_static::lazy_static;
 
+#[cfg(feature = "tls")]
 use tonic::transport::{Certificate, ClientTlsConfig, Identity};
 use tonic::Code;
+
+lazy_static! {
+    pub static ref AUTH_KEYS: TestAuthKeys = TestAuthKeys::new();
+}
 
 #[cfg(feature = "tls")]
 lazy_static! {
@@ -93,12 +97,33 @@ impl FromStr for ValueType {
     }
 }
 
+pub struct TestAuthKeys {
+    private_key: String,
+    public_key: String,
+}
+
+impl TestAuthKeys {
+    fn new() -> Self {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let cert_dir = format!("{manifest_dir}/../certificates/jwt");
+        debug!("reading JWT key material from {}", cert_dir);
+        let private_key_file = format!("{cert_dir}/jwt.key");
+        let private_key =
+            std::fs::read_to_string(private_key_file).expect("could not read private key file");
+        let public_key_file = format!("{cert_dir}/jwt.key.pub");
+        let public_key =
+            std::fs::read_to_string(public_key_file).expect("could not read public key file");
+        TestAuthKeys {
+            private_key,
+            public_key,
+        }
+    }
+}
+
 #[cfg(feature = "tls")]
 pub struct DataBrokerCertificates {
     server_identity: Identity,
     ca_certs: Certificate,
-    private_key: String,
-    public_key: String,
 }
 
 #[cfg(feature = "tls")]
@@ -115,17 +140,9 @@ impl DataBrokerCertificates {
         let ca_file = format!("{cert_dir}/CA.pem");
         let ca_store = std::fs::read(ca_file).expect("could not read root CA file");
         let ca_certs = Certificate::from_pem(ca_store);
-        let private_key_file = format!("{cert_dir}/jwt/jwt.key");
-        let private_key: String =
-            std::fs::read_to_string(private_key_file).expect("could not read private key file");
-        let public_key_file = format!("{cert_dir}/jwt/jwt.key.pub");
-        let public_key: String =
-            std::fs::read_to_string(public_key_file).expect("could not read public key file");
         DataBrokerCertificates {
             server_identity,
             ca_certs,
-            private_key,
-            public_key,
         }
     }
 
@@ -241,7 +258,7 @@ impl DataBrokerWorld {
 
             if authorization_enabled {
                 // public key comes from kuksa.val/certificates/jwt/jwt.key.pub
-                match databroker::authorization::Authorization::new(CERTS.public_key.clone()) {
+                match databroker::authorization::Authorization::new(AUTH_KEYS.public_key.clone()) {
                     Ok(auth) => _authorization = auth,
                     Err(e) => println!("Error: {e}"),
                 }
@@ -287,7 +304,11 @@ impl DataBrokerWorld {
 
         debug!("started Databroker [address: {addr}]");
 
+        #[cfg(feature = "tls")]
         let data_broker_url = format!("https://{}:{}", addr.ip(), addr.port());
+
+        #[cfg(not(feature = "tls"))]
+        let data_broker_url = format!("http://{}:{}", addr.ip(), addr.port());
 
         self.broker_client = match kuksa_common::to_uri(data_broker_url.clone()) {
             Ok(uri) => Some(kuksa::KuksaClient::new(uri)),
@@ -302,6 +323,28 @@ impl DataBrokerWorld {
             client
                 .basic_client
                 .set_tls_config(CERTS.client_tls_config());
+        }
+
+        if let Some(client) = self.broker_client.as_mut() {
+            let mut last_error = None;
+            for _ in 0..20 {
+                match client.basic_client.try_connect().await {
+                    Ok(()) => {
+                        last_error = None;
+                        break;
+                    }
+                    Err(error) => {
+                        last_error = Some(error);
+                        sleep(Duration::from_millis(25)).await;
+                    }
+                }
+            }
+
+            if let Some(error) = last_error {
+                panic!(
+                    "failed to connect test client to Databroker at {data_broker_url}: {error:?}"
+                );
+            }
         }
     }
 
@@ -410,7 +453,7 @@ impl DataBrokerWorld {
         };
 
         // Create an encoding key from the private key
-        let encoding_key = EncodingKey::from_rsa_pem(CERTS.private_key.clone().as_bytes())
+        let encoding_key = EncodingKey::from_rsa_pem(AUTH_KEYS.private_key.clone().as_bytes())
             .expect("Failed to create encoding key");
 
         // Encode the payload using RS256 algorithm
