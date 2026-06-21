@@ -409,6 +409,6 @@ pub fn to_uri(uri: impl AsRef<str>) -> Result<Uri, String> {
         }
         None => return Err("No server uri specified".to_owned()),
     }
-    parts.path_and_query = Some("".parse().expect("uri path should be empty string"));
+    parts.path_and_query = Some("/".parse().expect("uri path should be /"));
     tonic::transport::Uri::from_parts(parts).map_err(|err| format!("{err}"))
 }
