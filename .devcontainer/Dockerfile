@@ -11,16 +11,16 @@
 # * SPDX-License-Identifier: Apache-2.0
 # ********************************************************************************/
 
-FROM mcr.microsoft.com/devcontainers/rust:1-1-bookworm
+FROM mcr.microsoft.com/devcontainers/rust:2-trixie
 ARG DEBIAN_FRONTEND=noninteractive
 ENV CROSS_CONTAINER_IN_CONTAINER=true
 ENV TZ=Europe/Berlin
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN apt-get update -y
-RUN apt install software-properties-common build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev curl git libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev -y
+RUN apt install  build-essential  cmake    libreadline-dev  curl git   -y
 
 USER vscode
-RUN cargo install cross cargo-license cargo-cyclonedx
+RUN cargo install cross cargo-license cargo-cyclonedx cargo-llvm-cov
 
 # Installing pyEnv to set up specific version of Python
 ENV HOME=/home/vscode

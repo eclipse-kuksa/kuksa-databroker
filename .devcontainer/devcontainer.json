@@ -6,7 +6,9 @@
 		"dockerfile": "Dockerfile"
 	},
 	"features": {
-		"ghcr.io/devcontainers/features/docker-in-docker:2": {}
+		"ghcr.io/devcontainers/features/docker-in-docker:4.0.0": {
+			"moby": "false" //we are using debian trixie base image, which does not support OSS moby, so using docker-ce instead
+		}
 	},
 	"postStartCommand": "bash .devcontainer/postStartCommand.sh",
 	"mounts": [
