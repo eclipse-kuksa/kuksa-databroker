@@ -772,6 +772,10 @@ impl proto::val_server::Val for broker::DataBroker {
 
         let request = request.into_inner();
 
+        let data_point = request.data_point.ok_or_else(|| {
+            tonic::Status::invalid_argument("No datapoint provided for publish_value")
+        })?;
+
         let mut updates: HashMap<i32, broker::EntryUpdate> = HashMap::with_capacity(1);
 
         updates.insert(
@@ -781,7 +785,7 @@ impl proto::val_server::Val for broker::DataBroker {
             },
             broker::EntryUpdate {
                 path: None,
-                datapoint: Some(broker::Datapoint::from(&request.data_point.unwrap())),
+                datapoint: Some(broker::Datapoint::from(&data_point)),
                 actuator_target: None,
                 entry_type: None,
                 data_type: None,
@@ -957,7 +961,11 @@ impl proto::val_server::Val for broker::DataBroker {
                                                 }
                                             }
                                             Some(UpdateFilterResponse(_update_filter_response)) => {
-                                                debug!("Filter response received from provider {}", local_provider_uuid.unwrap());
+                                                if let Some(uuid) = local_provider_uuid {
+                                                    debug!("Filter response received from provider {}", uuid);
+                                                } else if let Err(err) = response_stream_sender.send(Err(tonic::Status::aborted("Provider has not claimed yet any signals, please call ProvideSignalRequest first"))).await {
+                                                    debug!("Failed to send error response for UpdateFilterResponse: {}", err);
+                                                }
                                             }
                                             Some(GetProviderValueResponse(get_provider_value_response)) => {
                                                 if let Err(err) = get_value_sender.send(get_provider_value_response)
