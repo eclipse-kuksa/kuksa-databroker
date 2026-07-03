@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "databroker-proto"
-version = "0.7.0"
+version = "0.7.1-dev.0"
 dependencies = [
  "prost",
  "prost-types",
@@ -531,7 +531,7 @@ dependencies = [
 
 [[package]]
 name = "kuksa"
-version = "0.7.0"
+version = "0.7.1-dev.0"
 dependencies = [
  "databroker-proto",
  "http",
@@ -543,7 +543,7 @@ dependencies = [
 
 [[package]]
 name = "kuksa-common"
-version = "0.7.0"
+version = "0.7.1-dev.0"
 dependencies = [
  "databroker-proto",
  "env_logger",
@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "kuksa_val_v2"
-version = "0.7.0"
+version = "0.7.1-dev.0"
 dependencies = [
  "databroker-proto",
  "http",

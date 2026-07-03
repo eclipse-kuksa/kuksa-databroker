@@ -731,7 +731,7 @@ checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 
 [[package]]
 name = "databroker"
-version = "0.7.0"
+version = "0.7.1-dev.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "databroker-cli"
-version = "0.7.0"
+version = "0.7.1-dev.0"
 dependencies = [
  "ansi_term",
  "clap",
@@ -795,7 +795,7 @@ dependencies = [
 
 [[package]]
 name = "databroker-proto"
-version = "0.7.0"
+version = "0.7.1-dev.0"
 dependencies = [
  "prost 0.14.4",
  "prost-types",
@@ -2806,7 +2806,7 @@ dependencies = [
 
 [[package]]
 name = "kuksa"
-version = "0.7.0"
+version = "0.7.1-dev.0"
 dependencies = [
  "databroker-proto",
  "http 1.4.2",
@@ -2818,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "kuksa-common"
-version = "0.7.0"
+version = "0.7.1-dev.0"
 dependencies = [
  "databroker-proto",
  "env_logger",
