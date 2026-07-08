@@ -7,3 +7,5 @@ databroker-cli/thirdparty
 .venv/
 allure-results/
 .pytest_cache/
+.DS_Store
+.vscode/
