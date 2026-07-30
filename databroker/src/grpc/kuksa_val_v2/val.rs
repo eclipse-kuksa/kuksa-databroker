@@ -3777,7 +3777,6 @@ mod tests {
         let broker = DataBroker::new(version, commit_hash);
 
         let request = tonic::Request::new(proto::GetServerInfoRequest {});
-
         match proto::val_server::Val::get_server_info(&broker, request)
             .await
             .map(|res| res.into_inner())
@@ -3789,6 +3788,85 @@ mod tests {
             }
             Err(_) => {
                 panic!("Should not happen")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_value_returns_error_on_empty_provider_response() {
+        use crate::types::SignalId as TypesSignalId;
+
+        struct EmptyResponseProvider;
+
+        #[async_trait::async_trait]
+        impl SignalProvider for EmptyResponseProvider {
+            async fn update_filter(
+                &self,
+                _update_fiters: HashMap<TypesSignalId, Option<TimeInterval>>,
+            ) -> Result<(), (RegisterSignalError, String)> {
+                Ok(())
+            }
+
+            fn is_available(&self) -> bool {
+                true
+            }
+
+            async fn get_signals_values_from_provider(
+                &mut self,
+                _signals_ids: Vec<TypesSignalId>,
+            ) -> Result<GetValuesProviderResponse, ()> {
+                Ok(GetValuesProviderResponse {
+                    entries: IndexMap::new(),
+                })
+            }
+        }
+
+        let broker = DataBroker::default();
+        let timestamp = std::time::SystemTime::now();
+
+        let entry_id = broker::tests::helper_add_int32(&broker, "test.empty", 42, timestamp)
+            .await
+            .expect("Shall succeed");
+
+        let auth_broker = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let mock = EmptyResponseProvider;
+
+        let mut intervals = HashMap::new();
+        intervals.insert(TypesSignalId::new(entry_id), TimeInterval::new(0));
+
+        auth_broker
+            .register_signals(intervals, Box::new(mock))
+            .await
+            .expect("Register signals should succeed");
+
+        let request = proto::GetValueRequest {
+            signal_id: Some(proto::SignalId {
+                signal: Some(proto::signal_id::Signal::Id(entry_id)),
+            }),
+        };
+
+        let mut get_value_request = tonic::Request::new(request);
+        get_value_request
+            .extensions_mut()
+            .insert(permissions::ALLOW_ALL.clone());
+
+        let join_handle = tokio::spawn(async move { broker.get_value(get_value_request).await });
+
+        match join_handle.await {
+            Ok(response) => {
+                assert!(
+                    response.is_err(),
+                    "Expected gRPC error when provider returns empty entries, got Ok"
+                );
+            }
+            Err(join_error) => {
+                if join_error.is_panic() {
+                    panic!(
+                        "BUG: get_value panicked on empty provider response instead of returning a gRPC error"
+                    );
+                }
+                panic!("get_value task was cancelled: {}", join_error);
             }
         }
     }
