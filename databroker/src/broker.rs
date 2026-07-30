@@ -2234,7 +2234,23 @@ impl AuthorizedAccess<'_, '_> {
                 //Step 4: collect responses from providers
                 match response {
                     Ok(value) => {
-                        entries_response.extend(value.entries);
+                        if value.entries.is_empty() {
+                            // Provider returned Ok but with no matching entries,
+                            // fall back to database for the requested signals
+                            debug!(
+                                "Provider returned Ok with empty entries, falling back to database"
+                            );
+                            for signal_id in &intersection_signals_request {
+                                match self.get_datapoint(signal_id.id()).await {
+                                    Ok(datapoint) => {
+                                        entries_response.insert(*signal_id, datapoint.clone());
+                                    }
+                                    Err(err) => return Err((err, signal_id.id())),
+                                }
+                            }
+                        } else {
+                            entries_response.extend(value.entries);
+                        }
                     }
                     Err(_) => {
                         //Step 5: if provider did not return any item, then return the datapoint in database

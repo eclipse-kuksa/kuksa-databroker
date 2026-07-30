@@ -177,6 +177,11 @@ impl SignalProvider for Provider {
                             for (id, datapoint) in value.entries {
                                 entries_map.insert(SignalId::new(id), (&datapoint).into());
                             }
+                            // Reject empty response from provider to trigger fallback to database
+                            if entries_map.is_empty() {
+                                debug!("Provider returned empty entries, falling back to database");
+                                return Err(());
+                            }
                             return Ok(GetValuesProviderResponse {
                                 entries: entries_map,
                             });
@@ -234,9 +239,18 @@ impl proto::val_server::Val for broker::DataBroker {
             }
         };
 
-        Ok(tonic::Response::new(proto::GetValueResponse {
-            data_point: datapoint.entries.values().next().unwrap().clone().into(),
-        }))
+        let data_point = match datapoint.entries.values().next() {
+            Some(dp) => dp.clone().into(),
+            // Defensive: should not be reached after provider fallback to database,
+            // but protects against panics if entries is unexpectedly empty
+            None => {
+                return Err(tonic::Status::internal(format!(
+                    "No value available for requested signal (id: {})",
+                    signal_id.id()
+                )))
+            }
+        };
+        Ok(tonic::Response::new(proto::GetValueResponse { data_point }))
     }
 
     // Returns (GRPC error code):
@@ -3855,9 +3869,14 @@ mod tests {
 
         match join_handle.await {
             Ok(response) => {
+                // Empty provider response is rejected (Fix A), triggering
+                // database fallback in get_values_broker. The entry was populated
+                // via helper_add_int32, so the fallback succeeds.
+                let get_response = response.expect("get_value should succeed via DB fallback");
+                let data_point = get_response.into_inner().data_point;
                 assert!(
-                    response.is_err(),
-                    "Expected gRPC error when provider returns empty entries, got Ok"
+                    data_point.is_some(),
+                    "data_point should be present via DB fallback"
                 );
             }
             Err(join_error) => {
