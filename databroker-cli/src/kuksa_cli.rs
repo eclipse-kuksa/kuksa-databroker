@@ -535,14 +535,14 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                                                 write!(
                                                                     output,
                                                                     "{} ",
-                                                                    &sub_disp_color,
+                                                                    sub_disp_color,
                                                                 )
                                                                 .unwrap();
                                                             } else {
                                                                 write!(
                                                                     output,
                                                                     "{} ",
-                                                                    &sub_disp_pad,
+                                                                    sub_disp_pad,
                                                                 )
                                                                 .unwrap();
                                                             }
@@ -586,7 +586,7 @@ pub async fn kuksa_main(_cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                                     write!(
                                                         iface,
                                                         "{} {}",
-                                                        &sub_disp_color,
+                                                        sub_disp_color,
                                                         Color::Red
                                                             .dimmed()
                                                             .paint(format!("Channel error: {err}"))

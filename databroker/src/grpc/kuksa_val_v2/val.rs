@@ -906,15 +906,15 @@ impl proto::val_server::Val for broker::DataBroker {
                                                             if let Some(signal_id) = batch_actuate_stream_response.signal_id {
                                                                 match signal_id.signal {
                                                                     Some(proto::signal_id::Signal::Path(path)) => {
-                                                                        msg = format!("{}, path: {}", msg, &path);
+                                                                        msg = format!("{}, path: {}", msg, path);
                                                                     }
                                                                     Some(proto::signal_id::Signal::Id(id)) => {
-                                                                        msg = format!("{}, id: {}",msg, &id.to_string());
+                                                                        msg = format!("{}, id: {}",msg, id);
                                                                     }
                                                                     None => {}
                                                                 }
                                                             }
-                                                            msg = format!("{}, error code: {}, error message: {}", msg, &error.code.to_string(), &error.message);
+                                                            msg = format!("{}, error code: {}, error message: {}", msg, error.code, error.message);
                                                             debug!(msg)
                                                         }
                                                     }
