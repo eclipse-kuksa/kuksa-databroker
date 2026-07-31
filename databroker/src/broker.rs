@@ -2203,7 +2203,7 @@ impl AuthorizedAccess<'_, '_> {
         // if there are providers connected then forward the get value request to them
         if !subscriptions.signal_provider_subscriptions.is_empty() {
             // Step 1: find the interseccion of the requested signals and each provider's signals
-            for (_, provider) in subscriptions.signal_provider_subscriptions.iter_mut() {
+            for provider in subscriptions.signal_provider_subscriptions.values_mut() {
                 let intersection_signals_request: Vec<SignalId> = provider
                     .vss_ids
                     .intersection(&vss_signals.clone().into_iter().collect())
@@ -2320,7 +2320,7 @@ impl DataBroker {
 
                         // check which subscription contains a signal of the closed providers:
                         for (_, provider_signals_set) in closed_signal_providers {
-                            for (_, subscription) in remaining_subscriptions.iter_mut() {
+                            for subscription in remaining_subscriptions.values_mut() {
                                 let subscription_key_set: HashSet<_> =
                                     subscription.entries.keys().cloned().collect();
 
