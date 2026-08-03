@@ -1169,9 +1169,14 @@ mod tests {
         let mut buf = BytesMut::new();
         for msg in &messages {
             let encoded = msg.encode_to_vec();
-            buf.reserve(5 + encoded.len());
+            let frame_len = encoded
+                .len()
+                .checked_add(5)
+                .expect("Streaming frame length overflow");
+            buf.reserve(frame_len);
             buf.put_u8(0); // no compression
-            buf.put_u32(encoded.len() as u32);
+            let encoded_len = u32::try_from(encoded.len()).expect("Encoded message too large");
+            buf.put_u32(encoded_len);
             buf.extend_from_slice(&encoded);
         }
 
