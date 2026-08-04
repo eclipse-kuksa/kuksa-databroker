@@ -3889,4 +3889,149 @@ mod tests {
             }
         }
     }
+
+    // ---- Provider response correlation (request_id / signal_id) tests ----
+
+    use crate::types::SignalId as TypesSignalId;
+
+    /// Helper: builds a Datapoint with a float value for use in broadcast response entries
+    fn make_float_datapoint(value: f32) -> proto::Datapoint {
+        proto::Datapoint {
+            timestamp: Some(std::time::SystemTime::now().into()),
+            value: Some(proto::Value {
+                typed_value: Some(proto::value::TypedValue::Float(value)),
+            }),
+        }
+    }
+
+    /// Creates a Provider directly for tests that control the broadcast receiver
+    fn make_provider_with_broadcast_rx(
+    ) -> (Provider, broadcast::Sender<proto::GetProviderValueResponse>) {
+        let (mpsc_tx, _mpsc_rx) =
+            mpsc::channel::<Result<OpenProviderStreamResponse, tonic::Status>>(10);
+        let (broadcast_tx, broadcast_rx) =
+            broadcast::channel::<proto::GetProviderValueResponse>(10);
+        let provider = Provider {
+            sender: mpsc_tx,
+            receiver: Some(BroadcastStream::new(broadcast_rx)),
+        };
+        (provider, broadcast_tx)
+    }
+
+    #[tokio::test]
+    async fn test_provider_correct_response_accepted() {
+        let our_signal = 1;
+        let (mut provider, broadcast_tx) = make_provider_with_broadcast_rx();
+
+        let mut entries = HashMap::new();
+        entries.insert(our_signal, make_float_datapoint(12.5));
+
+        // Response with matching request_id and correct signal
+        let _ = broadcast_tx.send(proto::GetProviderValueResponse {
+            request_id: 0,
+            entries,
+        });
+
+        let result = provider
+            .get_signals_values_from_provider(vec![TypesSignalId::new(our_signal)])
+            .await;
+
+        let response = result.expect("correct request_id and signal_id should be accepted");
+        let returned = response
+            .entries
+            .get(&TypesSignalId::new(our_signal))
+            .expect("returned entries should contain our signal");
+        assert_eq!(returned.value, DataValue::Float(12.5));
+    }
+
+    #[tokio::test]
+    async fn test_provider_wrong_request_id_discarded_via_timeout() {
+        let our_signal = 1;
+        let (mut provider, broadcast_tx) = make_provider_with_broadcast_rx();
+
+        let mut entries = HashMap::new();
+        entries.insert(our_signal, make_float_datapoint(99.0));
+
+        // Response with wrong request_id=999 — filter should skip it, then 1s timeout
+        let _ = broadcast_tx.send(proto::GetProviderValueResponse {
+            request_id: 999,
+            entries,
+        });
+
+        // Outer timeout guards the test against hanging if the fix isn't in place
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            provider.get_signals_values_from_provider(vec![TypesSignalId::new(our_signal)]),
+        )
+        .await;
+
+        let timed_out = result.expect("inner call should complete (not hang)");
+        assert!(
+            timed_out.is_err(),
+            "wrong request_id should be discarded and call should time out, but got Ok instead"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_provider_wrong_signal_id_discarded() {
+        let other_signal = 999;
+        let our_signal = 1;
+        let (mut provider, broadcast_tx) = make_provider_with_broadcast_rx();
+
+        let mut entries = HashMap::new();
+        entries.insert(other_signal, make_float_datapoint(99.0));
+
+        // Response with matching request_id=0 but entries for a different signal
+        let _ = broadcast_tx.send(proto::GetProviderValueResponse {
+            request_id: 0,
+            entries,
+        });
+
+        let result = provider
+            .get_signals_values_from_provider(vec![TypesSignalId::new(our_signal)])
+            .await;
+
+        assert!(
+            result.is_err(),
+            "response with only non-requested signal IDs should be discarded, but got Ok instead"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_provider_skips_wrong_request_id_then_accepts_correct() {
+        let other_signal = 999;
+        let our_signal = 1;
+        let (mut provider, broadcast_tx) = make_provider_with_broadcast_rx();
+
+        // First response: wrong request_id — should be skipped
+        let mut wrong_entries = HashMap::new();
+        wrong_entries.insert(other_signal, make_float_datapoint(99.0));
+        let _ = broadcast_tx.send(proto::GetProviderValueResponse {
+            request_id: 999,
+            entries: wrong_entries,
+        });
+
+        // Second response: correct request_id and correct signal — should be accepted
+        let mut correct_entries = HashMap::new();
+        correct_entries.insert(our_signal, make_float_datapoint(12.5));
+        let _ = broadcast_tx.send(proto::GetProviderValueResponse {
+            request_id: 0,
+            entries: correct_entries,
+        });
+
+        let result = provider
+            .get_signals_values_from_provider(vec![TypesSignalId::new(our_signal)])
+            .await;
+
+        let response = result.expect("should have accepted the second (matching) response");
+        let returned = response
+            .entries
+            .get(&TypesSignalId::new(our_signal))
+            .expect("returned entries should contain our signal");
+        assert_eq!(
+            returned.value,
+            DataValue::Float(12.5),
+            "should receive 12.5 from second response, not 99.0 from the discarded first"
+        );
+    }
 }
