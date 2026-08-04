@@ -55,6 +55,7 @@ const MAX_REQUEST_PATH_LENGTH: usize = 1000;
 pub struct Provider {
     sender: mpsc::Sender<Result<OpenProviderStreamResponse, tonic::Status>>,
     receiver: Option<BroadcastStream<databroker_proto::kuksa::val::v2::GetProviderValueResponse>>,
+    next_request_id: u32,
 }
 
 #[async_trait::async_trait]
@@ -149,11 +150,14 @@ impl SignalProvider for Provider {
         &mut self,
         signals_ids: Vec<SignalId>,
     ) -> Result<GetValuesProviderResponse, ()> {
+        let request_id = self.next_request_id;
+        self.next_request_id = self.next_request_id.wrapping_add(1);
+
         let request = OpenProviderStreamResponse {
             action: Some(
                 open_provider_stream_response::Action::GetProviderValueRequest(
                     proto::GetProviderValueRequest {
-                        request_id: 0,
+                        request_id,
                         signal_ids: signals_ids.iter().map(|signal_id| signal_id.id()).collect(),
                     },
                 ),
@@ -167,32 +171,54 @@ impl SignalProvider for Provider {
                 debug!("{}", err.to_string());
             }
         }
-        match self.receiver.as_mut() {
-            // Here is assumed that provider will return a response immediately, todo -> timeout configuration
-            Some(receiver) => {
-                match timeout(tokio::time::Duration::from_secs(1), receiver.next()).await {
-                    Ok(Some(value)) => match value {
-                        Ok(value) => {
-                            let mut entries_map = IndexMap::new();
-                            for (id, datapoint) in value.entries {
-                                entries_map.insert(SignalId::new(id), (&datapoint).into());
-                            }
-                            // Reject empty response from provider to trigger fallback to database
-                            if entries_map.is_empty() {
-                                debug!("Provider returned empty entries, falling back to database");
-                                return Err(());
-                            }
-                            return Ok(GetValuesProviderResponse {
-                                entries: entries_map,
-                            });
-                        }
-                        Err(_) => Err(()),
-                    },
-                    // Either the stream ended (None) or the timeout elapsed (Err).
-                    Ok(None) | Err(_) => Err(()),
-                }
+
+        let receiver = match self.receiver.as_mut() {
+            Some(receiver) => receiver,
+            None => return Err(()),
+        };
+
+        let deadline = std::time::Instant::now() + tokio::time::Duration::from_secs(1);
+        // Collect requested IDs for filtering provider response entries
+        let requested_ids: HashSet<i32> = signals_ids.iter().map(|id| id.id()).collect();
+
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(());
             }
-            None => Err(()),
+
+            match timeout(remaining, receiver.next()).await {
+                Ok(Some(Ok(response))) => {
+                    if response.request_id != request_id {
+                        debug!(
+                            "Skipping provider response with unexpected request_id {} (expected {})",
+                            response.request_id, request_id
+                        );
+                        continue;
+                    }
+
+                    // Only accept entries for the signals we actually requested
+                    let mut entries_map = IndexMap::new();
+                    for (id, datapoint) in response.entries {
+                        if requested_ids.contains(&id) {
+                            entries_map.insert(SignalId::new(id), (&datapoint).into());
+                        }
+                    }
+
+                    // Reject empty response from provider to trigger fallback to database
+                    if entries_map.is_empty() {
+                        debug!("Provider returned empty entries, falling back to database");
+                        return Err(());
+                    }
+
+                    return Ok(GetValuesProviderResponse {
+                        entries: entries_map,
+                    });
+                }
+                Ok(Some(Err(_))) => return Err(()),
+                // Either the stream ended (None) or the timeout elapsed (Err).
+                Ok(None) | Err(_) => return Err(()),
+            }
         }
     }
 }
@@ -242,7 +268,7 @@ impl proto::val_server::Val for broker::DataBroker {
         let data_point = match datapoint.entries.values().next() {
             Some(dp) => dp.clone().into(),
             // Defensive: should not be reached after provider fallback to database,
-            // but protects against panics if entries is unexpectedly empty
+            // but protects against panics if the requested signal is missing
             None => {
                 return Err(tonic::Status::internal(format!(
                     "No value available for requested signal (id: {})",
@@ -1084,6 +1110,7 @@ async fn provide_actuation(
     let provider = Provider {
         sender,
         receiver: None,
+        next_request_id: 1,
     };
 
     match broker
@@ -1117,6 +1144,7 @@ async fn register_provided_signals(
     let provider = Provider {
         sender,
         receiver: Some(BroadcastStream::new(receiver)),
+        next_request_id: 1,
     };
 
     let all_vss_ids = request
@@ -2971,6 +2999,7 @@ mod tests {
         let actuation_provider = Provider {
             sender,
             receiver: None,
+            next_request_id: 1,
         };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
@@ -3097,6 +3126,7 @@ mod tests {
         let actuation_provider = Provider {
             sender,
             receiver: None,
+            next_request_id: 1,
         };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
@@ -3198,6 +3228,7 @@ mod tests {
         let actuation_provider = Provider {
             sender,
             receiver: None,
+            next_request_id: 1,
         };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
@@ -3351,6 +3382,7 @@ mod tests {
         let actuation_provider = Provider {
             sender,
             receiver: None,
+            next_request_id: 1,
         };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
@@ -3444,6 +3476,7 @@ mod tests {
         let actuation_provider = Provider {
             sender,
             receiver: None,
+            next_request_id: 1,
         };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
@@ -3614,6 +3647,7 @@ mod tests {
         let actuation_provider = Provider {
             sender,
             receiver: None,
+            next_request_id: 1,
         };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
@@ -3752,6 +3786,7 @@ mod tests {
         let actuation_provider = Provider {
             sender,
             receiver: None,
+            next_request_id: 1,
         };
         authorized_access
             .provide_actuation(vss_ids, Box::new(actuation_provider))
@@ -3914,6 +3949,7 @@ mod tests {
         let provider = Provider {
             sender: mpsc_tx,
             receiver: Some(BroadcastStream::new(broadcast_rx)),
+            next_request_id: 1,
         };
         (provider, broadcast_tx)
     }
@@ -3928,7 +3964,7 @@ mod tests {
 
         // Response with matching request_id and correct signal
         let _ = broadcast_tx.send(proto::GetProviderValueResponse {
-            request_id: 0,
+            request_id: 1,
             entries,
         });
 
@@ -3960,7 +3996,7 @@ mod tests {
 
         // Outer timeout guards the test against hanging if the fix isn't in place
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
+            std::time::Duration::from_secs(2),
             provider.get_signals_values_from_provider(vec![TypesSignalId::new(our_signal)]),
         )
         .await;
@@ -3981,9 +4017,9 @@ mod tests {
         let mut entries = HashMap::new();
         entries.insert(other_signal, make_float_datapoint(99.0));
 
-        // Response with matching request_id=0 but entries for a different signal
+        // Response with matching request_id but entries for a different signal
         let _ = broadcast_tx.send(proto::GetProviderValueResponse {
-            request_id: 0,
+            request_id: 1,
             entries,
         });
 
@@ -4015,7 +4051,7 @@ mod tests {
         let mut correct_entries = HashMap::new();
         correct_entries.insert(our_signal, make_float_datapoint(12.5));
         let _ = broadcast_tx.send(proto::GetProviderValueResponse {
-            request_id: 0,
+            request_id: 1,
             entries: correct_entries,
         });
 
