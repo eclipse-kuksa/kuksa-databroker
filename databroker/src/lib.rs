@@ -24,21 +24,24 @@ pub mod vss;
 #[cfg(feature = "viss")]
 pub mod viss;
 
-use std::fmt::Write;
+#[cfg(feature = "otel")]
+pub use open_telemetry::shutdown_telemetry;
 
 use tracing::info;
-use tracing_subscriber::filter::EnvFilter;
 
 #[cfg(feature = "otel")]
 use {
     open_telemetry::{init_metrics, init_trace},
     opentelemetry::global,
-    opentelemetry::sdk::propagation::TraceContextPropagator,
+    opentelemetry_sdk::propagation::TraceContextPropagator,
     tracing_subscriber::layer::SubscriberExt,
 };
 
 #[cfg(not(feature = "otel"))]
 pub fn init_logging() {
+    use std::fmt::Write;
+    use tracing_subscriber::filter::EnvFilter;
+
     let mut output = String::from("Init logging from RUST_LOG");
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|err| {
         output.write_fmt(format_args!(" ({err})")).unwrap();
@@ -65,7 +68,7 @@ pub fn init_logging() {
 
     // Initialize OpenTelemetry metrics pipeline (used for broadcast_drops_total
     // and any future counters). Held via the global meter provider; the
-    // controller handle is dropped here and managed internally.
+    // provider handle is dropped here and managed internally.
     let _controller = init_metrics().expect("Failed to initialize metrics provider");
 
     // telemetry layer
