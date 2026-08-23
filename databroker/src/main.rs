@@ -632,7 +632,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             authorization,
             shutdown_handler(),
         )
-        .await
+        .await?;
+
+        // Flush buffered OpenTelemetry traces/metrics before the runtime is
+        // dropped, so the final batch is exported during graceful shutdown.
+        #[cfg(feature = "otel")]
+        databroker::shutdown_telemetry();
+
+        Ok::<(), Box<dyn std::error::Error>>(())
     })?;
 
     Ok(())

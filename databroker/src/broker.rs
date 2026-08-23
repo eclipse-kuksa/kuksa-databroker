@@ -1664,7 +1664,7 @@ impl AuthorizedAccess<'_, '_> {
                 );
                 #[cfg(feature = "otel")]
                 if let Some(counter) = crate::open_telemetry::broadcast_drop_counter() {
-                    counter.add(&opentelemetry::Context::current(), n, &[]);
+                    counter.add(n, &[]);
                 }
                 None
             }
