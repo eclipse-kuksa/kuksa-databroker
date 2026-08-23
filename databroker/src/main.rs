@@ -623,7 +623,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        grpc::server::serve_tcp(
+        let serve_result = grpc::server::serve_tcp(
             addr,
             broker,
             #[cfg(feature = "tls")]
@@ -632,14 +632,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             authorization,
             shutdown_handler(),
         )
-        .await?;
+        .await;
 
         // Flush buffered OpenTelemetry traces/metrics before the runtime is
-        // dropped, so the final batch is exported during graceful shutdown.
+        // dropped, so the final batch is exported on every exit path —
+        // graceful shutdown as well as an error such as the address being in
+        // use. Propagating the result only after flushing.
         #[cfg(feature = "otel")]
         databroker::shutdown_telemetry();
 
-        Ok::<(), Box<dyn std::error::Error>>(())
+        serve_result
     })?;
 
     Ok(())
