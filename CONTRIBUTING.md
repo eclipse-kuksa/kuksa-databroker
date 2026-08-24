@@ -24,6 +24,14 @@ Contact the project developers via the project's "dev" list.
 
 * https://accounts.eclipse.org/mailing-list/kuksa-dev
 
+## Building
+
+This repository uses the [kuksa-proto](https://github.com/eclipse-kuksa/kuksa-proto) repository as a git submodule. After cloning, initialize it before building:
+
+```sh
+git submodule update --init --recursive
+```
+
 ## Pre-commit set up
 This repository is set up to use [pre-commit](https://pre-commit.com/) hooks.
 Use `pip install pre-commit` to install pre-commit.
