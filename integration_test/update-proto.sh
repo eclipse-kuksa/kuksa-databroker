@@ -46,7 +46,3 @@ set +x
 
 echo "# Generated files:"
 find "$GEN_DIR" -type f -name '*.py'
-
-echo "# Replacing packages in $GEN_DIR"
-find "$GEN_DIR" -type f -name '*.py' -print -exec sed -i 's/^from sdv.databroker.v1/from gen_proto.sdv.databroker.v1/g' {} ';'
-find "$GEN_DIR" -type f -name '*.pyi' -print -exec sed -i 's/^import sdv.databroker.v1/import gen_proto.sdv.databroker.v1/g' {} ';'

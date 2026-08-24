@@ -42,6 +42,8 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: 'recursive'
       - uses: actions/cache@v5
         with:
           path: |
@@ -76,6 +78,8 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: 'recursive'
       - uses: actions/cache@v5
         with:
           path: |
@@ -105,6 +109,8 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: 'recursive'
       - uses: actions/cache@v5
         with:
           path: |
@@ -127,6 +133,8 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: 'recursive'
       - uses: actions/cache@v5
         with:
           path: |
@@ -163,6 +171,8 @@ jobs:
           - name: riscv64
     steps:
     - uses: actions/checkout@v6
+      with:
+        submodules: 'recursive'
 
     - uses: actions/cache@v5
       with:
@@ -225,6 +235,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        submodules: 'recursive'
     - name: Retrieve artifacts
       uses: actions/download-artifact@v8
       with:
@@ -331,6 +343,8 @@ jobs:
         uses: docker/setup-qemu-action@v4
 
       - uses: actions/checkout@v6
+        with:
+          submodules: 'recursive'
 
       - name: Run integration test on ${{ matrix.platform }} container
         env:
