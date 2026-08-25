@@ -153,7 +153,7 @@ message Status {
   repeated google.protobuf.Any details = 3;
 }
 ```
-Field `details` of type `Any` will be a serialized message as `bytes` containing an internal Databroker [Error](https://github.com/eclipse-kuksa/kuksa-databroker/blob/main/proto/kuksa/val/v1/types.proto#L246):
+Field `details` of type `Any` will be a serialized message as `bytes` containing an internal Databroker Error:
 ```protobuf
 message Error {
   uint32 code    = 1;
