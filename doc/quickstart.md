@@ -211,4 +211,4 @@ client.set_target_values({
 
 ### All I see is Python, shouldn't this be high-performance?
 
-Our Python library makes it easy to interact with databroker. While this is often sufficient for many applications, you are not limited by it: Databroker's native interface is based on GRPC, a high-performance GRPC framework. GRPC enables you to generate bindings for _any_ language. Check the [GRPC website](https://grpc.io) and take a look at the [databroker interface definitions](https://github.com/eclipse-kuksa/kuksa-databroker/tree/main/proto/kuksa/val/v1).
+Our Python library makes it easy to interact with databroker. While this is often sufficient for many applications, you are not limited by it: Databroker's native interface is based on GRPC, a high-performance GRPC framework. GRPC enables you to generate bindings for _any_ language. Check the [GRPC website](https://grpc.io) and take a look at the [databroker interface definitions](hhttps://github.com/eclipse-kuksa/kuksa-proto).
