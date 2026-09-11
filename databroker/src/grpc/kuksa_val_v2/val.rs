@@ -155,9 +155,21 @@ impl SignalProvider for Provider {
         &self,
         signals_ids: Vec<SignalId>,
     ) -> Result<GetValuesProviderResponse, ()> {
+        let deadline = std::time::Instant::now() + tokio::time::Duration::from_secs(1);
+
         // Serialize request/response exchanges per provider. The lock is only
         // shared with other calls for this provider, not with the broker.
-        let mut receiver_guard = self.receiver.lock().await;
+        // Bound every phase by the deadline so a provider that stops draining
+        // its outbound stream cannot block this or later calls forever.
+        let mut receiver_guard = match timeout(
+            deadline.saturating_duration_since(std::time::Instant::now()),
+            self.receiver.lock(),
+        )
+        .await
+        {
+            Ok(receiver_guard) => receiver_guard,
+            Err(_) => return Err(()),
+        };
 
         let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
 
@@ -172,12 +184,17 @@ impl SignalProvider for Provider {
             ),
         };
 
-        let result = self.sender.send(Ok(request)).await;
-        match result {
-            Ok(_) => {}
-            Err(err) => {
+        let send_result = timeout(
+            deadline.saturating_duration_since(std::time::Instant::now()),
+            self.sender.send(Ok(request)),
+        )
+        .await;
+        match send_result {
+            Ok(Ok(_)) => {}
+            Ok(Err(err)) => {
                 debug!("{}", err.to_string());
             }
+            Err(_) => return Err(()),
         }
 
         let receiver = match receiver_guard.as_mut() {
@@ -185,7 +202,6 @@ impl SignalProvider for Provider {
             None => return Err(()),
         };
 
-        let deadline = std::time::Instant::now() + tokio::time::Duration::from_secs(1);
         // Collect requested IDs for filtering provider response entries
         let requested_ids: HashSet<i32> = signals_ids.iter().map(|id| id.id()).collect();
 
@@ -4076,6 +4092,37 @@ mod tests {
             returned.value,
             DataValue::Float(12.5),
             "should receive 12.5 from second response, not 99.0 from the discarded first"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_provider_get_values_is_bounded_when_outbound_channel_full() {
+        let (mpsc_tx, _mpsc_rx) =
+            mpsc::channel::<Result<OpenProviderStreamResponse, tonic::Status>>(1);
+        // Fill the single slot so the request send blocks.
+        mpsc_tx
+            .send(Ok(OpenProviderStreamResponse { action: None }))
+            .await
+            .expect("initial send should succeed");
+
+        let (_broadcast_tx, broadcast_rx) = broadcast::channel(10);
+        let provider = Provider {
+            sender: mpsc_tx,
+            receiver: Mutex::new(Some(BroadcastStream::new(broadcast_rx))),
+            next_request_id: AtomicU32::new(1),
+        };
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            provider.get_signals_values_from_provider(vec![TypesSignalId::new(1)]),
+        )
+        .await;
+
+        let result =
+            result.expect("provider call must be bounded even with a full outbound channel");
+        assert!(
+            result.is_err(),
+            "a full outbound channel should yield an error instead of blocking forever"
         );
     }
 }

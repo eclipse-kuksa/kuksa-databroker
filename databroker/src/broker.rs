@@ -36,6 +36,7 @@ use tracing::{debug, info, warn};
 use crate::glob;
 
 const MAX_SUBSCRIBE_BUFFER_SIZE: usize = 1000;
+const PROVIDER_UPDATE_FILTER_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Debug)]
 pub enum ActuationError {
@@ -2200,7 +2201,7 @@ impl AuthorizedAccess<'_, '_> {
         &self,
         vss_signals: Vec<SignalId>,
     ) -> Result<GetValuesProviderResponse, (ReadError, i32)> {
-        let mut entries_response: IndexMap<SignalId, Datapoint> = IndexMap::new();
+        let mut collected_entries: IndexMap<SignalId, Datapoint> = IndexMap::new();
         let requested_signals: HashSet<SignalId> = vss_signals.iter().copied().collect();
 
         // Snapshot the providers and the signals they can serve. The
@@ -2263,13 +2264,13 @@ impl AuthorizedAccess<'_, '_> {
                         for signal_id in &intersection_signals_request {
                             match self.get_datapoint(signal_id.id()).await {
                                 Ok(datapoint) => {
-                                    entries_response.insert(*signal_id, datapoint.clone());
+                                    collected_entries.insert(*signal_id, datapoint.clone());
                                 }
                                 Err(err) => return Err((err, signal_id.id())),
                             }
                         }
                     } else {
-                        entries_response.extend(value.entries);
+                        collected_entries.extend(value.entries);
                     }
                 }
                 Err(_) => {
@@ -2277,7 +2278,7 @@ impl AuthorizedAccess<'_, '_> {
                     for signal_id in &intersection_signals_request {
                         match self.get_datapoint(signal_id.id()).await {
                             Ok(datapoint) => {
-                                entries_response.insert(*signal_id, datapoint.clone());
+                                collected_entries.insert(*signal_id, datapoint.clone());
                             }
                             Err(err) => return Err((err, signal_id.id())),
                         }
@@ -2293,9 +2294,19 @@ impl AuthorizedAccess<'_, '_> {
             }
             match self.get_datapoint(signal_id.id()).await {
                 Ok(datapoint) => {
-                    entries_response.insert(*signal_id, datapoint.clone());
+                    collected_entries.insert(*signal_id, datapoint.clone());
                 }
                 Err(err) => return Err((err, signal_id.id())),
+            }
+        }
+
+        // Preserve request order: the gRPC contract promises that data points
+        // are returned in the same order as the requested signals.
+        let mut entries_response: IndexMap<SignalId, Datapoint> =
+            IndexMap::with_capacity(vss_signals.len());
+        for signal_id in &vss_signals {
+            if let Some(datapoint) = collected_entries.get(signal_id) {
+                entries_response.insert(*signal_id, datapoint.clone());
             }
         }
 
@@ -2441,12 +2452,24 @@ impl DataBroker {
                 })
                 .collect();
 
-            // Send to each provider the new (signal_id, new_interval) map.
+            // Send to each provider the new (signal_id, new_interval) map. Bound
+            // the call so a hung provider cannot stop housekeeping or delay the
+            // remaining providers indefinitely.
             if !update_signal_map.is_empty() {
-                signal_provider
-                    .update_filter(update_signal_map)
-                    .await
-                    .unwrap();
+                match tokio::time::timeout(
+                    PROVIDER_UPDATE_FILTER_TIMEOUT,
+                    signal_provider.update_filter(update_signal_map),
+                )
+                .await
+                {
+                    Ok(Ok(())) => {}
+                    Ok(Err((error, message))) => {
+                        warn!("Failed to update filter for provider: {error:?}: {message}");
+                    }
+                    Err(_) => {
+                        warn!("Timed out updating filter for provider");
+                    }
+                }
             }
         }
     }
@@ -5302,6 +5325,214 @@ pub mod tests {
         assert!(
             result.is_ok(),
             "subscriptions operations blocked while an actuation provider was pending"
+        );
+    }
+
+    struct StaticValueProvider {
+        signal_id: SignalId,
+        value: DataValue,
+    }
+
+    #[async_trait::async_trait]
+    impl SignalProvider for StaticValueProvider {
+        async fn update_filter(
+            &self,
+            _update_filters: HashMap<SignalId, Option<TimeInterval>>,
+        ) -> Result<(), (RegisterSignalError, String)> {
+            Ok(())
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn get_signals_values_from_provider(
+            &self,
+            _signals_ids: Vec<SignalId>,
+        ) -> Result<GetValuesProviderResponse, ()> {
+            let mut entries = IndexMap::new();
+            entries.insert(
+                self.signal_id,
+                Datapoint {
+                    ts: std::time::SystemTime::now(),
+                    source_ts: None,
+                    value: self.value.clone(),
+                },
+            );
+            Ok(GetValuesProviderResponse { entries })
+        }
+    }
+
+    struct FailingUpdateFilterProvider;
+
+    #[async_trait::async_trait]
+    impl SignalProvider for FailingUpdateFilterProvider {
+        async fn update_filter(
+            &self,
+            _update_filters: HashMap<SignalId, Option<TimeInterval>>,
+        ) -> Result<(), (RegisterSignalError, String)> {
+            Err((
+                RegisterSignalError::TransmissionFailure,
+                "provider is gone".to_string(),
+            ))
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn get_signals_values_from_provider(
+            &self,
+            _signals_ids: Vec<SignalId>,
+        ) -> Result<GetValuesProviderResponse, ()> {
+            Err(())
+        }
+    }
+
+    struct CountingUpdateFilterProvider {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl SignalProvider for CountingUpdateFilterProvider {
+        async fn update_filter(
+            &self,
+            _update_filters: HashMap<SignalId, Option<TimeInterval>>,
+        ) -> Result<(), (RegisterSignalError, String)> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn get_signals_values_from_provider(
+            &self,
+            _signals_ids: Vec<SignalId>,
+        ) -> Result<GetValuesProviderResponse, ()> {
+            Err(())
+        }
+    }
+
+    /// The gRPC contract promises data points in request order. A mixed request
+    /// (database-only signal first, provider signal second) must not be
+    /// reordered by the provider/database merge.
+    #[tokio::test]
+    async fn test_get_values_preserves_request_order() {
+        let broker = DataBroker::default();
+        let timestamp = std::time::SystemTime::now();
+
+        let provided_signal = helper_add_int32(&broker, "test.provided", 1, timestamp)
+            .await
+            .expect("add provided signal");
+        let db_signal = helper_add_int32(&broker, "test.db", 2, timestamp)
+            .await
+            .expect("add db signal");
+
+        let auth = broker.authorized_access(&permissions::ALLOW_ALL);
+        auth.register_signals(
+            HashMap::from([(SignalId::new(provided_signal), TimeInterval::new(0))]),
+            Box::new(StaticValueProvider {
+                signal_id: SignalId::new(provided_signal),
+                value: DataValue::Int32(7),
+            }),
+        )
+        .await
+        .expect("register provider");
+
+        let response = auth
+            .get_values_broker(vec![
+                SignalId::new(db_signal),
+                SignalId::new(provided_signal),
+            ])
+            .await
+            .expect("get values should succeed");
+
+        let ordered_signals: Vec<SignalId> = response.entries.keys().copied().collect();
+        assert_eq!(
+            ordered_signals,
+            vec![SignalId::new(db_signal), SignalId::new(provided_signal)],
+            "data points must follow request order"
+        );
+        assert_eq!(
+            response
+                .entries
+                .get(&SignalId::new(db_signal))
+                .expect("db signal present")
+                .value,
+            DataValue::Int32(2)
+        );
+        assert_eq!(
+            response
+                .entries
+                .get(&SignalId::new(provided_signal))
+                .expect("provided signal present")
+                .value,
+            DataValue::Int32(7)
+        );
+    }
+
+    /// A provider returning an error from `update_filter` must not panic the
+    /// caller, and later providers must still receive their filter update.
+    #[tokio::test]
+    async fn test_update_filter_to_providers_continues_after_provider_error() {
+        let signal = SignalId::new(1);
+        let update_intervals = HashMap::from([(signal, Some(TimeInterval::new(0)))]);
+        let failing: Arc<dyn SignalProvider> = Arc::new(FailingUpdateFilterProvider);
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counting: Arc<dyn SignalProvider> = Arc::new(CountingUpdateFilterProvider {
+            calls: calls.clone(),
+        });
+
+        DataBroker::update_filter_to_providers(
+            update_intervals,
+            vec![
+                (failing, HashSet::from([signal])),
+                (counting, HashSet::from([signal])),
+            ],
+        )
+        .await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "later provider must still be updated after a failing provider"
+        );
+    }
+
+    /// A provider whose `update_filter` never returns must not stop the
+    /// propagation to later providers or the housekeeping loop.
+    #[tokio::test]
+    async fn test_update_filter_to_providers_bounds_hanging_provider() {
+        let signal = SignalId::new(1);
+        let update_intervals = HashMap::from([(signal, Some(TimeInterval::new(0)))]);
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let hanging: Arc<dyn SignalProvider> = Arc::new(HangingUpdateFilterProvider {
+            entered: entered.clone(),
+        });
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counting: Arc<dyn SignalProvider> = Arc::new(CountingUpdateFilterProvider {
+            calls: calls.clone(),
+        });
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            DataBroker::update_filter_to_providers(
+                update_intervals,
+                vec![
+                    (hanging, HashSet::from([signal])),
+                    (counting, HashSet::from([signal])),
+                ],
+            ),
+        )
+        .await
+        .expect("hanging provider must not block filter propagation indefinitely");
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "later provider must still be updated after a hanging provider"
         );
     }
 }
