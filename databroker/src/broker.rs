@@ -2230,12 +2230,10 @@ impl AuthorizedAccess<'_, '_> {
                 .collect()
         };
 
-        let mut covered_signals: HashSet<SignalId> = HashSet::new();
-        for (signal_provider, intersection_signals_request) in providers {
-            covered_signals.extend(intersection_signals_request.iter().copied());
-
-            //Step 1: check if there is any possible ReadError while reading any of the signals
-            for signal_id in &intersection_signals_request {
+        // Validate all provider-served signals before querying any provider, so
+        // that a missing or unauthorized signal fails fast without provider I/O.
+        for (_, intersection_signals_request) in &providers {
+            for signal_id in intersection_signals_request {
                 match self
                     .broker
                     .database
@@ -2248,13 +2246,26 @@ impl AuthorizedAccess<'_, '_> {
                     Err(err) => return Err((err, signal_id.id())),
                 }
             }
+        }
 
-            //Step 2: send to each provider the intersection signals requested
-            let response = signal_provider
-                .get_signals_values_from_provider(intersection_signals_request.clone())
-                .await;
+        // Query all providers concurrently: a slow or unresponsive provider must
+        // not delay the other providers, nor multiply the request latency by the
+        // number of providers.
+        let provider_calls = providers.into_iter().map(
+            |(signal_provider, intersection_signals_request)| async move {
+                let response = signal_provider
+                    .get_signals_values_from_provider(intersection_signals_request.clone())
+                    .await;
+                (intersection_signals_request, response)
+            },
+        );
+        let provider_responses = futures::future::join_all(provider_calls).await;
 
-            //Step 3: collect responses from providers
+        let mut covered_signals: HashSet<SignalId> = HashSet::new();
+        for (intersection_signals_request, response) in provider_responses {
+            covered_signals.extend(intersection_signals_request.iter().copied());
+
+            // Collect responses from providers
             match response {
                 Ok(value) => {
                     if value.entries.is_empty() {
@@ -2274,7 +2285,7 @@ impl AuthorizedAccess<'_, '_> {
                     }
                 }
                 Err(_) => {
-                    //Step 4: if provider did not return any item, then return the datapoint in database
+                    // Provider did not return any item, fall back to the database
                     for signal_id in &intersection_signals_request {
                         match self.get_datapoint(signal_id.id()).await {
                             Ok(datapoint) => {
@@ -5533,6 +5544,109 @@ pub mod tests {
             calls.load(Ordering::SeqCst),
             1,
             "later provider must still be updated after a hanging provider"
+        );
+    }
+
+    struct BarrierSignalProvider {
+        signal_id: SignalId,
+        value: DataValue,
+        barrier: Arc<tokio::sync::Barrier>,
+    }
+
+    #[async_trait::async_trait]
+    impl SignalProvider for BarrierSignalProvider {
+        async fn update_filter(
+            &self,
+            _update_filters: HashMap<SignalId, Option<TimeInterval>>,
+        ) -> Result<(), (RegisterSignalError, String)> {
+            Ok(())
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn get_signals_values_from_provider(
+            &self,
+            _signals_ids: Vec<SignalId>,
+        ) -> Result<GetValuesProviderResponse, ()> {
+            // Both providers must be queried concurrently for this to complete.
+            self.barrier.wait().await;
+            let mut entries = IndexMap::new();
+            entries.insert(
+                self.signal_id,
+                Datapoint {
+                    ts: std::time::SystemTime::now(),
+                    source_ts: None,
+                    value: self.value.clone(),
+                },
+            );
+            Ok(GetValuesProviderResponse { entries })
+        }
+    }
+
+    /// Providers must be queried concurrently: with sequential calls the first
+    /// provider would block forever on the barrier and the outer timeout would
+    /// fire.
+    #[tokio::test]
+    async fn test_get_values_queries_providers_concurrently() {
+        let broker = DataBroker::default();
+        let timestamp = std::time::SystemTime::now();
+
+        let signal_a = helper_add_int32(&broker, "test.a", 1, timestamp)
+            .await
+            .expect("add signal a");
+        let signal_b = helper_add_int32(&broker, "test.b", 2, timestamp)
+            .await
+            .expect("add signal b");
+
+        let auth = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+        auth.register_signals(
+            HashMap::from([(SignalId::new(signal_a), TimeInterval::new(0))]),
+            Box::new(BarrierSignalProvider {
+                signal_id: SignalId::new(signal_a),
+                value: DataValue::Int32(11),
+                barrier: barrier.clone(),
+            }),
+        )
+        .await
+        .expect("register provider a");
+        auth.register_signals(
+            HashMap::from([(SignalId::new(signal_b), TimeInterval::new(0))]),
+            Box::new(BarrierSignalProvider {
+                signal_id: SignalId::new(signal_b),
+                value: DataValue::Int32(22),
+                barrier: barrier.clone(),
+            }),
+        )
+        .await
+        .expect("register provider b");
+
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            auth.get_values_broker(vec![SignalId::new(signal_a), SignalId::new(signal_b)]),
+        )
+        .await
+        .expect("providers must be queried concurrently (barrier would deadlock otherwise)")
+        .expect("get values should succeed");
+
+        assert_eq!(
+            response
+                .entries
+                .get(&SignalId::new(signal_a))
+                .expect("signal a present")
+                .value,
+            DataValue::Int32(11)
+        );
+        assert_eq!(
+            response
+                .entries
+                .get(&SignalId::new(signal_b))
+                .expect("signal b present")
+                .value,
+            DataValue::Int32(22)
         );
     }
 }
