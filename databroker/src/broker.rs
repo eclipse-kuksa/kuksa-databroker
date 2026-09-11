@@ -2268,20 +2268,27 @@ impl AuthorizedAccess<'_, '_> {
             // Collect responses from providers
             match response {
                 Ok(value) => {
-                    if value.entries.is_empty() {
-                        // Provider returned Ok but with no matching entries,
-                        // fall back to database for the requested signals
-                        debug!("Provider returned Ok with empty entries, falling back to database");
-                        for signal_id in &intersection_signals_request {
-                            match self.get_datapoint(signal_id.id()).await {
-                                Ok(datapoint) => {
-                                    collected_entries.insert(*signal_id, datapoint.clone());
+                    // A provider response may be partial: fall back to the
+                    // database for every requested signal the provider did not
+                    // return, so every requested signal has exactly one entry.
+                    for signal_id in &intersection_signals_request {
+                        match value.entries.get(signal_id) {
+                            Some(datapoint) => {
+                                collected_entries.insert(*signal_id, datapoint.clone());
+                            }
+                            None => {
+                                debug!(
+                                    "Provider did not return a value for signal {}, falling back to database",
+                                    signal_id.id()
+                                );
+                                match self.get_datapoint(signal_id.id()).await {
+                                    Ok(datapoint) => {
+                                        collected_entries.insert(*signal_id, datapoint.clone());
+                                    }
+                                    Err(err) => return Err((err, signal_id.id())),
                                 }
-                                Err(err) => return Err((err, signal_id.id())),
                             }
                         }
-                    } else {
-                        collected_entries.extend(value.entries);
                     }
                 }
                 Err(_) => {
@@ -5645,6 +5652,100 @@ pub mod tests {
                 .entries
                 .get(&SignalId::new(signal_b))
                 .expect("signal b present")
+                .value,
+            DataValue::Int32(22)
+        );
+    }
+
+    struct PartialResponseProvider {
+        signal_id: SignalId,
+        value: DataValue,
+    }
+
+    #[async_trait::async_trait]
+    impl SignalProvider for PartialResponseProvider {
+        async fn update_filter(
+            &self,
+            _update_filters: HashMap<SignalId, Option<TimeInterval>>,
+        ) -> Result<(), (RegisterSignalError, String)> {
+            Ok(())
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn get_signals_values_from_provider(
+            &self,
+            _signals_ids: Vec<SignalId>,
+        ) -> Result<GetValuesProviderResponse, ()> {
+            // Deliberately return only one of the requested signals.
+            let mut entries = IndexMap::new();
+            entries.insert(
+                self.signal_id,
+                Datapoint {
+                    ts: std::time::SystemTime::now(),
+                    source_ts: None,
+                    value: self.value.clone(),
+                },
+            );
+            Ok(GetValuesProviderResponse { entries })
+        }
+    }
+
+    /// A partial provider response must not leave requested signals without a
+    /// value: missing signals fall back to the database, and the response keeps
+    /// one entry per request in request order.
+    #[tokio::test]
+    async fn test_get_values_falls_back_for_partial_provider_response() {
+        let broker = DataBroker::default();
+        let timestamp = std::time::SystemTime::now();
+
+        let signal_a = helper_add_int32(&broker, "test.a", 1, timestamp)
+            .await
+            .expect("add signal a");
+        let signal_b = helper_add_int32(&broker, "test.b", 2, timestamp)
+            .await
+            .expect("add signal b");
+
+        let auth = broker.authorized_access(&permissions::ALLOW_ALL);
+        auth.register_signals(
+            HashMap::from([
+                (SignalId::new(signal_a), TimeInterval::new(0)),
+                (SignalId::new(signal_b), TimeInterval::new(0)),
+            ]),
+            Box::new(PartialResponseProvider {
+                signal_id: SignalId::new(signal_b),
+                value: DataValue::Int32(22),
+            }),
+        )
+        .await
+        .expect("register partial provider");
+
+        let response = auth
+            .get_values_broker(vec![SignalId::new(signal_a), SignalId::new(signal_b)])
+            .await
+            .expect("get values should succeed");
+
+        let ordered_signals: Vec<SignalId> = response.entries.keys().copied().collect();
+        assert_eq!(
+            ordered_signals,
+            vec![SignalId::new(signal_a), SignalId::new(signal_b)],
+            "every requested signal must have exactly one entry in request order"
+        );
+        assert_eq!(
+            response
+                .entries
+                .get(&SignalId::new(signal_a))
+                .expect("signal a must fall back to the database")
+                .value,
+            DataValue::Int32(1)
+        );
+        assert_eq!(
+            response
+                .entries
+                .get(&SignalId::new(signal_b))
+                .expect("signal b must come from the provider")
                 .value,
             DataValue::Int32(22)
         );
