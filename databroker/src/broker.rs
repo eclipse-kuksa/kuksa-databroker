@@ -201,7 +201,7 @@ pub trait SignalProvider: Send + Sync + 'static {
     ) -> Result<(), (RegisterSignalError, String)>;
     fn is_available(&self) -> bool;
     async fn get_signals_values_from_provider(
-        &mut self,
+        &self,
         signals_ids: Vec<SignalId>,
     ) -> Result<GetValuesProviderResponse, ()>;
 }
@@ -214,9 +214,15 @@ pub struct ActuationChange {
 
 pub struct ActuationSubscription {
     vss_ids: Vec<i32>,
-    actuation_provider: Box<dyn ActuationProvider + Send + Sync + 'static>,
+    actuation_provider: Arc<dyn ActuationProvider + Send + Sync + 'static>,
     permissions: Permissions,
 }
+
+type ActuationSubscriptionSnapshot = (
+    Vec<i32>,
+    Arc<dyn ActuationProvider + Send + Sync + 'static>,
+    Permissions,
+);
 
 pub struct GetValuesProviderResponse {
     pub entries: IndexMap<SignalId, Datapoint>,
@@ -225,7 +231,7 @@ pub struct GetValuesProviderResponse {
 pub struct SignalProviderSubscription {
     vss_ids: HashSet<SignalId>, // good for optimizations
     signals_intervals: HashMap<SignalId, TimeInterval>,
-    signal_provider: Box<dyn SignalProvider>,
+    signal_provider: Arc<dyn SignalProvider>,
     permissions: Permissions,
 }
 
@@ -1702,7 +1708,7 @@ impl AuthorizedAccess<'_, '_> {
 
         let actuation_subscription: ActuationSubscription = ActuationSubscription {
             vss_ids,
-            actuation_provider,
+            actuation_provider: Arc::from(actuation_provider),
             permissions: self.permissions.clone(),
         };
         self.broker
@@ -1741,15 +1747,14 @@ impl AuthorizedAccess<'_, '_> {
         &self,
         actuation_changes: Vec<ActuationChange>,
     ) -> Result<(), (ActuationError, String)> {
-        let read_subscription_guard = self.broker.subscriptions.read().await;
-        let actuation_subscriptions = &read_subscription_guard.actuation_subscriptions;
-
         for actuation_change in &actuation_changes {
             let vss_id = actuation_change.id;
             self.can_write_actuator_target(&vss_id).await?;
             self.validate_actuator_update(&vss_id, &actuation_change.data_value)
                 .await?;
         }
+
+        let actuation_subscriptions = self.snapshot_actuation_subscriptions().await;
 
         let actuation_changes_per_vss_id = &self
             .map_actuation_changes_by_vss_id(actuation_changes)
@@ -1760,27 +1765,21 @@ impl AuthorizedAccess<'_, '_> {
 
             let opt_actuation_subscription = actuation_subscriptions
                 .iter()
-                .find(|subscription| subscription.vss_ids.contains(&vss_id));
+                .find(|(vss_ids, _, _)| vss_ids.contains(&vss_id));
             match opt_actuation_subscription {
-                Some(actuation_subscription) => {
-                    let is_expired = actuation_subscription.permissions.is_expired();
+                Some((vss_ids, actuation_provider, permissions)) => {
+                    let is_expired = permissions.is_expired();
                     if is_expired {
-                        let message = format!(
-                            "Permission for vss_ids {:?} expired",
-                            actuation_subscription.vss_ids
-                        );
+                        let message = format!("Permission for vss_ids {vss_ids:?} expired");
                         return Err((ActuationError::PermissionExpired, message));
                     }
 
-                    if !actuation_subscription.actuation_provider.is_available() {
+                    if !actuation_provider.is_available() {
                         let message = format!("Provider for vss_id {vss_id} does not exist");
                         return Err((ActuationError::ProviderNotAvailable, message));
                     }
 
-                    actuation_subscription
-                        .actuation_provider
-                        .actuate(actuation_changes)
-                        .await?
+                    actuation_provider.actuate(actuation_changes).await?
                 }
                 None => {
                     let message = format!("Provider for vss_id {vss_id} not available");
@@ -1802,29 +1801,24 @@ impl AuthorizedAccess<'_, '_> {
         self.can_write_actuator_target(&vss_id).await?;
         self.validate_actuator_update(&vss_id, data_value).await?;
 
-        let read_subscription_guard = self.broker.subscriptions.read().await;
-        let opt_actuation_subscription = &read_subscription_guard
-            .actuation_subscriptions
+        let actuation_subscriptions = self.snapshot_actuation_subscriptions().await;
+        let opt_actuation_subscription = actuation_subscriptions
             .iter()
-            .find(|subscription| subscription.vss_ids.contains(&vss_id));
+            .find(|(vss_ids, _, _)| vss_ids.contains(&vss_id));
         match opt_actuation_subscription {
-            Some(actuation_subscription) => {
-                let is_expired = actuation_subscription.permissions.is_expired();
+            Some((vss_ids, actuation_provider, permissions)) => {
+                let is_expired = permissions.is_expired();
                 if is_expired {
-                    let message = format!(
-                        "Permission for vss_ids {:?} expired",
-                        actuation_subscription.vss_ids
-                    );
+                    let message = format!("Permission for vss_ids {vss_ids:?} expired");
                     return Err((ActuationError::PermissionExpired, message));
                 }
 
-                if !actuation_subscription.actuation_provider.is_available() {
+                if !actuation_provider.is_available() {
                     let message = format!("Provider for vss_id {vss_id} does not exist");
                     return Err((ActuationError::ProviderNotAvailable, message));
                 }
 
-                actuation_subscription
-                    .actuation_provider
+                actuation_provider
                     .actuate(vec![ActuationChange {
                         id: vss_id,
                         data_value: data_value.clone(),
@@ -1836,6 +1830,23 @@ impl AuthorizedAccess<'_, '_> {
                 Err((ActuationError::ProviderNotAvailable, message))
             }
         }
+    }
+
+    async fn snapshot_actuation_subscriptions(&self) -> Vec<ActuationSubscriptionSnapshot> {
+        self.broker
+            .subscriptions
+            .read()
+            .await
+            .actuation_subscriptions
+            .iter()
+            .map(|subscription| {
+                (
+                    subscription.vss_ids.clone(),
+                    subscription.actuation_provider.clone(),
+                    subscription.permissions.clone(),
+                )
+            })
+            .collect()
     }
 
     async fn can_write_actuator_target(
@@ -2048,16 +2059,8 @@ impl AuthorizedAccess<'_, '_> {
                 .collect(),
         };
 
-        DataBroker::update_filter_to_providers(
-            update_filter,
-            &self
-                .broker
-                .subscriptions
-                .read()
-                .await
-                .signal_provider_subscriptions,
-        )
-        .await;
+        let providers = DataBroker::snapshot_signal_providers(&self.broker.subscriptions).await;
+        DataBroker::update_filter_to_providers(update_filter, providers).await;
     }
 
     pub async fn register_signals(
@@ -2093,7 +2096,7 @@ impl AuthorizedAccess<'_, '_> {
         let signal_subscription = SignalProviderSubscription {
             vss_ids: vss_ids_intervals.keys().copied().collect(),
             signals_intervals: vss_ids_intervals,
-            signal_provider,
+            signal_provider: Arc::from(signal_provider as Box<dyn SignalProvider>),
             permissions: self.permissions.clone(),
         };
         let provider_uuid = self
@@ -2197,63 +2200,66 @@ impl AuthorizedAccess<'_, '_> {
         &self,
         vss_signals: Vec<SignalId>,
     ) -> Result<GetValuesProviderResponse, (ReadError, i32)> {
-        let mut subscriptions = self.broker.subscriptions.write().await;
         let mut entries_response: IndexMap<SignalId, Datapoint> = IndexMap::new();
+        let requested_signals: HashSet<SignalId> = vss_signals.iter().copied().collect();
 
-        // if there are providers connected then forward the get value request to them
-        if !subscriptions.signal_provider_subscriptions.is_empty() {
-            // Step 1: find the interseccion of the requested signals and each provider's signals
-            for provider in subscriptions.signal_provider_subscriptions.values_mut() {
-                let intersection_signals_request: Vec<SignalId> = provider
-                    .vss_ids
-                    .intersection(&vss_signals.clone().into_iter().collect())
-                    .copied()
-                    .collect();
-
-                //Step 2: check if there is any possible ReadError while reading any of the signals
-                for signal_id in &intersection_signals_request {
-                    match self
-                        .broker
-                        .database
-                        .read()
-                        .await
-                        .authorized_read_access(self.permissions)
-                        .get_entry_by_id(signal_id.id())
-                    {
-                        Ok(_) => {}
-                        Err(err) => return Err((err, signal_id.id())),
+        // Snapshot the providers and the signals they can serve. The
+        // subscriptions lock is not held while talking to providers, so a slow
+        // or malicious provider cannot block the subscriptions structure.
+        let providers: Vec<(Arc<dyn SignalProvider>, Vec<SignalId>)> = {
+            let subscriptions = self.broker.subscriptions.read().await;
+            subscriptions
+                .signal_provider_subscriptions
+                .values()
+                .filter_map(|provider| {
+                    let intersection_signals_request: Vec<SignalId> = provider
+                        .vss_ids
+                        .intersection(&requested_signals)
+                        .copied()
+                        .collect();
+                    if intersection_signals_request.is_empty() {
+                        None
+                    } else {
+                        Some((
+                            provider.signal_provider.clone(),
+                            intersection_signals_request,
+                        ))
                     }
+                })
+                .collect()
+        };
+
+        let mut covered_signals: HashSet<SignalId> = HashSet::new();
+        for (signal_provider, intersection_signals_request) in providers {
+            covered_signals.extend(intersection_signals_request.iter().copied());
+
+            //Step 1: check if there is any possible ReadError while reading any of the signals
+            for signal_id in &intersection_signals_request {
+                match self
+                    .broker
+                    .database
+                    .read()
+                    .await
+                    .authorized_read_access(self.permissions)
+                    .get_entry_by_id(signal_id.id())
+                {
+                    Ok(_) => {}
+                    Err(err) => return Err((err, signal_id.id())),
                 }
+            }
 
-                //Step 3: send to each provider the intersection signals requested
-                let response = provider
-                    .signal_provider
-                    .get_signals_values_from_provider(intersection_signals_request.clone())
-                    .await;
+            //Step 2: send to each provider the intersection signals requested
+            let response = signal_provider
+                .get_signals_values_from_provider(intersection_signals_request.clone())
+                .await;
 
-                //Step 4: collect responses from providers
-                match response {
-                    Ok(value) => {
-                        if value.entries.is_empty() {
-                            // Provider returned Ok but with no matching entries,
-                            // fall back to database for the requested signals
-                            debug!(
-                                "Provider returned Ok with empty entries, falling back to database"
-                            );
-                            for signal_id in &intersection_signals_request {
-                                match self.get_datapoint(signal_id.id()).await {
-                                    Ok(datapoint) => {
-                                        entries_response.insert(*signal_id, datapoint.clone());
-                                    }
-                                    Err(err) => return Err((err, signal_id.id())),
-                                }
-                            }
-                        } else {
-                            entries_response.extend(value.entries);
-                        }
-                    }
-                    Err(_) => {
-                        //Step 5: if provider did not return any item, then return the datapoint in database
+            //Step 3: collect responses from providers
+            match response {
+                Ok(value) => {
+                    if value.entries.is_empty() {
+                        // Provider returned Ok but with no matching entries,
+                        // fall back to database for the requested signals
+                        debug!("Provider returned Ok with empty entries, falling back to database");
                         for signal_id in &intersection_signals_request {
                             match self.get_datapoint(signal_id.id()).await {
                                 Ok(datapoint) => {
@@ -2262,20 +2268,37 @@ impl AuthorizedAccess<'_, '_> {
                                 Err(err) => return Err((err, signal_id.id())),
                             }
                         }
+                    } else {
+                        entries_response.extend(value.entries);
                     }
                 }
-            }
-        } else {
-            // if not just send to the client database last database values
-            for signal_id in &vss_signals {
-                match self.get_datapoint(signal_id.id()).await {
-                    Ok(datapoint) => {
-                        entries_response.insert(*signal_id, datapoint.clone());
+                Err(_) => {
+                    //Step 4: if provider did not return any item, then return the datapoint in database
+                    for signal_id in &intersection_signals_request {
+                        match self.get_datapoint(signal_id.id()).await {
+                            Ok(datapoint) => {
+                                entries_response.insert(*signal_id, datapoint.clone());
+                            }
+                            Err(err) => return Err((err, signal_id.id())),
+                        }
                     }
-                    Err(err) => return Err((err, signal_id.id())),
                 }
             }
         }
+
+        // Signals that are not served by any provider are read from the database
+        for signal_id in &vss_signals {
+            if covered_signals.contains(signal_id) {
+                continue;
+            }
+            match self.get_datapoint(signal_id.id()).await {
+                Ok(datapoint) => {
+                    entries_response.insert(*signal_id, datapoint.clone());
+                }
+                Err(err) => return Err((err, signal_id.id())),
+            }
+        }
+
         Ok(GetValuesProviderResponse {
             entries: entries_response,
         })
@@ -2379,11 +2402,8 @@ impl DataBroker {
                         .await
                         .remove_filter_by_subscription_uuid(closed_change_subscriptions);
 
-                    Self::update_filter_to_providers(
-                        new_update_filter,
-                        &subscriptions.read().await.signal_provider_subscriptions,
-                    )
-                    .await;
+                    let providers = Self::snapshot_signal_providers(&subscriptions).await;
+                    Self::update_filter_to_providers(new_update_filter, providers).await;
                 }
 
                 if new_connected_providers_count < connected_providers_count {
@@ -2393,14 +2413,25 @@ impl DataBroker {
         });
     }
 
+    async fn snapshot_signal_providers(
+        subscriptions: &Arc<RwLock<Subscriptions>>,
+    ) -> Vec<(Arc<dyn SignalProvider>, HashSet<SignalId>)> {
+        subscriptions
+            .read()
+            .await
+            .signal_provider_subscriptions
+            .values()
+            .map(|provider| (provider.signal_provider.clone(), provider.vss_ids.clone()))
+            .collect()
+    }
+
     async fn update_filter_to_providers(
         update_signal_intervals: HashMap<SignalId, Option<TimeInterval>>,
-        providers: &HashMap<Uuid, SignalProviderSubscription>,
+        providers: Vec<(Arc<dyn SignalProvider>, HashSet<SignalId>)>,
     ) {
-        for provider in providers.values() {
+        for (signal_provider, vss_ids) in providers {
             // Find which provider contains any of the signals to be updated with new interval.
-            let update_signal_map: HashMap<SignalId, Option<TimeInterval>> = provider
-                .vss_ids
+            let update_signal_map: HashMap<SignalId, Option<TimeInterval>> = vss_ids
                 .iter()
                 .filter_map(|&signal_id| update_signal_intervals.get_key_value(&signal_id))
                 .map(|(&k, v)| {
@@ -2412,8 +2443,7 @@ impl DataBroker {
 
             // Send to each provider the new (signal_id, new_interval) map.
             if !update_signal_map.is_empty() {
-                provider
-                    .signal_provider
+                signal_provider
                     .update_filter(update_signal_map)
                     .await
                     .unwrap();
@@ -4936,5 +4966,342 @@ pub mod tests {
                  broadcast_drops_total counter depends on this variant"
             ),
         }
+    }
+
+    struct HangingSignalProvider {
+        entered: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl SignalProvider for HangingSignalProvider {
+        async fn update_filter(
+            &self,
+            _update_filters: HashMap<SignalId, Option<TimeInterval>>,
+        ) -> Result<(), (RegisterSignalError, String)> {
+            Ok(())
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn get_signals_values_from_provider(
+            &self,
+            _signals_ids: Vec<SignalId>,
+        ) -> Result<GetValuesProviderResponse, ()> {
+            self.entered.notify_one();
+            std::future::pending::<Result<GetValuesProviderResponse, ()>>().await
+        }
+    }
+
+    struct CountingSignalProvider {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl SignalProvider for CountingSignalProvider {
+        async fn update_filter(
+            &self,
+            _update_filters: HashMap<SignalId, Option<TimeInterval>>,
+        ) -> Result<(), (RegisterSignalError, String)> {
+            Ok(())
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn get_signals_values_from_provider(
+            &self,
+            _signals_ids: Vec<SignalId>,
+        ) -> Result<GetValuesProviderResponse, ()> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(())
+        }
+    }
+
+    struct HangingUpdateFilterProvider {
+        entered: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl SignalProvider for HangingUpdateFilterProvider {
+        async fn update_filter(
+            &self,
+            _update_filters: HashMap<SignalId, Option<TimeInterval>>,
+        ) -> Result<(), (RegisterSignalError, String)> {
+            self.entered.notify_one();
+            std::future::pending::<Result<(), (RegisterSignalError, String)>>().await
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn get_signals_values_from_provider(
+            &self,
+            _signals_ids: Vec<SignalId>,
+        ) -> Result<GetValuesProviderResponse, ()> {
+            Err(())
+        }
+    }
+
+    struct HangingActuationProvider {
+        entered: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl ActuationProvider for HangingActuationProvider {
+        async fn actuate(
+            &self,
+            _actuation_changes: Vec<ActuationChange>,
+        ) -> Result<(), (ActuationError, String)> {
+            self.entered.notify_one();
+            std::future::pending::<Result<(), (ActuationError, String)>>().await
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    /// A provider that never answers `get_signals_values_from_provider` must
+    /// not block operations that touch the subscriptions structure.
+    #[tokio::test]
+    async fn test_get_values_provider_does_not_block_subscriptions() {
+        let broker = DataBroker::default();
+        let timestamp = std::time::SystemTime::now();
+
+        let provided_signal = helper_add_int32(&broker, "test.provided", 1, timestamp)
+            .await
+            .expect("add provided signal");
+        let db_signal = helper_add_int32(&broker, "test.db", 2, timestamp)
+            .await
+            .expect("add db signal");
+
+        let auth = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let entered = Arc::new(tokio::sync::Notify::new());
+        auth.register_signals(
+            HashMap::from([(SignalId::new(provided_signal), TimeInterval::new(0))]),
+            Box::new(HangingSignalProvider {
+                entered: entered.clone(),
+            }),
+        )
+        .await
+        .expect("register hanging provider");
+
+        let hanging_broker = broker.clone();
+        let get_values_task = tokio::spawn(async move {
+            let auth = hanging_broker.authorized_access(&permissions::ALLOW_ALL);
+            auth.get_values_broker(vec![SignalId::new(provided_signal)])
+                .await
+        });
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), entered.notified())
+            .await
+            .expect("provider should have been called");
+
+        let result = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            let _stream = auth
+                .subscribe(
+                    HashMap::from([(db_signal, HashSet::from([Field::Datapoint]))]),
+                    None,
+                    None,
+                )
+                .await
+                .expect("subscribe must not be blocked by a hanging provider");
+
+            let other_signal = helper_add_int32(&broker, "test.other", 3, timestamp)
+                .await
+                .expect("add other signal");
+            auth.register_signals(
+                HashMap::from([(SignalId::new(other_signal), TimeInterval::new(0))]),
+                Box::new(HangingSignalProvider {
+                    entered: Arc::new(tokio::sync::Notify::new()),
+                }),
+            )
+            .await
+            .expect("register must not be blocked by a hanging provider");
+
+            auth.get_datapoint(db_signal)
+                .await
+                .expect("read must not be blocked by a hanging provider");
+        })
+        .await;
+
+        get_values_task.abort();
+        assert!(
+            result.is_ok(),
+            "subscriptions operations blocked while a provider call was pending"
+        );
+    }
+
+    /// Signals not served by any provider must be read from the database, and
+    /// providers must not be queried for signals outside their intersection.
+    #[tokio::test]
+    async fn test_get_values_skips_provider_without_matching_signal() {
+        let broker = DataBroker::default();
+        let timestamp = std::time::SystemTime::now();
+
+        let provided_signal = helper_add_int32(&broker, "test.provided", 1, timestamp)
+            .await
+            .expect("add provided signal");
+        let db_signal = helper_add_int32(&broker, "test.db", 42, timestamp)
+            .await
+            .expect("add db signal");
+
+        let auth = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        auth.register_signals(
+            HashMap::from([(SignalId::new(provided_signal), TimeInterval::new(0))]),
+            Box::new(CountingSignalProvider {
+                calls: calls.clone(),
+            }),
+        )
+        .await
+        .expect("register counting provider");
+
+        let response = auth
+            .get_values_broker(vec![SignalId::new(db_signal)])
+            .await
+            .expect("get values should succeed");
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "provider must not be queried for signals it does not provide"
+        );
+        let datapoint = response
+            .entries
+            .get(&SignalId::new(db_signal))
+            .expect("signal without matching provider must fall back to the database");
+        assert_eq!(datapoint.value, DataValue::Int32(42));
+    }
+
+    /// A provider that never answers `update_filter` must not block operations
+    /// other than the `subscribe` that triggered the filter update.
+    #[tokio::test]
+    async fn test_update_filter_provider_does_not_block_subscriptions() {
+        let broker = DataBroker::default();
+        let timestamp = std::time::SystemTime::now();
+
+        let provided_signal = helper_add_int32(&broker, "test.provided", 1, timestamp)
+            .await
+            .expect("add provided signal");
+        let db_signal = helper_add_int32(&broker, "test.db", 2, timestamp)
+            .await
+            .expect("add db signal");
+
+        let auth = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let entered = Arc::new(tokio::sync::Notify::new());
+        auth.register_signals(
+            HashMap::from([(SignalId::new(provided_signal), TimeInterval::new(0))]),
+            Box::new(HangingUpdateFilterProvider {
+                entered: entered.clone(),
+            }),
+        )
+        .await
+        .expect("register hanging update_filter provider");
+
+        let subscribe_broker = broker.clone();
+        let subscribe_task = tokio::spawn(async move {
+            let auth = subscribe_broker.authorized_access(&permissions::ALLOW_ALL);
+            auth.subscribe(
+                HashMap::from([(provided_signal, HashSet::from([Field::Datapoint]))]),
+                None,
+                Some(0),
+            )
+            .await
+        });
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), entered.notified())
+            .await
+            .expect("update_filter should have been called");
+
+        let result = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            auth.get_values_broker(vec![SignalId::new(db_signal)])
+                .await
+                .expect("get values must not be blocked by a hanging update_filter");
+        })
+        .await;
+
+        subscribe_task.abort();
+        assert!(
+            result.is_ok(),
+            "subscriptions operations blocked while update_filter was pending"
+        );
+    }
+
+    /// A provider that never answers `actuate` must not block operations that
+    /// touch the subscriptions structure.
+    #[tokio::test]
+    async fn test_actuate_provider_does_not_block_subscriptions() {
+        let broker = DataBroker::default();
+        let timestamp = std::time::SystemTime::now();
+
+        let actuator_id = broker
+            .authorized_access(&permissions::ALLOW_ALL)
+            .add_entry(
+                "test.actuator".to_owned(),
+                DataType::Bool,
+                ChangeType::OnChange,
+                EntryType::Actuator,
+                "Test actuator".to_owned(),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("add actuator");
+        let db_signal = helper_add_int32(&broker, "test.db", 2, timestamp)
+            .await
+            .expect("add db signal");
+
+        let auth = broker.authorized_access(&permissions::ALLOW_ALL);
+
+        let entered = Arc::new(tokio::sync::Notify::new());
+        auth.provide_actuation(
+            vec![actuator_id],
+            Box::new(HangingActuationProvider {
+                entered: entered.clone(),
+            }),
+        )
+        .await
+        .expect("provide actuation");
+
+        let actuate_broker = broker.clone();
+        let actuate_task = tokio::spawn(async move {
+            let auth = actuate_broker.authorized_access(&permissions::ALLOW_ALL);
+            auth.actuate(&actuator_id, &DataValue::Bool(true)).await
+        });
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), entered.notified())
+            .await
+            .expect("actuate should have been called");
+
+        let result = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            auth.get_values_broker(vec![SignalId::new(db_signal)])
+                .await
+                .expect("get values must not be blocked by a hanging actuate");
+            let _stream = auth
+                .subscribe(
+                    HashMap::from([(db_signal, HashSet::from([Field::Datapoint]))]),
+                    None,
+                    None,
+                )
+                .await
+                .expect("subscribe must not be blocked by a hanging actuate");
+        })
+        .await;
+
+        actuate_task.abort();
+        assert!(
+            result.is_ok(),
+            "subscriptions operations blocked while an actuation provider was pending"
+        );
     }
 }
