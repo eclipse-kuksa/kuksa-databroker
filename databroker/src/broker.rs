@@ -133,7 +133,7 @@ pub struct Database {
 
 #[derive(Default)]
 pub struct Subscriptions {
-    actuation_subscriptions: Vec<ActuationSubscription>,
+    actuation_subscriptions: Vec<Arc<ActuationSubscription>>,
     change_subscriptions: HashMap<Uuid, ChangeSubscription>,
     signal_provider_subscriptions: HashMap<Uuid, SignalProviderSubscription>,
 }
@@ -218,12 +218,6 @@ pub struct ActuationSubscription {
     actuation_provider: Arc<dyn ActuationProvider + Send + Sync + 'static>,
     permissions: Permissions,
 }
-
-type ActuationSubscriptionSnapshot = (
-    Vec<i32>,
-    Arc<dyn ActuationProvider + Send + Sync + 'static>,
-    Permissions,
-);
 
 pub struct GetValuesProviderResponse {
     pub entries: IndexMap<SignalId, Datapoint>,
@@ -787,7 +781,7 @@ pub enum SuccessfulUpdate {
 
 impl Subscriptions {
     pub fn add_actuation_subscription(&mut self, subscription: ActuationSubscription) {
-        self.actuation_subscriptions.push(subscription);
+        self.actuation_subscriptions.push(Arc::new(subscription));
     }
 
     #[cfg_attr(feature="otel", tracing::instrument(name="subscriptions_add_change_subscription",skip(self, subscription), fields(timestamp=chrono::Utc::now().to_string())))]
@@ -1766,21 +1760,24 @@ impl AuthorizedAccess<'_, '_> {
 
             let opt_actuation_subscription = actuation_subscriptions
                 .iter()
-                .find(|(vss_ids, _, _)| vss_ids.contains(&vss_id));
+                .find(|subscription| subscription.vss_ids.contains(&vss_id));
             match opt_actuation_subscription {
-                Some((vss_ids, actuation_provider, permissions)) => {
-                    let is_expired = permissions.is_expired();
-                    if is_expired {
-                        let message = format!("Permission for vss_ids {vss_ids:?} expired");
+                Some(subscription) => {
+                    if subscription.permissions.is_expired() {
+                        let message =
+                            format!("Permission for vss_ids {:?} expired", subscription.vss_ids);
                         return Err((ActuationError::PermissionExpired, message));
                     }
 
-                    if !actuation_provider.is_available() {
+                    if !subscription.actuation_provider.is_available() {
                         let message = format!("Provider for vss_id {vss_id} does not exist");
                         return Err((ActuationError::ProviderNotAvailable, message));
                     }
 
-                    actuation_provider.actuate(actuation_changes).await?
+                    subscription
+                        .actuation_provider
+                        .actuate(actuation_changes)
+                        .await?
                 }
                 None => {
                     let message = format!("Provider for vss_id {vss_id} not available");
@@ -1805,21 +1802,22 @@ impl AuthorizedAccess<'_, '_> {
         let actuation_subscriptions = self.snapshot_actuation_subscriptions().await;
         let opt_actuation_subscription = actuation_subscriptions
             .iter()
-            .find(|(vss_ids, _, _)| vss_ids.contains(&vss_id));
+            .find(|subscription| subscription.vss_ids.contains(&vss_id));
         match opt_actuation_subscription {
-            Some((vss_ids, actuation_provider, permissions)) => {
-                let is_expired = permissions.is_expired();
-                if is_expired {
-                    let message = format!("Permission for vss_ids {vss_ids:?} expired");
+            Some(subscription) => {
+                if subscription.permissions.is_expired() {
+                    let message =
+                        format!("Permission for vss_ids {:?} expired", subscription.vss_ids);
                     return Err((ActuationError::PermissionExpired, message));
                 }
 
-                if !actuation_provider.is_available() {
+                if !subscription.actuation_provider.is_available() {
                     let message = format!("Provider for vss_id {vss_id} does not exist");
                     return Err((ActuationError::ProviderNotAvailable, message));
                 }
 
-                actuation_provider
+                subscription
+                    .actuation_provider
                     .actuate(vec![ActuationChange {
                         id: vss_id,
                         data_value: data_value.clone(),
@@ -1833,21 +1831,13 @@ impl AuthorizedAccess<'_, '_> {
         }
     }
 
-    async fn snapshot_actuation_subscriptions(&self) -> Vec<ActuationSubscriptionSnapshot> {
+    async fn snapshot_actuation_subscriptions(&self) -> Vec<Arc<ActuationSubscription>> {
         self.broker
             .subscriptions
             .read()
             .await
             .actuation_subscriptions
-            .iter()
-            .map(|subscription| {
-                (
-                    subscription.vss_ids.clone(),
-                    subscription.actuation_provider.clone(),
-                    subscription.permissions.clone(),
-                )
-            })
-            .collect()
+            .clone()
     }
 
     async fn can_write_actuator_target(
