@@ -5266,6 +5266,78 @@ pub mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn test_expired_actuation_provider_is_not_called() {
+        struct UnexpectedProvider;
+
+        #[async_trait::async_trait]
+        impl ActuationProvider for UnexpectedProvider {
+            async fn actuate(
+                &self,
+                _changes: Vec<ActuationChange>,
+            ) -> Result<(), (ActuationError, String)> {
+                panic!("an expired provider must not receive commands");
+            }
+
+            fn is_available(&self) -> bool {
+                true
+            }
+        }
+
+        let broker = DataBroker::default();
+        let auth = broker.authorized_access(&permissions::ALLOW_ALL);
+        let id = auth
+            .add_entry(
+                "test.expired".to_owned(),
+                DataType::Bool,
+                ChangeType::OnChange,
+                EntryType::Actuator,
+                "Test actuator".to_owned(),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Model a previously registered provider whose permission has expired
+        // before housekeeping runs, without depending on wall-clock sleeps.
+        let expired = Permissions::builder()
+            .expires_at(SystemTime::UNIX_EPOCH)
+            .add_actuate_permission(permissions::Permission::All)
+            .build()
+            .unwrap();
+        broker
+            .subscriptions
+            .write()
+            .await
+            .add_actuation_subscription(ActuationSubscription {
+                vss_ids: vec![id],
+                actuation_provider: Arc::new(UnexpectedProvider),
+                permissions: expired,
+            });
+
+        assert!(matches!(
+            auth.actuate(&id, &DataValue::Bool(true)).await,
+            Err((ActuationError::PermissionExpired, _))
+        ));
+        assert!(matches!(
+            auth.batch_actuate(vec![ActuationChange {
+                id,
+                data_value: DataValue::Bool(true),
+            }])
+            .await,
+            Err((ActuationError::PermissionExpired, _))
+        ));
+
+        broker.subscriptions.write().await.cleanup();
+        assert!(matches!(
+            auth.actuate(&id, &DataValue::Bool(true)).await,
+            Err((ActuationError::ProviderNotAvailable, _))
+        ));
+    }
+
     /// A provider that never answers `actuate` must not block operations that
     /// touch the subscriptions structure.
     #[tokio::test]

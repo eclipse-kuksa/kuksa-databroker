@@ -232,3 +232,56 @@ async fn pending_batch_does_not_block_provider_registration() {
         .expect("provider registration must not wait for the batch provider")
         .unwrap();
 }
+
+#[tokio::test]
+async fn clearing_subscriptions_preserves_in_flight_commands_only() {
+    for batch_request in [false, true] {
+        let broker = DataBroker::default();
+        let id = add_actuator(&broker, "test.pending").await;
+        let auth = broker.authorized_access(&permissions::ALLOW_ALL);
+        let entered = Arc::new(Notify::new());
+        let resume = Arc::new(Notify::new());
+        auth.provide_actuation(
+            vec![id],
+            Box::new(PausedProvider {
+                entered: entered.clone(),
+                resume: resume.clone(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        let command_broker = broker.clone();
+        let command = tokio::spawn(async move {
+            let access = command_broker.authorized_access(&permissions::ALLOW_ALL);
+            if batch_request {
+                access.batch_actuate(vec![change(id, 1)]).await
+            } else {
+                access.actuate(&id, &DataValue::Int32(1)).await
+            }
+        });
+        tokio::time::timeout(Duration::from_secs(1), entered.notified())
+            .await
+            .expect("command should reach the provider");
+
+        // Shutdown clears the registry. An already dispatched command owns its
+        // snapshot, but subsequent commands must not use the removed provider.
+        let shutdown = tokio::time::timeout(Duration::from_secs(1), broker.shutdown()).await;
+        resume.notify_one();
+        tokio::time::timeout(Duration::from_secs(1), command)
+            .await
+            .expect("in-flight command should finish after resuming")
+            .unwrap()
+            .unwrap();
+        shutdown.expect("clearing subscriptions must not wait for provider I/O");
+
+        assert!(matches!(
+            auth.actuate(&id, &DataValue::Int32(2)).await,
+            Err((ActuationError::ProviderNotAvailable, _))
+        ));
+        assert!(matches!(
+            auth.batch_actuate(vec![change(id, 2)]).await,
+            Err((ActuationError::ProviderNotAvailable, _))
+        ));
+    }
+}
