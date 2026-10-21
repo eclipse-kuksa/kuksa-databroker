@@ -12,6 +12,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #*******************************************************************************/
 
+set -euo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Setup
@@ -29,42 +31,32 @@ VSS_DATA_DIR="$SCRIPT_DIR/../data"
 
 echo "Starting databroker container (\"${DATABROKER_IMAGE}\") in insecure mode, requesting platform (\"${CONTAINER_PLATFORM}\")"
 RUNNING_IMAGE=$(
-    docker run -d -v ${VSS_DATA_DIR}:/data -p 55555:55555 --rm  --platform ${CONTAINER_PLATFORM} ${DATABROKER_IMAGE} --metadata data/vss-core/vss_release_6.0.json --insecure
+    docker run -d -v "${VSS_DATA_DIR}:/data" -p 55555:55555 --rm \
+        --platform "${CONTAINER_PLATFORM}" "${DATABROKER_IMAGE}" \
+        --metadata data/vss-core/vss_release_6.0.json --insecure
 )
 
-echo "Waiting for databroker startup"
-
-
-BROKER_HOST="${DATABROKER_ADDRESS%:*}"
-BROKER_PORT="${DATABROKER_ADDRESS##*:}"
-
-echo "Waiting up to ${DATABROKER_STARTUP_TIMEOUT}s for databroker on ${BROKER_HOST}:${BROKER_PORT}"
-START_TIME=$(date +%s)
-while true; do
-    if (echo > "/dev/tcp/${BROKER_HOST}/${BROKER_PORT}") >/dev/null 2>&1; then
-        echo "Databroker is reachable on ${BROKER_HOST}:${BROKER_PORT}"
-        docker logs ${RUNNING_IMAGE}
-        break
+cleanup() {
+    RESULT=$?
+    trap - EXIT
+    if (( RESULT != 0 )); then
+        docker logs "${RUNNING_IMAGE}" || true
     fi
-
-    NOW=$(date +%s)
-    if (( NOW - START_TIME >= DATABROKER_STARTUP_TIMEOUT )); then
-        echo "Timed out waiting for databroker on ${BROKER_HOST}:${BROKER_PORT}"
-        docker logs ${RUNNING_IMAGE}
-        docker stop ${RUNNING_IMAGE}
-        exit 1
+    echo "Stopping databroker container"
+    if ! docker stop "${RUNNING_IMAGE}"; then
+        if (( RESULT == 0 )); then
+            RESULT=1
+        fi
     fi
+    exit "${RESULT}"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-    sleep 1
-done
+echo "Waiting up to ${DATABROKER_STARTUP_TIMEOUT}s for databroker RPCs on ${DATABROKER_ADDRESS}"
+python3 "${SCRIPT_DIR}/wait_for_databroker.py" "${DATABROKER_ADDRESS}" "${DATABROKER_STARTUP_TIMEOUT}"
+docker logs "${RUNNING_IMAGE}" || true
 
-
-python3 -m pytest -v "${SCRIPT_DIR}/test_databroker.py"
-
-RESULT=$?
-
-echo "Stopping databroker container"
-
-docker stop ${RUNNING_IMAGE}
-
-exit $RESULT
+python3 -m pytest -v "${SCRIPT_DIR}/test_databroker.py" \
+    "${SCRIPT_DIR}/test_wait_for_databroker.py" "${SCRIPT_DIR}/test_integration_runner.py"
