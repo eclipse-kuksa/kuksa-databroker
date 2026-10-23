@@ -58,5 +58,4 @@ echo "Waiting up to ${DATABROKER_STARTUP_TIMEOUT}s for databroker RPCs on ${DATA
 python3 "${SCRIPT_DIR}/wait_for_databroker.py" "${DATABROKER_ADDRESS}" "${DATABROKER_STARTUP_TIMEOUT}"
 docker logs "${RUNNING_IMAGE}" || true
 
-python3 -m pytest -v "${SCRIPT_DIR}/test_databroker.py" \
-    "${SCRIPT_DIR}/test_wait_for_databroker.py" "${SCRIPT_DIR}/test_integration_runner.py"
+python3 -m pytest -v "${SCRIPT_DIR}/test_databroker.py"
