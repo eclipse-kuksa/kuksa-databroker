@@ -18,8 +18,9 @@ use cucumber::{cli, gherkin::Step, given, then, when, writer, World as _};
 use databroker::broker;
 use databroker_proto::kuksa::val::v1::{datapoint::Value, DataType, Datapoint};
 use databroker_proto::kuksa::val::v2::{
-    open_provider_stream_request, val_client::ValClient as ValClientV2, ListMetadataRequest,
-    OpenProviderStreamRequest, ProvideSignalRequest, SampleInterval,
+    open_provider_stream_request, signal_id, val_client::ValClient as ValClientV2,
+    ListMetadataRequest, OpenProviderStreamRequest, ProvideActuationRequest, ProvideSignalRequest,
+    SampleInterval, SignalId,
 };
 use kuksa_common::ClientTraitV1;
 use tokio_stream::wrappers::ReceiverStream;
@@ -435,6 +436,77 @@ async fn extend_provider_registration(w: &mut DataBrokerWorld, path: String) {
 fn assert_provider_registration_succeeds(w: &mut DataBrokerWorld) {
     if let Some(error) = w.current_client_error.clone() {
         panic!("Expected provider registration to succeed but got error: {error:?}");
+    }
+}
+
+#[when(expr = "a client uses a token with scopes {string}")]
+async fn authorize_client_scopes(w: &mut DataBrokerWorld, scopes: String) {
+    authorize_client(w, scopes).await
+}
+
+#[when(expr = "a client registers as an actuation provider for {word}")]
+async fn register_as_actuation_provider(w: &mut DataBrokerWorld, path: String) {
+    let channel = match w
+        .broker_client
+        .as_mut()
+        .expect("broker not started")
+        .basic_client
+        .get_channel()
+        .await
+    {
+        Ok(ch) => ch.clone(),
+        Err(e) => {
+            w.current_client_error = Some(e);
+            return;
+        }
+    };
+
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    let mut stream_req = tonic::Request::new(ReceiverStream::new(rx));
+    if let Some(token) = &w.v2_token {
+        stream_req
+            .metadata_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
+    }
+    let mut streaming = match ValClientV2::new(channel)
+        .open_provider_stream(stream_req)
+        .await
+    {
+        Ok(resp) => resp.into_inner(),
+        Err(status) => {
+            w.current_client_error = Some(kuksa_common::ClientError::Status(status));
+            return;
+        }
+    };
+
+    let request = OpenProviderStreamRequest {
+        action: Some(
+            open_provider_stream_request::Action::ProvideActuationRequest(
+                ProvideActuationRequest {
+                    actuator_identifiers: vec![SignalId {
+                        signal: Some(signal_id::Signal::Path(path)),
+                    }],
+                },
+            ),
+        ),
+    };
+    if tx.send(request).await.is_err() {
+        debug!("failed to send ProvideActuationRequest");
+        return;
+    }
+
+    match streaming.message().await {
+        Ok(Some(_)) => {
+            w.current_client_error = None;
+            w.current_provider_stream = Some(ProviderStream {
+                sender: tx,
+                receiver: streaming,
+            });
+        }
+        Ok(None) => debug!("provider stream closed without response"),
+        Err(status) => {
+            w.current_client_error = Some(kuksa_common::ClientError::Status(status));
+        }
     }
 }
 

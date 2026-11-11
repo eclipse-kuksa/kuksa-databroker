@@ -212,6 +212,17 @@ impl Permissions {
         Err(PermissionError::Denied)
     }
 
+    pub fn can_provide_actuation(&self, path: &str) -> Result<(), PermissionError> {
+        if self.is_expired() {
+            return Err(PermissionError::Expired);
+        }
+
+        if self.provide.is_match(path) {
+            return Ok(());
+        }
+        Err(PermissionError::Denied)
+    }
+
     pub fn can_create(&self, path: &str) -> Result<(), PermissionError> {
         if self.is_expired() {
             return Err(PermissionError::Expired);

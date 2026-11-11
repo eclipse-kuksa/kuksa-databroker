@@ -202,3 +202,25 @@ Feature: Reading and writing values of a VSS Data Entry
       And a client registers as a provider for Vehicle.Speed
       And a client extends provider registration for Vehicle.ADAS.ABS.IsEnabled
       Then the operation fails with status code 7
+
+  Rule: Actuation providers must have provide scope
+
+    Background:
+      Given a running Databroker server with authorization enabled with the following Data Entries registered
+        | path                       | data type | change type | type     |
+        | Vehicle.ADAS.ABS.IsEnabled | bool      | Static      | Actuator |
+
+    Scenario: Registering as an actuation provider with actuate scope only fails
+      When a client uses a token with scope actuate
+      And a client registers as an actuation provider for Vehicle.ADAS.ABS.IsEnabled
+      Then the operation fails with status code 7
+
+    Scenario: Registering as an actuation provider with provide scope succeeds
+      When a client uses a token with scope provide
+      And a client registers as an actuation provider for Vehicle.ADAS.ABS.IsEnabled
+      Then the provider registration succeeds
+
+    Scenario: Registering as an actuation provider with actuate and provide scope succeeds
+      When a client uses a token with scopes "actuate provide"
+      And a client registers as an actuation provider for Vehicle.ADAS.ABS.IsEnabled
+      Then the provider registration succeeds
