@@ -1685,7 +1685,7 @@ impl AuthorizedAccess<'_, '_> {
         actuation_provider: Box<dyn ActuationProvider + Send + Sync + 'static>,
     ) -> Result<(), (ActuationError, String)> {
         for vss_id in vss_ids.clone() {
-            self.can_write_actuator_target(&vss_id).await?;
+            self.can_provide_actuation(&vss_id).await?;
         }
 
         let provided_vss_ids: Vec<i32> = self
@@ -1916,6 +1916,37 @@ impl AuthorizedAccess<'_, '_> {
             }
             Err(ReadError::PermissionExpired) => Err((
                 RegisterSignalError::PermissionExpired,
+                "Permission expired".to_string(),
+            )),
+        }
+    }
+
+    async fn can_provide_actuation(&self, vss_id: &i32) -> Result<(), (ActuationError, String)> {
+        match self.get_entry_by_id(*vss_id).await {
+            Ok(entry) => {
+                let vss_path = entry.metadata.path;
+                match self.permissions.can_provide_actuation(&vss_path) {
+                    Ok(_) => Ok(()),
+                    Err(PermissionError::Denied) => {
+                        let message = format!("Permission denied for vss_path {vss_path}");
+                        Err((ActuationError::PermissionDenied, message))
+                    }
+                    Err(PermissionError::Expired) => Err((
+                        ActuationError::PermissionExpired,
+                        "Permission expired".to_string(),
+                    )),
+                }
+            }
+            Err(ReadError::NotFound) => {
+                let message = format!("Could not resolve vss_path of vss_id {vss_id}");
+                Err((ActuationError::NotFound, message))
+            }
+            Err(ReadError::PermissionDenied) => {
+                let message = format!("Permission denied for vss_id {vss_id}");
+                Err((ActuationError::PermissionDenied, message))
+            }
+            Err(ReadError::PermissionExpired) => Err((
+                ActuationError::PermissionExpired,
                 "Permission expired".to_string(),
             )),
         }
