@@ -229,3 +229,36 @@ Feature: Reading and writing values of a VSS Data Entry
       When a client uses a token with scope provide:Vehicle.Speed
       And a client registers as an actuation provider for Vehicle.ADAS.ABS.IsEnabled
       Then the operation fails with status code 7
+
+  Rule: Provide sub actions limit what a provider may provide
+
+    Background:
+      Given a running Databroker server with authorization enabled with the following Data Entries registered
+        | path                       | data type | change type | type     |
+        | Vehicle.Speed              | float     | Static      | Sensor   |
+        | Vehicle.ADAS.ABS.IsEnabled | bool      | Static      | Actuator |
+
+    Scenario: Registering as a signal provider with provide:data scope succeeds
+      When a client uses a token with scope provide:data:Vehicle.Speed
+      And a client registers as a provider for Vehicle.Speed
+      Then the provider registration succeeds
+
+    Scenario: Registering as a signal provider with provide:actuation scope fails
+      When a client uses a token with scope provide:actuation
+      And a client registers as a provider for Vehicle.Speed
+      Then the operation fails with status code 7
+
+    Scenario: Registering as an actuation provider with provide:actuation scope succeeds
+      When a client uses a token with scope provide:actuation:Vehicle.ADAS.ABS.IsEnabled
+      And a client registers as an actuation provider for Vehicle.ADAS.ABS.IsEnabled
+      Then the provider registration succeeds
+
+    Scenario: Registering as an actuation provider with provide:data scope fails
+      When a client uses a token with scope provide:data
+      And a client registers as an actuation provider for Vehicle.ADAS.ABS.IsEnabled
+      Then the operation fails with status code 7
+
+    Scenario: Writing the current value with provide:actuation scope fails
+      When a client uses a token with scope provide:actuation
+      And a client sets the current value of Vehicle.Speed of type float to 13.4
+      Then setting the value for Vehicle.Speed fails with error code 403

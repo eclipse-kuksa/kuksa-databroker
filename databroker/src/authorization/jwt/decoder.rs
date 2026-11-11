@@ -153,6 +153,12 @@ impl TryFrom<Claims> for Permissions {
                         scope::Action::Provide => {
                             permissions.add_provide_permission(Permission::Glob(path))
                         }
+                        scope::Action::ProvideData => {
+                            permissions.add_provide_data_permission(Permission::Glob(path))
+                        }
+                        scope::Action::ProvideActuation => {
+                            permissions.add_provide_actuation_permission(Permission::Glob(path))
+                        }
                         scope::Action::Create => {
                             permissions.add_create_permission(Permission::Glob(path))
                         }
@@ -167,6 +173,12 @@ impl TryFrom<Claims> for Permissions {
                         }
                         scope::Action::Provide => {
                             permissions.add_provide_permission(Permission::All)
+                        }
+                        scope::Action::ProvideData => {
+                            permissions.add_provide_data_permission(Permission::All)
+                        }
+                        scope::Action::ProvideActuation => {
+                            permissions.add_provide_actuation_permission(Permission::All)
                         }
                         scope::Action::Create => permissions.add_create_permission(Permission::All),
                     };
