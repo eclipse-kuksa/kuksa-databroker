@@ -224,3 +224,8 @@ Feature: Reading and writing values of a VSS Data Entry
       When a client uses a token with scopes "actuate provide"
       And a client registers as an actuation provider for Vehicle.ADAS.ABS.IsEnabled
       Then the provider registration succeeds
+
+    Scenario: Registering as an actuation provider beyond granted scope fails
+      When a client uses a token with scope provide:Vehicle.Speed
+      And a client registers as an actuation provider for Vehicle.ADAS.ABS.IsEnabled
+      Then the operation fails with status code 7
