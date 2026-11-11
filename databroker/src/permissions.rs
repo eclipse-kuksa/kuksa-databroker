@@ -23,14 +23,16 @@ lazy_static! {
         expires_at: None,
         read: PathMatcher::Everything,
         actuate: PathMatcher::Everything,
-        provide: PathMatcher::Everything,
+        provide_data: PathMatcher::Everything,
+        provide_actuation: PathMatcher::Everything,
         create: PathMatcher::Everything,
     };
     pub static ref ALLOW_NONE: Permissions = Permissions {
         expires_at: None,
         read: PathMatcher::Nothing,
         actuate: PathMatcher::Nothing,
-        provide: PathMatcher::Nothing,
+        provide_data: PathMatcher::Nothing,
+        provide_actuation: PathMatcher::Nothing,
         create: PathMatcher::Nothing,
     };
 }
@@ -40,7 +42,8 @@ pub struct Permissions {
     expires_at: Option<SystemTime>,
     read: PathMatcher,
     actuate: PathMatcher,
-    provide: PathMatcher,
+    provide_data: PathMatcher,
+    provide_actuation: PathMatcher,
     create: PathMatcher,
 }
 
@@ -48,10 +51,12 @@ pub struct PermissionBuilder {
     expiration: Option<SystemTime>,
     read: PathMatchBuilder,
     actuate: PathMatchBuilder,
-    provide: PathMatchBuilder,
+    provide_data: PathMatchBuilder,
+    provide_actuation: PathMatchBuilder,
     create: PathMatchBuilder,
 }
 
+#[derive(Clone)]
 pub enum Permission {
     Nothing,
     All,
@@ -94,7 +99,8 @@ impl PermissionBuilder {
             expiration: None,
             read: PathMatchBuilder::Nothing,
             actuate: PathMatchBuilder::Nothing,
-            provide: PathMatchBuilder::Nothing,
+            provide_data: PathMatchBuilder::Nothing,
+            provide_actuation: PathMatchBuilder::Nothing,
             create: PathMatchBuilder::Nothing,
         }
     }
@@ -126,13 +132,32 @@ impl PermissionBuilder {
         self
     }
 
-    pub fn add_provide_permission(mut self, permission: Permission) -> Self {
+    pub fn add_provide_permission(self, permission: Permission) -> Self {
+        // provide = provide:data + provide:actuation
+        self.add_provide_data_permission(permission.clone())
+            .add_provide_actuation_permission(permission)
+    }
+
+    pub fn add_provide_data_permission(mut self, permission: Permission) -> Self {
         match permission {
             Permission::Nothing => {
                 // Adding nothing
             }
-            Permission::All => self.provide.extend_with(PathMatchBuilder::Everything),
-            Permission::Glob(path) => self.provide.extend_with_glob(path),
+            Permission::All => self.provide_data.extend_with(PathMatchBuilder::Everything),
+            Permission::Glob(path) => self.provide_data.extend_with_glob(path),
+        };
+        self
+    }
+
+    pub fn add_provide_actuation_permission(mut self, permission: Permission) -> Self {
+        match permission {
+            Permission::Nothing => {
+                // Adding nothing
+            }
+            Permission::All => self
+                .provide_actuation
+                .extend_with(PathMatchBuilder::Everything),
+            Permission::Glob(path) => self.provide_actuation.extend_with_glob(path),
         };
         self
     }
@@ -153,7 +178,8 @@ impl PermissionBuilder {
             expires_at: self.expiration,
             read: self.read.build()?,
             actuate: self.actuate.build()?,
-            provide: self.provide.build()?,
+            provide_data: self.provide_data.build()?,
+            provide_actuation: self.provide_actuation.build()?,
             create: self.create.build()?,
         })
     }
@@ -178,7 +204,10 @@ impl Permissions {
         if self.actuate.is_match(path) {
             return Ok(());
         }
-        if self.provide.is_match(path) {
+        if self.provide_data.is_match(path) {
+            return Ok(());
+        }
+        if self.provide_actuation.is_match(path) {
             return Ok(());
         }
         if self.create.is_match(path) {
@@ -206,20 +235,19 @@ impl Permissions {
             return Err(PermissionError::Expired);
         }
 
-        if self.provide.is_match(path) {
+        if self.provide_data.is_match(path) {
             return Ok(());
         }
         Err(PermissionError::Denied)
     }
 
-    // Same as can_write_datapoint for now; provide:actuation will be checked here.
     #[cfg_attr(feature="otel", tracing::instrument(name="permissions_can_provide_actuation", skip(self, path), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn can_provide_actuation(&self, path: &str) -> Result<(), PermissionError> {
         if self.is_expired() {
             return Err(PermissionError::Expired);
         }
 
-        if self.provide.is_match(path) {
+        if self.provide_actuation.is_match(path) {
             return Ok(());
         }
         Err(PermissionError::Denied)

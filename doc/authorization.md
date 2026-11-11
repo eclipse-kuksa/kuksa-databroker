@@ -290,6 +290,8 @@ Examples of KUKSA.VAL scope strings:
 |`read:Vehicle.ADAS`       | Allow client to read everything under Vehicle.ADAS (including metadata) |
 |`actuate:Vehicle.ADAS`    | Allow client to actuate all actuators under Vehicle.ADAS (including `read`) |
 |`provide:Vehicle.Width`   | Allow client to provide `Vehicle.Width` (including `read`) |
+|`provide:data:Vehicle.Speed` | Allow client to provide the value of `Vehicle.Speed` (including `read`) |
+|`provide:actuation:Vehicle.ADAS` | Allow client to respond to actuation requests for actuators under Vehicle.ADAS (including `read`) |
 
 #### Actions
 Available actions (initially):
@@ -298,7 +300,7 @@ Available actions (initially):
 |-----------|------------------------------------------------|
 | `read`    | Allow client to read matching signals (and metadata) |
 | `actuate` | Allow client to actuate matching signals (includes `read`) |
-| `provide` | Allow client to provide matching signals (includes `read`) |
+| `provide` | Allow client to provide matching signals (includes `read`, `provide:data` and `provide:actuation`) |
 | `create`  | Allow client to create a VSS entry (under a certain path). If a VSS entry already exists, a separate scope (not fully defined yet) is needed to change it. |
 
 | Subactions | Description                     |

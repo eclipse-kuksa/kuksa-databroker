@@ -22,6 +22,8 @@ pub enum Action {
     Read,
     Actuate,
     Provide,
+    ProvideData,
+    ProvideActuation,
     Create,
 }
 
@@ -35,6 +37,8 @@ pub fn parse_whitespace_separated(scope: &str) -> Result<Vec<Scope>, Error> {
         r"(?x)
         ^
         (?P<action>([^:]*)) # match action
+
+        (?::(?P<subaction>[a-z]+))? # match optional sub action
 
         (?::
             (?P<path>
@@ -63,14 +67,17 @@ pub fn parse_whitespace_separated(scope: &str) -> Result<Vec<Scope>, Error> {
     for scope in scope.split_whitespace() {
         let parsed_scope = match regex.captures(scope) {
             Some(captures) => {
+                let subaction = captures.name("subaction").map(|s| s.as_str());
                 let action = match captures.name("action") {
-                    Some(action) => match action.as_str() {
-                        "read" => Action::Read,
-                        "actuate" => Action::Actuate,
-                        "provide" => Action::Provide,
-                        "create" => Action::Create,
+                    Some(action) => match (action.as_str(), subaction) {
+                        ("read", None) => Action::Read,
+                        ("actuate", None) => Action::Actuate,
+                        ("provide", None) => Action::Provide,
+                        ("provide", Some("data")) => Action::ProvideData,
+                        ("provide", Some("actuation")) => Action::ProvideActuation,
+                        ("create", None) => Action::Create,
                         _ => {
-                            // Unknown action
+                            // Unknown action or sub action
                             return Err(Error::ParseError);
                         }
                     },
@@ -257,6 +264,54 @@ mod test {
                 assert_eq!(scope.path.as_deref().unwrap(), "Vehicle.Test");
             }
             Err(_) => todo!(),
+        }
+    }
+
+    #[test]
+    fn test_scope_provide_data_no_path() {
+        match parse_whitespace_separated("provide:data") {
+            Ok(scopes) => {
+                assert_eq!(scopes.len(), 1);
+                assert!(matches!(scopes[0].action, Action::ProvideData));
+                assert_eq!(scopes[0].path, None);
+            }
+            Err(_) => panic!("should not error"),
+        }
+    }
+
+    #[test]
+    fn test_scope_provide_actuation_vehicle_test() {
+        match parse_whitespace_separated("provide:actuation:Vehicle.Test") {
+            Ok(scopes) => {
+                assert_eq!(scopes.len(), 1);
+                let scope = &scopes[0];
+                assert!(matches!(scope.action, Action::ProvideActuation));
+                assert_eq!(scope.path.as_deref(), Some("Vehicle.Test"));
+            }
+            Err(_) => panic!("should not error"),
+        }
+    }
+
+    #[test]
+    fn test_scope_provide_sub_actions_multiple() {
+        match parse_whitespace_separated("provide:data:Vehicle.* provide:actuation:*") {
+            Ok(scopes) => {
+                assert_eq!(scopes.len(), 2);
+                assert!(matches!(scopes[0].action, Action::ProvideData));
+                assert_eq!(scopes[0].path.as_deref(), Some("Vehicle.*"));
+                assert!(matches!(scopes[1].action, Action::ProvideActuation));
+                assert_eq!(scopes[1].path.as_deref(), Some("*"));
+            }
+            Err(_) => panic!("should not error"),
+        }
+    }
+
+    #[test]
+    fn test_scope_invalid_sub_action() {
+        for scope in ["provide:foo", "read:data", "provide:data:"] {
+            if parse_whitespace_separated(scope).is_ok() {
+                panic!("{scope} should result in error");
+            }
         }
     }
 
