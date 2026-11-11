@@ -212,6 +212,8 @@ impl Permissions {
         Err(PermissionError::Denied)
     }
 
+    // Same as can_write_datapoint for now; provide:actuation will be checked here.
+    #[cfg_attr(feature="otel", tracing::instrument(name="permissions_can_provide_actuation", skip(self, path), fields(timestamp=chrono::Utc::now().to_string())))]
     pub fn can_provide_actuation(&self, path: &str) -> Result<(), PermissionError> {
         if self.is_expired() {
             return Err(PermissionError::Expired);

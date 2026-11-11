@@ -18,9 +18,10 @@ use cucumber::{cli, gherkin::Step, given, then, when, writer, World as _};
 use databroker::broker;
 use databroker_proto::kuksa::val::v1::{datapoint::Value, DataType, Datapoint};
 use databroker_proto::kuksa::val::v2::{
-    open_provider_stream_request, signal_id, val_client::ValClient as ValClientV2,
-    ListMetadataRequest, OpenProviderStreamRequest, ProvideActuationRequest, ProvideSignalRequest,
-    SampleInterval, SignalId,
+    open_provider_stream_request, open_provider_stream_response, signal_id,
+    val_client::ValClient as ValClientV2, ListMetadataRequest, OpenProviderStreamRequest,
+    OpenProviderStreamResponse, ProvideActuationRequest, ProvideSignalRequest, SampleInterval,
+    SignalId,
 };
 use kuksa_common::ClientTraitV1;
 use tokio_stream::wrappers::ReceiverStream;
@@ -437,6 +438,10 @@ fn assert_provider_registration_succeeds(w: &mut DataBrokerWorld) {
     if let Some(error) = w.current_client_error.clone() {
         panic!("Expected provider registration to succeed but got error: {error:?}");
     }
+    assert!(
+        w.current_provider_stream.is_some(),
+        "Expected provider registration to succeed but got no response"
+    );
 }
 
 #[when(expr = "a client uses a token with scopes {string}")]
@@ -496,14 +501,16 @@ async fn register_as_actuation_provider(w: &mut DataBrokerWorld, path: String) {
     }
 
     match streaming.message().await {
-        Ok(Some(_)) => {
+        Ok(Some(OpenProviderStreamResponse {
+            action: Some(open_provider_stream_response::Action::ProvideActuationResponse(_)),
+        })) => {
             w.current_client_error = None;
             w.current_provider_stream = Some(ProviderStream {
                 sender: tx,
                 receiver: streaming,
             });
         }
-        Ok(None) => debug!("provider stream closed without response"),
+        Ok(other) => debug!("unexpected provider stream response: {other:?}"),
         Err(status) => {
             w.current_client_error = Some(kuksa_common::ClientError::Status(status));
         }
