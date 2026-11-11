@@ -40,14 +40,14 @@ pub fn parse_whitespace_separated(scope: &str) -> Result<Vec<Scope>, Error> {
             (?P<path>
                 (
                     (
-                        [A-Z][a-zA-Z0-1]*
+                        [A-Z][a-zA-Z0-9]*
                         |
                         \*
                     )
                     (?:
                         \.
                         (
-                            [A-Z][a-zA-Z0-1]*
+                            [A-Z][a-zA-Z0-9]*
                             |
                             \*
                         )
@@ -169,6 +169,22 @@ mod test {
                 assert_eq!(scope.path.as_deref().unwrap(), "Vehicle.Test.*");
             }
             Err(_) => panic!("should not error"),
+        }
+    }
+
+    #[test]
+    fn test_scope_read_path_with_digits() {
+        match parse_whitespace_separated("read:Vehicle.Cabin.Seat.Row2.Pos3 read:Vehicle.OBD.O2WR")
+        {
+            Ok(scopes) => {
+                assert_eq!(scopes.len(), 2);
+                assert_eq!(
+                    scopes[0].path.as_deref(),
+                    Some("Vehicle.Cabin.Seat.Row2.Pos3")
+                );
+                assert_eq!(scopes[1].path.as_deref(), Some("Vehicle.OBD.O2WR"));
+            }
+            Err(_) => panic!("digits 0-9 should be allowed in path segments"),
         }
     }
 
