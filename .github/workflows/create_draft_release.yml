@@ -79,3 +79,22 @@ jobs:
             build-artifacts/*
             LICENSE
             NOTICE.md
+
+  collect_quality_artifacts:
+    runs-on: ubuntu-latest
+    needs: create_release
+    steps:
+      - name: Collect quality artifacts
+        id: collect_quality_artifacts
+        uses: eclipse-dash/quevee@b62d7faa1cf68654758754aaed8616b19f227583 # v1.0.0
+        with:
+          release_url: "https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          artifacts_requirements: "https://github.com/${{ github.repository }}/blob/main/doc/kuksa_analysis/kuksa_requirements.md"
+          artifacts_testing: "https://github.com/${{ github.repository }}/blob/main/integration_test/viss/readme.md"
+          artifacts_documentation: "https://github.com/${{ github.repository }}/blob/main/doc/README.md"
+          artifacts_coding_guidelines: "https://github.com/${{ github.repository }}/blob/main/CONTRIBUTING.md"
+          artifacts_release_process: "https://github.com/${{ github.repository }}/blob/main/.github/workflows/create_draft_release.yml"
+
+      - name: Upload quality manifest
+        run: |
+          gh release upload ${{ github.ref_name }} ${{ steps.collect_quality_artifacts.outputs.manifest_file }}
