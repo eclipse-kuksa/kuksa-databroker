@@ -722,7 +722,7 @@ checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
 name = "databroker"
-version = "0.7.2"
+version = "0.7.3-dev.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "databroker-cli"
-version = "0.7.2"
+version = "0.7.3-dev.0"
 dependencies = [
  "ansi_term",
  "clap",
@@ -786,7 +786,7 @@ dependencies = [
 
 [[package]]
 name = "databroker-proto"
-version = "0.7.2"
+version = "0.7.3-dev.0"
 dependencies = [
  "prost",
  "prost-types",
@@ -2858,7 +2858,7 @@ dependencies = [
 
 [[package]]
 name = "kuksa"
-version = "0.7.2"
+version = "0.7.3-dev.0"
 dependencies = [
  "databroker-proto",
  "http 1.5.0",
@@ -2870,7 +2870,7 @@ dependencies = [
 
 [[package]]
 name = "kuksa-common"
-version = "0.7.2"
+version = "0.7.3-dev.0"
 dependencies = [
  "databroker-proto",
  "env_logger",
@@ -5253,9 +5253,9 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.9.1"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
+checksum = "85ccff8a4805aba1eaa4cd4afcd49f7557dd2cf5fd79ffc37f8959466effc5aa"
 dependencies = [
  "zeroize_derive",
 ]
