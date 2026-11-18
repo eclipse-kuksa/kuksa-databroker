@@ -116,7 +116,7 @@ function build_target() {
 
     if [[ $SBOM -eq 1 ]]; then
         echo "Create $target_rust SBOM"
-        cargo cyclonedx -v -f json --describe binaries --spec-version 1.4 --target $target_rust --manifest-path ./Cargo.toml
+        cargo cyclonedx -v -f json --describe binaries --spec-version 1.6 --target $target_rust --features "$KUKSA_DATABROKERCLI_FEATURES" --manifest-path ./Cargo.toml
         cp ./databroker-cli/databroker-cli_bin.cdx.json ./dist/$target_docker/sbom.json
         rm -rf ./dist/$target_docker/thirdparty-licenses || true
         collectlicensefiles ./databroker-cli/databroker-cli_bin.cdx.json ./dist/$target_docker/thirdparty-licenses --curation ./scripts/licensecuration.yaml
